@@ -159,6 +159,23 @@ class Settings(BaseSettings):
     EMBEDDING_DEVICE: str = os.getenv("EMBEDDING_DEVICE", "auto")
     RERANKER_DEVICE: str = os.getenv("RERANKER_DEVICE", "auto")
 
+    # Retrieval planner switches (Phase C skeleton; default off to avoid behavior drift)
+    ENABLE_QUERY_REWRITE: bool = os.getenv("ENABLE_QUERY_REWRITE", "false").lower() == "true"
+    QUERY_REWRITE_USE_LLM: bool = os.getenv("QUERY_REWRITE_USE_LLM", "false").lower() == "true"
+    QUERY_REWRITE_MAX_VARIANTS: int = int(os.getenv("QUERY_REWRITE_MAX_VARIANTS", "3"))
+
+    ENABLE_ADAPTIVE_RETRIEVAL_K: bool = os.getenv("ENABLE_ADAPTIVE_RETRIEVAL_K", "false").lower() == "true"
+    ADAPTIVE_RETRIEVAL_K_MIN: int = int(os.getenv("ADAPTIVE_RETRIEVAL_K_MIN", "2"))
+    ADAPTIVE_RETRIEVAL_K_DEFAULT: int = int(os.getenv("ADAPTIVE_RETRIEVAL_K_DEFAULT", "3"))
+    ADAPTIVE_RETRIEVAL_K_MAX: int = int(os.getenv("ADAPTIVE_RETRIEVAL_K_MAX", "6"))
+
+    ENABLE_HIERARCHICAL_INDEX: bool = os.getenv("ENABLE_HIERARCHICAL_INDEX", "false").lower() == "true"
+    DEFAULT_RETRIEVAL_INDEX_SCOPE: str = os.getenv("DEFAULT_RETRIEVAL_INDEX_SCOPE", "paragraph")
+
+    # SSE protocol compatibility
+    ENABLE_UNIFIED_STREAM_SCHEMA: bool = os.getenv("ENABLE_UNIFIED_STREAM_SCHEMA", "false").lower() == "true"
+    UNIFIED_STREAM_SCHEMA_VERSION: str = os.getenv("UNIFIED_STREAM_SCHEMA_VERSION", "v1")
+
 
     # LangSmith
     LANGCHAIN_TRACING_V2: str = "false" # 强制关闭追踪，避免 429 报错干扰

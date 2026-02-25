@@ -1,85 +1,112 @@
-from fastapi import APIRouter, HTTPException
-from sse_starlette.sse import EventSourceResponse
-from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
-from app.agents.doctor_graph import doctor_graph
-from app.models.requests import ChatRequest
 import json
 import logging
+
+from fastapi import APIRouter, Query
+from langchain_core.messages import HumanMessage
+from sse_starlette.sse import EventSourceResponse
+
+from app.agents.doctor_graph import doctor_graph
+from app.core.config import settings
+from app.core.stream_schema import build_stream_payload
+from app.models.requests import ChatRequest
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+
 @router.post("/workflow")
-async def doctor_workflow(request: ChatRequest):
+async def doctor_workflow(
+    request: ChatRequest,
+    schema_mode: str = Query(default="legacy", pattern="^(legacy|unified)$"),
+):
     """
     医生工作流接口 (Doctor Workflow Endpoint) - 流式响应
-    
-    调用 Doctor LangGraph 并流式返回执行事件 (Events):
-    - 'message': AI 的回复内容。
-    - 'tool_call': 工具调用请求。
-    - 'phase': 状态阶段流转 (如 diagnosis -> prescription)。
+
+    兼容协议:
+    - legacy: 保持旧的 event/data 结构
+    - unified: data 使用统一 envelope（与 /chat/stream 对齐）
     """
-    
+
+    force_unified = schema_mode == "unified" or settings.ENABLE_UNIFIED_STREAM_SCHEMA
+
+    def _payload(event_type: str, content: str, node: str = "", meta: dict | None = None) -> str:
+        return json.dumps(
+            build_stream_payload(
+                event_type=event_type,  # type: ignore[arg-type]
+                content=content,
+                session_id=request.session_id,
+                node=node,
+                meta=meta or {},
+                force_unified=force_unified,
+            ),
+            ensure_ascii=False,
+        )
+
     async def event_generator():
         try:
-            # 1. 准备输入状态
-            # 目前假设 request.message 是最新的用户输入
-            # 在真实应用中，可能需要加载完整的聊天记录或传递 history
             input_message = HumanMessage(content=request.message)
-            
-            # 配置 Checkpointing (Session ID) 用于持久化记忆
             config = {"configurable": {"thread_id": request.session_id}}
-            
-            # 2. 调用 Graph 进行流式生成 (Streaming)
+
             async for event in doctor_graph.astream({"messages": [input_message]}, config=config):
-                
-                # 处理 'diagnosis_node' 节点输出 (AI 回复)
                 if "diagnosis_node" in event:
                     msg = event["diagnosis_node"]["messages"][0]
-                    content = msg.content
-                    
+                    content = str(getattr(msg, "content", "") or "")
+
                     if content:
-                         yield {
-                            "event": "message", 
-                            "data": json.dumps({"content": content})
+                        yield {
+                            "event": "message",
+                            "data": _payload("token", content, node="diagnosis_node"),
                         }
-                    
-                    # 如果有工具调用，通知前端
-                    if msg.tool_calls:
+
+                    if getattr(msg, "tool_calls", None):
                         for tc in msg.tool_calls:
                             yield {
                                 "event": "tool_call",
-                                "data": json.dumps({"name": tc["name"], "args": tc["args"]})
+                                "data": _payload(
+                                    "tool_call",
+                                    content=tc.get("name", "tool_call"),
+                                    node="diagnosis_node",
+                                    meta={"args": tc.get("args", {})},
+                                ),
                             }
-                            
-                # 处理 'tools' 节点输出 (工具执行结果)
+
                 elif "tools" in event:
                     msg = event["tools"]["messages"][0]
-                    content = msg.content
+                    content = str(getattr(msg, "content", "") or "")
+                    if len(content) > 200:
+                        content = f"{content[:200]}..."
                     yield {
                         "event": "tool_output",
-                        "data": json.dumps({"content": content[:200] + "..."}) # 截断过长的工具输出
+                        "data": _payload("tool_output", content, node="tools"),
                     }
-                    
-                # 处理 'state_updater' 节点输出 (阶段流转)
+
                 elif "state_updater" in event:
-                    if event["state_updater"] and "phase" in event["state_updater"]:
-                        new_phase = event["state_updater"]["phase"]
+                    updater = event["state_updater"]
+                    if updater and "phase" in updater:
+                        new_phase = str(updater["phase"])
                         yield {
                             "event": "phase",
-                            "data": json.dumps({"phase": new_phase})
+                            "data": _payload(
+                                "phase",
+                                content=f"phase={new_phase}",
+                                node="state_updater",
+                                meta={"phase": new_phase},
+                            ),
                         }
-                        
-            # 流结束
-            yield {"event": "done", "data": "Stream finished"}
-            
+
+            yield {
+                "event": "done",
+                "data": _payload("final", "Stream finished", node="doctor_workflow"),
+            }
+
         except Exception as e:
             import traceback
+
             error_msg = f"{type(e).__name__}: {str(e)}\n{traceback.format_exc()}"
             logger.error(f"Doctor workflow error: {error_msg}")
             yield {
-                "event": "error", 
-                "data": json.dumps({"error": error_msg})
+                "event": "error",
+                "data": _payload("error", error_msg, node="doctor_workflow"),
             }
 
     return EventSourceResponse(event_generator())

@@ -10,6 +10,7 @@ from app.core.tool_registry import registry
 from app.core.prompts.diagnosis import diagnosis_prompt
 from app.rag.graph_rag_service import graph_rag_service
 from app.rag.dspy_modules import MedicalConsultant
+from app.rag.retrieval_planner import build_retrieval_plan
 import structlog
 import dspy
 
@@ -87,22 +88,16 @@ Output ONLY the department name in English. If uncertain, output 'General'."""
         "system_prompt": system_prompt # 注入到 State 中供后续节点使用
     }
 
-# =================================================================
-# Node 2: Hybrid_Retriever
-# 职责: 启动 Neo4j (GraphRAG) 和 Milvus (VectorRAG) 进行知识检索
-# =================================================================
-async def hybrid_retriever_node(state: DiagnosisState):
-    logger.info("Diagnosis Node: Hybrid_Retriever Start")
+
+def _extract_retrieval_query(state: DiagnosisState) -> tuple[str, str]:
     msgs = state.get("messages", [])
-    last_user_msg = ""
-    query_source = ""
-    
+
     # [Fix] 增强消息提取逻辑，支持 Object, Dict, Tuple, List
     for msg in reversed(msgs):
         msg_type = None
         msg_content = None
-        
-        if hasattr(msg, 'type') and hasattr(msg, 'content'):
+
+        if hasattr(msg, "type") and hasattr(msg, "content"):
             msg_type = msg.type
             msg_content = msg.content
         elif isinstance(msg, dict):
@@ -111,50 +106,90 @@ async def hybrid_retriever_node(state: DiagnosisState):
         elif isinstance(msg, (tuple, list)) and len(msg) >= 2:
             msg_type = msg[0]
             msg_content = msg[1]
-            
-        # Normalize type
-        if msg_type == "user": msg_type = "human"
-        if msg_type == "assistant": msg_type = "ai"
+
+        if msg_type == "user":
+            msg_type = "human"
+        if msg_type == "assistant":
+            msg_type = "ai"
 
         if msg_type in ["user", "human"] and msg_content:
-            last_user_msg = msg_content
-            query_source = "messages"
-            break
+            return str(msg_content), "messages"
 
     # 多级兜底，防止 query 丢失导致 RAG 退化
-    if not last_user_msg:
-        retrieval_query = state.get("retrieval_query")
-        if isinstance(retrieval_query, str) and retrieval_query.strip():
-            last_user_msg = retrieval_query.strip()
-            query_source = "retrieval_query"
+    retrieval_query = state.get("retrieval_query")
+    if isinstance(retrieval_query, str) and retrieval_query.strip():
+        return retrieval_query.strip(), "retrieval_query"
 
-    if not last_user_msg:
-        event = state.get("event", {})
-        if isinstance(event, dict):
-            raw_input = event.get("raw_input")
-            if isinstance(raw_input, str) and raw_input.strip():
-                last_user_msg = raw_input.strip()
-                query_source = "event.raw_input"
+    event = state.get("event", {})
+    if isinstance(event, dict):
+        raw_input = event.get("raw_input")
+        if isinstance(raw_input, str) and raw_input.strip():
+            return raw_input.strip(), "event.raw_input"
 
-    if not last_user_msg:
-        current_turn_input = state.get("current_turn_input")
-        if isinstance(current_turn_input, str) and current_turn_input.strip():
-            last_user_msg = current_turn_input.strip()
-            query_source = "current_turn_input"
+    current_turn_input = state.get("current_turn_input")
+    if isinstance(current_turn_input, str) and current_turn_input.strip():
+        return current_turn_input.strip(), "current_turn_input"
 
-    if not last_user_msg:
-        user_input = state.get("user_input")
-        if isinstance(user_input, str) and user_input.strip():
-            last_user_msg = user_input.strip()
-            query_source = "user_input"
+    user_input = state.get("user_input")
+    if isinstance(user_input, str) and user_input.strip():
+        return user_input.strip(), "user_input"
 
-    if not last_user_msg:
-        symptoms = state.get("symptoms")
-        if isinstance(symptoms, str) and symptoms.strip():
-            last_user_msg = symptoms.strip()
-            query_source = "symptoms"
+    symptoms = state.get("symptoms")
+    if isinstance(symptoms, str) and symptoms.strip():
+        return symptoms.strip(), "symptoms"
 
-    logger.info("hybrid_retriever_query", query=last_user_msg, source=query_source or "none")
+    return "", "none"
+
+
+# =================================================================
+# Node 2: Query_Rewrite
+# 职责: Ingress -> Retriever 之间的检索规划（规则优先，模型兜底）
+# =================================================================
+async def query_rewrite_node(state: DiagnosisState):
+    query, source = _extract_retrieval_query(state)
+    if not query:
+        logger.warning("query_rewrite_no_query_found", available_keys=list(state.keys()))
+        return {}
+
+    intent = str(state.get("intent", "") or "")
+    plan = await build_retrieval_plan(query=query, intent=intent)
+    logger.info(
+        "query_rewrite_plan",
+        source=source,
+        primary_query=plan.primary_query[:120],
+        top_k=plan.top_k,
+        variants=len(plan.query_variants),
+        complexity=plan.complexity,
+        rewrite_source=plan.rewrite_source,
+    )
+
+    return {
+        "retrieval_query": plan.primary_query,
+        "retrieval_query_variants": plan.query_variants,
+        "retrieval_top_k": plan.top_k,
+        "retrieval_plan": plan.to_state_dict(),
+        "retrieval_index_scope": plan.index_scope,
+    }
+
+# =================================================================
+# Node 3: Hybrid_Retriever
+# 职责: 启动 Neo4j (GraphRAG) 和 Milvus (VectorRAG) 进行知识检索
+# =================================================================
+async def hybrid_retriever_node(state: DiagnosisState):
+    logger.info("Diagnosis Node: Hybrid_Retriever Start")
+    last_user_msg, query_source = _extract_retrieval_query(state)
+    query_variants = state.get("retrieval_query_variants", [])
+    top_k = state.get("retrieval_top_k", 3) or 3
+    index_scope = str(state.get("retrieval_index_scope", "paragraph") or "paragraph")
+
+    logger.info(
+        "hybrid_retriever_query",
+        query=last_user_msg,
+        source=query_source or "none",
+        top_k=top_k,
+        index_scope=index_scope,
+        variant_count=len(query_variants) if isinstance(query_variants, list) else 0,
+    )
 
     if not last_user_msg:
         logger.warning("hybrid_retriever_no_query_found", available_keys=list(state.keys()))
@@ -165,7 +200,13 @@ async def hybrid_retriever_node(state: DiagnosisState):
     
     # 调用 GraphRAG Service (已包含 Vector + Graph 并行检索)
     try:
-        context = await graph_rag_service.search(query=last_user_msg, extracted_entities=entities)
+        context = await graph_rag_service.search(
+            query=last_user_msg,
+            extracted_entities=entities,
+            top_k=max(1, int(top_k)),
+            query_variants=query_variants if isinstance(query_variants, list) else None,
+            index_scope=index_scope,
+        )
         logger.info("hybrid_retriever_success", context_len=len(context))
     except Exception as e:
         logger.error("hybrid_retriever_failed", error=str(e))
@@ -176,10 +217,12 @@ async def hybrid_retriever_node(state: DiagnosisState):
     return {
         "messages": [SystemMessage(content=f"Medical Context:\n{context}")],
         "retrieval_query": last_user_msg,
+        "retrieval_top_k": max(1, int(top_k)),
+        "retrieval_index_scope": index_scope,
     }
 
 # =================================================================
-# Node 3: DSPy_Reasoner
+# Node 4: DSPy_Reasoner
 # 职责: 使用 DSPy 结合知识和症状进行结构化推理
 # =================================================================
 async def dspy_reasoner_node(state: DiagnosisState):
@@ -365,7 +408,7 @@ async def generate_question_node(state: DiagnosisState):
 def build_diagnosis_graph():
     """
     构建诊断子图 (Diagnosis Subgraph) - [Phase 3 Refactor]
-    Nodes: State_Sync -> Hybrid_Retriever -> DSPy_Reasoner -> Confidence_Evaluator
+    Nodes: State_Sync -> Query_Rewrite -> Hybrid_Retriever -> DSPy_Reasoner -> Confidence_Evaluator
     """
     workflow = StateGraph(DiagnosisState)
     
@@ -376,6 +419,7 @@ def build_diagnosis_graph():
     # Graph Construction
     # =================================================================
     workflow.add_node("State_Sync", state_sync_node)
+    workflow.add_node("Query_Rewrite", query_rewrite_node)
     workflow.add_node("Hybrid_Retriever", hybrid_retriever_node)
     workflow.add_node("DSPy_Reasoner", dspy_reasoner_node)
     
@@ -385,7 +429,8 @@ def build_diagnosis_graph():
 
     # 边连接
     workflow.set_entry_point("State_Sync")
-    workflow.add_edge("State_Sync", "Hybrid_Retriever")
+    workflow.add_edge("State_Sync", "Query_Rewrite")
+    workflow.add_edge("Query_Rewrite", "Hybrid_Retriever")
     workflow.add_edge("Hybrid_Retriever", "DSPy_Reasoner")
     
     # 条件边

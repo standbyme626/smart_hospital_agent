@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from app.core.graph.workflow import app as graph_app
 from app.core.graph.state import AgentState
+from app.core.stream_schema import build_stream_payload
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -198,7 +199,15 @@ async def event_generator(message: str, session_id: str) -> AsyncGenerator[str, 
                         
                     # 过滤空内容和单独的换行
                     if content and content.strip():
-                        payload = json.dumps({"type": "token", "content": content}, ensure_ascii=False)
+                        payload = json.dumps(
+                            build_stream_payload(
+                                event_type="token",
+                                content=content,
+                                session_id=session_id,
+                                node=node_name,
+                            ),
+                            ensure_ascii=False,
+                        )
                         yield f"data: {payload}\n\n"
                         emitted_token_count += 1
 
@@ -210,11 +219,27 @@ async def event_generator(message: str, session_id: str) -> AsyncGenerator[str, 
                 if node_name in STATUS_MAP and node_name not in emitted_nodes:
                     emitted_nodes.add(node_name)
                     status_text = STATUS_MAP[node_name]
-                    payload = json.dumps({"type": "thought", "content": status_text}, ensure_ascii=False)
+                    payload = json.dumps(
+                        build_stream_payload(
+                            event_type="thought",
+                            content=status_text,
+                            session_id=session_id,
+                            node=node_name,
+                        ),
+                        ensure_ascii=False,
+                    )
                     yield f"data: {payload}\n\n"
                 elif node_name not in emitted_nodes and node_name not in {"LangGraph"}:
                     emitted_nodes.add(node_name)
-                    payload = json.dumps({"type": "thought", "content": f"正在处理 {node_name}..."}, ensure_ascii=False)
+                    payload = json.dumps(
+                        build_stream_payload(
+                            event_type="thought",
+                            content=f"正在处理 {node_name}...",
+                            session_id=session_id,
+                            node=node_name,
+                        ),
+                        ensure_ascii=False,
+                    )
                     yield f"data: {payload}\n\n"
 
             # 3. Handle non-streaming nodes that produce final output
@@ -230,13 +255,29 @@ async def event_generator(message: str, session_id: str) -> AsyncGenerator[str, 
                     if not key or key in emitted_text_keys:
                         continue
                     emitted_text_keys.add(key)
-                    payload = json.dumps({"type": "token", "content": text}, ensure_ascii=False)
+                    payload = json.dumps(
+                        build_stream_payload(
+                            event_type="token",
+                            content=text,
+                            session_id=session_id,
+                            node=node_name,
+                        ),
+                        ensure_ascii=False,
+                    )
                     yield f"data: {payload}\n\n"
                     emitted_token_count += 1
 
     except Exception as e:
         logger.error(f"Streaming error: {e}")
-        error_payload = json.dumps({"type": "error", "content": str(e)}, ensure_ascii=False)
+        error_payload = json.dumps(
+            build_stream_payload(
+                event_type="error",
+                content=str(e),
+                session_id=session_id,
+                node="chat_stream",
+            ),
+            ensure_ascii=False,
+        )
         yield f"data: {error_payload}\n\n"
     
     # End of stream

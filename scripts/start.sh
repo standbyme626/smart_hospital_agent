@@ -26,8 +26,6 @@ fi
 
 # 3. 启动后端 (后台运行)
 echo -e "${GREEN}[2/4] 启动后端 API (Port 8000)...${NC}"
-# 关键修复：将 .env 复制到 backend 目录，确保 uvicorn 能正确加载
-cp .env backend/.env
 cd backend
 # 使用 nohup 但不重定向，或者重定向到文件但同时用 tail
 nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 > ../backend.log 2>&1 &

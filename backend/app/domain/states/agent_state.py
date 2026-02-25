@@ -89,6 +89,10 @@ class AgentState(TypedDict, total=False):
     # 输入上下文 (保留兼容，但在逻辑中优先使用 event)
     current_turn_input: Optional[str]
     retrieval_query: Optional[str]
+    retrieval_query_variants: Optional[List[str]]
+    retrieval_top_k: Optional[int]
+    retrieval_plan: Optional[Dict[str, Any]]
+    retrieval_index_scope: Optional[str]
     user_input: str
     
     # 核心元数据

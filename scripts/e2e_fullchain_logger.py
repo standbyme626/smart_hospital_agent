@@ -72,6 +72,25 @@ DEFAULT_CASES = [
     },
 ]
 
+MULTITURN_DEMO_CASES = [
+    {
+        "id": "medical_turn1",
+        "message": "我头痛两天伴恶心",
+        "expected_intent": "MEDICAL_CONSULT",
+        "expected_route": "diagnosis",
+        "assert_retrieval": True,
+        "session_group": "mt_medical",
+    },
+    {
+        "id": "medical_turn2",
+        "message": "还有畏光，昨晚开始加重",
+        "expected_intent": "MEDICAL_CONSULT",
+        "expected_route": "diagnosis",
+        "assert_retrieval": True,
+        "session_group": "mt_medical",
+    },
+]
+
 KEY_BACKEND_PATTERNS = [
     "workflow_router_decision",
     "node_start",
@@ -91,6 +110,37 @@ KEY_BACKEND_PATTERNS = [
     "[DEBUG] Node",
     "[DEBUG] RAG Query:",
 ]
+
+ROUTING_NODES = {
+    "cache_lookup",
+    "ingress",
+    "pii_filter",
+    "multimodal_processor",
+    "history_injector",
+    "guard",
+    "intent_classifier",
+}
+
+RETRIEVAL_NODES = {
+    "retriever",
+    "hybrid_retriever",
+    "Hybrid_Retriever",
+    "state_sync",
+    "State_Sync",
+}
+
+RESPONSE_NODES = {
+    "fast_reply",
+    "service",
+    "registration_tool",
+    "diagnosis",
+    "diagnosis_egress",
+    "expert_aggregation",
+    "generate_followup",
+    "quality_gate",
+    "egress",
+    "persistence",
+}
 
 
 @dataclass
@@ -126,6 +176,7 @@ class CaseResult:
     backend_signals: List[str] = field(default_factory=list)
     expected_intent: str = ""
     actual_intent: str = ""
+    intent_assert_ok: bool = True
     expected_route: str = ""
     actual_routes: List[str] = field(default_factory=list)
     route_assert_ok: bool = True
@@ -134,7 +185,11 @@ class CaseResult:
     retrieval_signal_hit: bool = False
     retrieval_assert_ok: bool = True
     node_durations_s: Dict[str, float] = field(default_factory=dict)
+    last_event_kind: str = ""
+    last_event_node: str = ""
+    timeout_segment: str = ""
     failure_category: str = ""
+    failure_segment: str = ""
     ok: bool = False
 
 
@@ -330,7 +385,10 @@ def parse_cases(args: argparse.Namespace) -> List[Dict[str, str]]:
                 }
             )
         return out
-    return DEFAULT_CASES
+    cases = [dict(item) for item in DEFAULT_CASES]
+    if args.multi_turn_demo:
+        cases.extend(dict(item) for item in MULTITURN_DEMO_CASES)
+    return cases
 
 
 def parse_backend_analysis(signals: List[str], retrieval_logs: List[str]) -> Dict[str, Any]:
@@ -422,6 +480,8 @@ def classify_failure(result: CaseResult) -> str:
         return "timeout_failure"
     if result.error:
         return "model_failure"
+    if not result.intent_assert_ok:
+        return "route_failure"
     if not result.route_assert_ok:
         return "route_failure"
     if not result.retrieval_assert_ok:
@@ -431,6 +491,39 @@ def classify_failure(result: CaseResult) -> str:
     if not result.response_content:
         return "empty_response_failure"
     return "ok"
+
+
+def infer_segment_from_node(node: str) -> str:
+    node_norm = (node or "").strip()
+    if not node_norm or node_norm == "-":
+        return "unknown"
+    if node_norm in ROUTING_NODES:
+        return "route"
+    if node_norm in RETRIEVAL_NODES:
+        return "retrieval"
+    if node_norm in RESPONSE_NODES:
+        return "response"
+    return "response"
+
+
+def classify_failure_segment(result: CaseResult) -> str:
+    if result.failure_category == "ok":
+        return "ok"
+    if result.failure_category == "protocol_failure":
+        return "protocol"
+    if result.failure_category == "transport_failure":
+        return "transport"
+    if result.failure_category == "route_failure":
+        return "route"
+    if result.failure_category == "retrieval_failure":
+        return "retrieval"
+    if result.failure_category in {"timeout_failure"}:
+        if result.timeout_segment:
+            return result.timeout_segment
+        return infer_segment_from_node(result.last_event_node)
+    if result.failure_category in {"model_failure"}:
+        return "model"
+    return "response"
 
 
 def aggregate_node_timing(results: List[CaseResult]) -> Dict[str, Dict[str, float]]:
@@ -443,6 +536,29 @@ def aggregate_node_timing(results: List[CaseResult]) -> Dict[str, Dict[str, floa
         if not values:
             continue
         out[node] = {
+            "count": float(len(values)),
+            "avg_s": round(sum(values) / len(values), 3),
+            "max_s": round(max(values), 3),
+        }
+    return out
+
+
+def aggregate_segment_timing(results: List[CaseResult]) -> Dict[str, Dict[str, float]]:
+    segment_accum: Dict[str, List[float]] = {}
+    for r in results:
+        seg_cost = {"route": 0.0, "retrieval": 0.0, "response": 0.0}
+        for node, dur in r.node_durations_s.items():
+            seg = infer_segment_from_node(node)
+            if seg in seg_cost:
+                seg_cost[seg] += float(dur)
+        for seg, val in seg_cost.items():
+            segment_accum.setdefault(seg, []).append(round(val, 3))
+
+    out: Dict[str, Dict[str, float]] = {}
+    for seg, values in segment_accum.items():
+        if not values:
+            continue
+        out[seg] = {
             "count": float(len(values)),
             "avg_s": round(sum(values) / len(values), 3),
             "max_s": round(max(values), 3),
@@ -464,6 +580,11 @@ def build_report_md(run_id: str, summary: Dict[str, Any]) -> str:
         lines.append("## Node Timing Summary")
         for node, stats in sorted(summary["node_timing_summary"].items()):
             lines.append(f"- `{node}`: avg={stats['avg_s']}s max={stats['max_s']}s count={int(stats['count'])}")
+    if summary.get("segment_timing_summary"):
+        lines.append("")
+        lines.append("## Segment Timing Summary")
+        for seg, stats in sorted(summary["segment_timing_summary"].items()):
+            lines.append(f"- `{seg}`: avg={stats['avg_s']}s max={stats['max_s']}s count={int(stats['count'])}")
     lines.append("")
     for case in summary["results"]:
         lines.append(f"## Case `{case['case_id']}`")
@@ -472,10 +593,14 @@ def build_report_md(run_id: str, summary: Dict[str, Any]) -> str:
         lines.append(f"- duration_s: `{case['duration_s']}`")
         lines.append(f"- terminated_by: `{case['terminated_by']}`")
         lines.append(f"- failure_category: `{case.get('failure_category', '')}`")
+        lines.append(f"- failure_segment: `{case.get('failure_segment', '')}`")
+        lines.append(f"- timeout_segment: `{case.get('timeout_segment', '')}`")
         lines.append(f"- http_status: `{case['http_status']}`")
         lines.append(f"- event_count/thought/token/status: `{case['event_count']}/{case['thought_count']}/{case['token_count']}/{case['status_count']}`")
         lines.append(f"- expected/actual_intent: `{case.get('expected_intent','')}` / `{case.get('actual_intent','')}`")
+        lines.append(f"- intent_assert_ok: `{case.get('intent_assert_ok', True)}`")
         lines.append(f"- expected_route/routes: `{case.get('expected_route','')}` / `{','.join(case.get('actual_routes', []))}`")
+        lines.append(f"- route_assert_ok: `{case.get('route_assert_ok', True)}`")
         lines.append(
             f"- retrieval_assert(query_non_empty/signal_hit/ok): "
             f"`{case.get('retrieval_query_non_empty', False)}/{case.get('retrieval_signal_hit', False)}/{case.get('retrieval_assert_ok', True)}`"
@@ -821,6 +946,10 @@ async def run_case(
     result.response_preview = result.response_content[:400]
     result.duration_s = round(time.monotonic() - case_start_mono, 3)
     result.finished_at = now_iso()
+    result.last_event_kind = last_kind
+    result.last_event_node = last_node
+    if result.terminated_by in {"stall_timeout", "case_timeout"}:
+        result.timeout_segment = infer_segment_from_node(last_node)
 
     # Fallback timing inference when backend does not emit structured node_completed durations.
     inferred_node_timing = derive_node_durations_from_timeline(result.node_timeline, result.duration_s)
@@ -835,6 +964,10 @@ async def run_case(
     if result.expected_route:
         result.route_assert_ok = result.expected_route in set(result.actual_routes)
 
+    result.intent_assert_ok = True
+    if result.expected_intent:
+        result.intent_assert_ok = result.expected_intent == result.actual_intent
+
     result.retrieval_assert_ok = True
     if result.retrieval_assert_required:
         result.retrieval_assert_ok = result.retrieval_query_non_empty and result.retrieval_signal_hit
@@ -845,10 +978,12 @@ async def run_case(
         and not result.error
         and not result.exception
         and len(result.response_content) > 0
+        and result.intent_assert_ok
         and result.route_assert_ok
         and result.retrieval_assert_ok
     )
     result.failure_category = classify_failure(result)
+    result.failure_segment = classify_failure_segment(result)
     if show_progress:
         case_ratio = min(1.0, result.duration_s / max(float(case_timeout_s), 1.0))
         overall_ratio = case_index / max(float(total_cases), 1.0)
@@ -892,11 +1027,15 @@ async def run(args: argparse.Namespace) -> int:
         "progress_enabled": not args.no_progress,
         "progress_interval_s": args.progress_interval,
         "backend_log_path": str(backend_log_path) if backend_log_path else "",
+        "backend_log_from_end": bool(args.backend_log_from_end),
+        "multi_turn_demo": bool(args.multi_turn_demo),
     }
     (out_dir / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
     backend_proc: Optional[subprocess.Popen] = None
     backend_offset = 0
+    if not args.start_backend and backend_log_path and args.backend_log_from_end and backend_log_path.exists():
+        backend_offset = backend_log_path.stat().st_size
     if args.start_backend:
         env_file = (project_root / args.env_file).resolve()
         backend_proc = start_backend_process(
@@ -985,6 +1124,7 @@ async def run(args: argparse.Namespace) -> int:
         "total_cases": len(results),
         "passed_cases": passed,
         "node_timing_summary": aggregate_node_timing(results),
+        "segment_timing_summary": aggregate_segment_timing(results),
         "results": [
             {
                 "case_id": r.case_id,
@@ -1009,6 +1149,7 @@ async def run(args: argparse.Namespace) -> int:
                 "backend_signals": r.backend_signals,
                 "expected_intent": r.expected_intent,
                 "actual_intent": r.actual_intent,
+                "intent_assert_ok": r.intent_assert_ok,
                 "expected_route": r.expected_route,
                 "actual_routes": r.actual_routes,
                 "route_assert_ok": r.route_assert_ok,
@@ -1017,7 +1158,11 @@ async def run(args: argparse.Namespace) -> int:
                 "retrieval_signal_hit": r.retrieval_signal_hit,
                 "retrieval_assert_ok": r.retrieval_assert_ok,
                 "node_durations_s": r.node_durations_s,
+                "last_event_kind": r.last_event_kind,
+                "last_event_node": r.last_event_node,
+                "timeout_segment": r.timeout_segment,
                 "failure_category": r.failure_category,
+                "failure_segment": r.failure_segment,
                 "ok": r.ok,
             }
             for r in results
@@ -1054,6 +1199,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--backend-port", type=int, default=8001, help="Backend port when --start-backend")
     p.add_argument("--backend-ready-timeout", type=int, default=120, help="Backend ready timeout seconds")
     p.add_argument("--backend-log-file", default="", help="Existing backend log file path (for signal extraction without --start-backend)")
+    p.add_argument("--backend-log-from-end", action="store_true", help="When using --backend-log-file, start reading from file end")
+    p.add_argument("--multi-turn-demo", action="store_true", help="Append built-in multi-turn same-session demo cases")
     return p
 
 

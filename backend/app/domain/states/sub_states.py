@@ -27,6 +27,10 @@ class DiagnosisState(TypedDict):
     dialogue_history: List[BaseMessage] 
     current_turn_input: Optional[str]
     retrieval_query: Optional[str]
+    retrieval_query_variants: Optional[List[str]]
+    retrieval_top_k: Optional[int]
+    retrieval_plan: Optional[Dict[str, Any]]
+    retrieval_index_scope: Optional[str]
     user_input: Optional[str]
     event: Optional[EventContext]
     
