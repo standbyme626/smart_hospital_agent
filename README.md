@@ -39,19 +39,19 @@
 
 ```mermaid
 graph TB
-    subgraph Production[生产路径]
-        U[用户] --> API[/api/v1/chat/stream]
-        API --> WF[[workflow.app]]
-        WF --> PG[(PostgreSQL)]
-        WF --> RD[(Redis)]
-        WF --> MV[(Milvus)]
-        WF --> N4[(Neo4j)]
+    subgraph Production["生产路径"]
+        U["用户"] --> API["/api/v1/chat/stream"]
+        API --> WF["workflow.app"]
+        WF --> PG["PostgreSQL"]
+        WF --> RD["Redis"]
+        WF --> MV["Milvus"]
+        WF --> N4["Neo4j"]
     end
 
-    subgraph Evolution[训练路径]
-        E[/api/v1/evolution/*/] --> R[EvolutionRunner]
+    subgraph Evolution["训练路径"]
+        E["/api/v1/evolution/*"] --> R["EvolutionRunner"]
         R --> WF
-        R --> J[Judge/Audit]
+        R --> J["Judge/Audit"]
     end
 ```
 
@@ -309,4 +309,3 @@ python scripts/e2e_fullchain_logger.py \
 - V6.1 (2026-01-31): Triage Routing + Self-Healing
 - V6.0 (2026-01-31): Performance & Stability
 - V5.0 (2026-01-30): LangChain 1.0 Re-Architecture
-
