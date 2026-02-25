@@ -1,0 +1,20 @@
+{"messages": [{"role": "system", "content": "你是一个专业的医疗助手，请先进行逻辑思考再回答。"}, {"role": "user", "content": "我最近总是失眠，心慌，出汗，是怎么回事？"}]}
+{"messages": [{"role": "system", "content": "你是一个专业的医疗助手，请先进行逻辑思考再回答。"}, {"role": "user", "content": "小孩子发烧 38.5 度，需要吃退烧药吗？"}]}
+{"messages": [{"role": "system", "content": "你是一个专业的医疗助手，请先进行逻辑思考再回答。"}, {"role": "user", "content": "感冒了可以喝咖啡吗？"}]}
+{"messages": [{"role": "system", "content": "你是一个专业的医疗助手，请先进行逻辑思考再回答。"}, {"role": "user", "content": "左边肚子疼，一阵一阵的，是什么原因？"}]}
+{"messages": [{"role": "system", "content": "你是一个专业的医疗助手，请先进行逻辑思考再回答。"}, {"role": "user", "content": "体检报告说肺部有结节，严重吗？"}]}
+{"messages": [{"role": "system", "content": "你是一个专业的医疗助手，请先进行逻辑思考再回答。"}, {"role": "user", "content": "我最近总是失眠，心慌，出汗，是怎么回事？"}]}
+{"messages": [{"role": "system", "content": "你是一个专业的医疗助手，请先进行逻辑思考再回答。"}, {"role": "user", "content": "小孩子发烧 38.5 度，需要吃退烧药吗？"}]}
+{"messages": [{"role": "system", "content": "你是一个专业的医疗助手，请先进行逻辑思考再回答。"}, {"role": "user", "content": "感冒了可以喝咖啡吗？"}]}
+{"messages": [{"role": "system", "content": "你是一个专业的医疗助手，请先进行逻辑思考再回答。"}, {"role": "user", "content": "左边肚子疼，一阵一阵的，是什么原因？"}]}
+{"messages": [{"role": "system", "content": "你是一个专业的医疗助手，请先进行逻辑思考再回答。"}, {"role": "user", "content": "体检报告说肺部有结节，严重吗？"}]}
+{"messages": [{"role": "system", "content": "你是一个严格遵循 JSON 格式的医疗接口。"}, {"role": "user", "content": "帮我预约明天的内科医生。"}]}
+{"messages": [{"role": "system", "content": "你是一个严格遵循 JSON 格式的医疗接口。"}, {"role": "user", "content": "查询我的挂号信息。"}]}
+{"messages": [{"role": "system", "content": "你是一个严格遵循 JSON 格式的医疗接口。"}, {"role": "user", "content": "取消下午的预约。"}]}
+{"messages": [{"role": "system", "content": "你是一个严格遵循 JSON 格式的医疗接口。"}, {"role": "user", "content": "我想看皮肤科，还有号吗？"}]}
+{"messages": [{"role": "system", "content": "你是一个严格遵循 JSON 格式的医疗接口。"}, {"role": "user", "content": "帮我改签到后天。"}]}
+{"messages": [{"role": "system", "content": "你是一个严格遵循 JSON 格式的医疗接口。"}, {"role": "user", "content": "帮我预约明天的内科医生。"}]}
+{"messages": [{"role": "system", "content": "你是一个严格遵循 JSON 格式的医疗接口。"}, {"role": "user", "content": "查询我的挂号信息。"}]}
+{"messages": [{"role": "system", "content": "你是一个严格遵循 JSON 格式的医疗接口。"}, {"role": "user", "content": "取消下午的预约。"}]}
+{"messages": [{"role": "system", "content": "你是一个严格遵循 JSON 格式的医疗接口。"}, {"role": "user", "content": "我想看皮肤科，还有号吗？"}]}
+{"messages": [{"role": "system", "content": "你是一个严格遵循 JSON 格式的医疗接口。"}, {"role": "user", "content": "帮我改签到后天。"}]}

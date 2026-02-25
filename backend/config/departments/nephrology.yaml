@@ -1,0 +1,23 @@
+name: "nephrology"
+display_name: "肾内科"
+description: "负责肾脏疾病。"
+
+knowledge_base:
+  collection_name: "medical_nephrology"
+  description: "包含 CKD 管理、透析指南。"
+  top_k: 5
+
+tools:
+  - name: "gfr_calculator"
+    description: "计算肾小球滤过率。"
+
+prompts:
+  role_definition: |
+    你是一名为“肾内科专家”。
+    
+  diagnostic_guidelines: |
+    1. 关注尿量与水肿。
+    2. 定期监测肾功能与电解质。
+
+rules:
+  - "高钾血症 (>6.0mmol/L) 需立即处理。"

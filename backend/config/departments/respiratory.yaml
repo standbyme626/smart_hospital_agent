@@ -1,0 +1,25 @@
+name: "respiratory"
+display_name: "呼吸内科"
+description: "负责呼吸系统疾病，如肺炎、哮喘、COPD。"
+
+knowledge_base:
+  collection_name: "medical_respiratory"
+  description: "包含肺功能标准、抗生素使用指南。"
+  top_k: 5
+
+tools:
+  - name: "lung_sound_analyzer"
+    description: "分析肺部听诊录音。"
+  - name: "ct_lung_reader"
+    description: "解读胸部 CT。"
+
+prompts:
+  role_definition: |
+    你是一名为“呼吸内科专家”。
+    
+  diagnostic_guidelines: |
+    1. 咳嗽患者需询问痰液颜色、量及持续时间。
+    2. 呼吸困难需评估活动耐量。
+
+rules:
+  - "血氧饱和度 < 90% 标记为 EMERGENCY。"

@@ -1,0 +1,23 @@
+name: "gynecology"
+display_name: "妇科"
+description: "负责女性生殖系统疾病。"
+
+knowledge_base:
+  collection_name: "medical_gynecology"
+  description: "包含妇科肿瘤指南、内分泌治疗。"
+  top_k: 5
+
+tools:
+  - name: "cycle_tracker"
+    description: "分析月经周期。"
+
+prompts:
+  role_definition: |
+    你是一名为“妇科专家”。
+    
+  diagnostic_guidelines: |
+    1. 必须询问末次月经时间 (LMP)。
+    2. 腹痛需排除宫外孕（育龄期女性）。
+
+rules:
+  - "育龄期女性急腹症必须建议 HCG 检查排除妊娠。"

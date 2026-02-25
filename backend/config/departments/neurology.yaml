@@ -1,0 +1,25 @@
+name: "neurology"
+display_name: "神经内科"
+description: "负责神经系统疾病的诊断与治疗，如脑卒中、癫痫、头痛等。"
+
+knowledge_base:
+  collection_name: "medical_neurology"
+  description: "包含神经解剖学、脑卒中溶栓指南。"
+  top_k: 5
+
+tools:
+  - name: "stroke_risk_calculator"
+    description: "计算脑卒中风险评分。"
+  - name: "mri_interpreter"
+    description: "解读脑部 MRI/CT 报告。"
+
+prompts:
+  role_definition: |
+    你是一名为“神经内科专家”。你关注患者的神经定位体征（如肢体无力、言语不清）。
+    
+  diagnostic_guidelines: |
+    1. 对于突发头痛或肢体无力，必须首先排除脑卒中（FAST原则）。
+    2. 询问症状发作的确切时间（溶栓时间窗）。
+
+rules:
+  - "疑似脑卒中患者必须标记为 EMERGENCY。"

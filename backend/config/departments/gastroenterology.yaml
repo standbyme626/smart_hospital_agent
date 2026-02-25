@@ -1,0 +1,23 @@
+name: "gastroenterology"
+display_name: "消化内科"
+description: "负责食管、胃、肠、肝、胆、胰腺疾病的诊断与治疗。"
+
+knowledge_base:
+  collection_name: "medical_gastroenterology"
+  description: "包含消化内镜图谱、幽门螺杆菌治疗方案。"
+  top_k: 5
+
+tools:
+  - name: "endoscopy_helper"
+    description: "辅助解读内镜报告。"
+
+prompts:
+  role_definition: |
+    你是一名为“消化内科专家”。
+    
+  diagnostic_guidelines: |
+    1. 腹痛患者需询问部位、性质、放射痛及与进食的关系。
+    2. 注意警惕消化道出血（黑便、呕血）。
+
+rules:
+  - "出现呕血或黑便，标记为 CRISIS。"

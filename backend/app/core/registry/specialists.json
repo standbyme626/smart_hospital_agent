@@ -1,0 +1,109 @@
+{
+  "specialists": {
+    "药剂科_精准医学": {
+      "name_cn": "精准药剂科",
+      "description": "负责药物基因组学、精准用药指导及药物相互作用分析。",
+      "aliases": ["药剂科", "遗传咨询科", "精准医学科", "Pharmacogenomics"]
+    },
+    "心血管内科": {
+      "name_cn": "心血管内科",
+      "description": "负责高血压、冠心病、心律失常等心血管疾病的诊断与治疗。",
+      "aliases": ["心内科", "Cardiology"]
+    },
+    "神经内科": {
+      "name_cn": "神经内科",
+      "description": "负责脑血管疾病、癫痫、神经退行性疾病等的诊断与治疗。",
+      "aliases": ["Neurology"]
+    },
+    "呼吸内科": {
+      "name_cn": "呼吸内科",
+      "description": "负责呼吸系统疾病如肺炎、哮喘、COPD等的诊断与治疗。",
+      "aliases": ["Pulmonology"]
+    },
+    "消化内科": {
+      "name_cn": "消化内科",
+      "description": "负责食管、胃、肠、肝、胆、胰等消化系统疾病的诊断与治疗。",
+      "aliases": ["Gastroenterology"]
+    },
+    "肾内科": {
+      "name_cn": "肾内科",
+      "description": "负责肾脏疾病如肾炎、肾衰竭等的诊断与治疗。",
+      "aliases": ["Nephrology"]
+    },
+    "内分泌科": {
+      "name_cn": "内分泌科",
+      "description": "负责糖尿病、甲状腺疾病等内分泌代谢疾病的诊断与治疗。",
+      "aliases": ["Endocrinology"]
+    },
+    "妇产科": {
+      "name_cn": "妇产科",
+      "description": "负责妇科疾病及产科相关医疗服务。",
+      "aliases": ["妇科", "产科", "Gynecology", "Obstetrics"]
+    },
+    "儿科": {
+      "name_cn": "儿科",
+      "description": "负责儿童及青少年疾病的诊断与治疗。",
+      "aliases": ["Pediatrics"]
+    },
+    "外科": {
+      "name_cn": "外科",
+      "description": "负责需要手术治疗的各类疾病。",
+      "aliases": ["Surgery"]
+    },
+    "普通外科": {
+      "name_cn": "普通外科",
+      "description": "负责腹部脏器、乳腺、甲状腺等疾病的手术治疗。",
+      "aliases": ["General Surgery"]
+    },
+    "骨科": {
+      "name_cn": "骨科",
+      "description": "负责骨骼、关节、肌肉、韧带等运动系统疾病的诊断与治疗。",
+      "aliases": ["Orthopedics"]
+    },
+    "皮肤科": {
+      "name_cn": "皮肤科",
+      "description": "负责皮肤、毛发、指甲等疾病的诊断与治疗。",
+      "aliases": ["Dermatology"]
+    },
+    "眼科": {
+      "name_cn": "眼科",
+      "description": "负责眼部疾病及视力障碍的诊断与治疗。",
+      "aliases": ["Ophthalmology"]
+    },
+    "耳鼻喉科": {
+      "name_cn": "耳鼻喉科",
+      "description": "负责耳、鼻、咽、喉及头颈部疾病的诊断与治疗。",
+      "aliases": ["ENT"]
+    },
+    "口腔科": {
+      "name_cn": "口腔科",
+      "description": "负责牙齿及口腔颌面部疾病的诊断与治疗。",
+      "aliases": ["Stomatology"]
+    },
+    "泌尿外科": {
+      "name_cn": "泌尿外科",
+      "description": "负责泌尿系统及男性生殖系统疾病的诊断与治疗。",
+      "aliases": ["泌尿科", "Urology"]
+    },
+    "急诊科": {
+      "name_cn": "急诊科",
+      "description": "负责急性病、创伤等急危重症的紧急救治。",
+      "aliases": ["Emergency"]
+    },
+    "康复医学科": {
+      "name_cn": "康复医学科",
+      "description": "负责疾病恢复期的功能训练与康复治疗。",
+      "aliases": ["Rehabilitation"]
+    },
+    "中医科": {
+      "name_cn": "中医科",
+      "description": "采用中医药理论与方法进行疾病诊疗。",
+      "aliases": ["中医", "TCM"]
+    },
+    "General Practice": {
+      "name_cn": "全科",
+      "description": "负责常见病、多发病的初级诊疗及分诊。",
+      "aliases": ["内科", "Internal Medicine", "通用", "General", "UNKNOWN"]
+    }
+  }
+}

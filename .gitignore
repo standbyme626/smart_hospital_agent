@@ -1,0 +1,31 @@
+# env
+.env
+*.env
+backend/.env
+
+# python cache
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# local runtime artifacts
+logs/
+**/logs/
+*.log
+.release_meta/
+
+# models / weights
+models/
+**/models/
+data/fine-tuning/weights/
+*.bin
+*.safetensors
+*.pt
+*.onnx
+
+# virtual env
+venv/
+.venv/
+
+# misc
+.DS_Store

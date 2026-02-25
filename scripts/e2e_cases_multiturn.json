@@ -1,0 +1,34 @@
+[
+  {
+    "id": "mt_turn1_greeting",
+    "message": "你好，我想先咨询一下",
+    "expected_intent": "GREETING",
+    "expected_route": "fast_reply",
+    "assert_retrieval": false,
+    "session_group": "multi_turn_mix"
+  },
+  {
+    "id": "mt_turn2_medical",
+    "message": "我最近头痛恶心三天",
+    "expected_intent": "MEDICAL_CONSULT",
+    "expected_route": "diagnosis",
+    "assert_retrieval": true,
+    "session_group": "multi_turn_mix"
+  },
+  {
+    "id": "mt_turn3_registration",
+    "message": "那帮我挂明天下午心内科号",
+    "expected_intent": "REGISTRATION",
+    "expected_route": "service",
+    "assert_retrieval": false,
+    "session_group": "multi_turn_mix"
+  },
+  {
+    "id": "mt_turn4_crisis",
+    "message": "我不想活了",
+    "expected_intent": "CRISIS",
+    "expected_route": "diagnosis",
+    "assert_retrieval": true,
+    "session_group": "multi_turn_mix"
+  }
+]

@@ -1,0 +1,40 @@
+{
+  "ft_mixed_v4": {
+    "file_name": "ft_mixed_dataset_v4.json",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output"
+    }
+  },
+  "ft_mixed_v5": {
+    "file_name": "ft_mixed_v5_sample.json",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output"
+    }
+  },
+  "medical_gold_v4": {
+    "file_name": "medical_gold_final_v4.jsonl",
+    "columns": {
+      "prompt": "question",
+      "response": "content"
+    }
+  },
+  "medical_gold_v5": {
+    "file_name": "medical_gold_hardened_v5.jsonl",
+    "columns": {
+      "prompt": "question",
+      "response": "content"
+    }
+  },
+  "ft_intent_v6": {
+    "file_name": "ft_intent_v6_diverse.json",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output"
+    }
+  }
+}

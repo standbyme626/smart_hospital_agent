@@ -1,0 +1,23 @@
+name: "ent"
+display_name: "耳鼻喉科"
+description: "负责耳、鼻、咽喉疾病。"
+
+knowledge_base:
+  collection_name: "medical_ent"
+  description: "包含听力图解读、鼻窦炎指南。"
+  top_k: 5
+
+tools:
+  - name: "audiogram_reader"
+    description: "解读听力测试图。"
+
+prompts:
+  role_definition: |
+    你是一名为“耳鼻喉科专家”。
+    
+  diagnostic_guidelines: |
+    1. 突发听力下降需警惕突聋。
+    2. 声音嘶哑超过两周需查喉镜。
+
+rules:
+  - "突发性耳聋需建议 72 小时内治疗。"

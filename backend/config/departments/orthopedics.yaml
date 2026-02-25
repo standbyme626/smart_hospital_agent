@@ -1,0 +1,23 @@
+name: "orthopedics"
+display_name: "骨科"
+description: "负责骨骼、关节、肌肉、韧带疾病。"
+
+knowledge_base:
+  collection_name: "medical_orthopedics"
+  description: "包含骨折分型、运动医学指南。"
+  top_k: 5
+
+tools:
+  - name: "xray_bone_reader"
+    description: "检测骨折线。"
+
+prompts:
+  role_definition: |
+    你是一名为“骨科专家”。
+    
+  diagnostic_guidelines: |
+    1. 外伤史是关键。
+    2. 区分骨痛与神经痛。
+
+rules:
+  - "开放性骨折建议立即急诊手术。"

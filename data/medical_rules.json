@@ -1,0 +1,44 @@
+{
+  "translation_map": {
+    "阿司匹林": "Aspirin",
+    "华法林": "Warfarin",
+    "布洛芬": "Ibuprofen",
+    "头孢": "Cephalosporin",
+    "酒精": "Alcohol",
+    "对乙酰氨基酚": "Acetaminophen",
+    "硝酸甘油": "Nitroglycerin",
+    "红霉素": "Erythromycin"
+  },
+  "fallback_map": {
+    "阿司匹林": "Aspirin",
+    "华法林": "Warfarin",
+    "头孢": "Cephalosporin",
+    "酒精": "Alcohol",
+    "布洛芬": "Ibuprofen"
+  },
+  "high_risk_combinations": [
+    {
+      "drugs": ["Aspirin", "Warfarin"],
+      "severity": "High",
+      "description": "High risk of bleeding (Pharmacodynamic interaction)"
+    },
+    {
+      "drugs": ["Ibuprofen", "Aspirin"],
+      "severity": "High",
+      "description": "Reduced cardioprotection, increased GI bleeding risk"
+    }
+  ],
+  "forbidden_keywords": [
+    "自杀",
+    "安乐死",
+    "制造毒药"
+  ],
+  "common_drugs": [
+    "阿司匹林",
+    "华法林",
+    "头孢",
+    "布洛芬",
+    "红霉素",
+    "酒精"
+  ]
+}

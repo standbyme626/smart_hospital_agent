@@ -1,0 +1,23 @@
+name: "rheumatology"
+display_name: "风湿免疫科"
+description: "负责自身免疫性疾病。"
+
+knowledge_base:
+  collection_name: "medical_rheumatology"
+  description: "包含 SLE、RA 诊疗指南。"
+  top_k: 5
+
+tools:
+  - name: "autoantibody_checker"
+    description: "解读自身抗体谱。"
+
+prompts:
+  role_definition: |
+    你是一名为“风湿免疫科专家”。
+    
+  diagnostic_guidelines: |
+    1. 多系统受累警惕结缔组织病。
+    2. 关节痛性质（晨僵、对称性）。
+
+rules:
+  - "狼疮脑病属于急危重症。"

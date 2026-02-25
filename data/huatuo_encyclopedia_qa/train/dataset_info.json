@@ -1,0 +1,75 @@
+{
+  "builder_name": "json",
+  "citation": "",
+  "config_name": "default",
+  "dataset_name": "huatuo_encyclopedia_qa",
+  "dataset_size": 600558769,
+  "description": "",
+  "download_checksums": {
+    "hf://datasets/FreedomIntelligence/huatuo_encyclopedia_qa@2989899dd5bed83cf9bd17cf9fff9889705436e2/train_datasets.jsonl": {
+      "num_bytes": 604103775,
+      "checksum": null
+    },
+    "hf://datasets/FreedomIntelligence/huatuo_encyclopedia_qa@2989899dd5bed83cf9bd17cf9fff9889705436e2/validation_datasets.jsonl": {
+      "num_bytes": 1688211,
+      "checksum": null
+    },
+    "hf://datasets/FreedomIntelligence/huatuo_encyclopedia_qa@2989899dd5bed83cf9bd17cf9fff9889705436e2/test_datasets.jsonl": {
+      "num_bytes": 1713540,
+      "checksum": null
+    }
+  },
+  "download_size": 607505526,
+  "features": {
+    "questions": {
+      "feature": {
+        "feature": {
+          "dtype": "string",
+          "_type": "Value"
+        },
+        "_type": "List"
+      },
+      "_type": "List"
+    },
+    "answers": {
+      "feature": {
+        "dtype": "string",
+        "_type": "Value"
+      },
+      "_type": "List"
+    }
+  },
+  "homepage": "",
+  "license": "",
+  "size_in_bytes": 1208064295,
+  "splits": {
+    "train": {
+      "name": "train",
+      "num_bytes": 597195100,
+      "num_examples": 362420,
+      "shard_lengths": [
+        308461,
+        53959
+      ],
+      "dataset_name": "huatuo_encyclopedia_qa"
+    },
+    "validation": {
+      "name": "validation",
+      "num_bytes": 1669157,
+      "num_examples": 1000,
+      "dataset_name": "huatuo_encyclopedia_qa"
+    },
+    "test": {
+      "name": "test",
+      "num_bytes": 1694512,
+      "num_examples": 1000,
+      "dataset_name": "huatuo_encyclopedia_qa"
+    }
+  },
+  "version": {
+    "version_str": "0.0.0",
+    "major": 0,
+    "minor": 0,
+    "patch": 0
+  }
+}

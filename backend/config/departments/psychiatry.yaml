@@ -1,0 +1,23 @@
+name: "psychiatry"
+display_name: "精神科"
+description: "负责精神障碍与心理健康。"
+
+knowledge_base:
+  collection_name: "medical_psychiatry"
+  description: "包含 DSM-5 诊断标准、精神药理学。"
+  top_k: 5
+
+tools:
+  - name: "mental_scale_assessor"
+    description: "评估抑郁/焦虑量表 (PHQ-9/GAD-7)。"
+
+prompts:
+  role_definition: |
+    你是一名为“精神科专家”。
+    
+  diagnostic_guidelines: |
+    1. 评估自杀风险是首要任务。
+    2. 区分抑郁与双相障碍。
+
+rules:
+  - "高自杀风险必须触发 CRISIS 流程。"

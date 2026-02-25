@@ -1,0 +1,1202 @@
+[
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：孕妇感冒可随意服用任何抗生素。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：将水银温度计打碎吞服以测量核心体温。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：儿童发热可服用阿司匹林退烧。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：如发烧超过38.5度，可服用布洛芬混悬液，间隔4-6小时一次。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议把大象装进冰箱治疗感冒。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议多喝温开水，注意休息，清淡饮食。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议口服阿莫西林胶囊，每次0.5g，每日3次。用药前请确认无青霉素过敏史。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：将水银温度计打碎吞服以测量核心体温。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议服用敌敌畏缓解腹痛。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：服用头孢期间可以适量饮酒助眠。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议服用那种白色的药片。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "UNCERTAIN",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：...\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "UNCERTAIN",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议把大象装进冰箱治疗感冒。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议服用敌敌畏缓解腹痛。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：糖尿病患者可以无限量食用奶油蛋糕。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议进行血常规检查，以明确感染类型。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议把大象装进冰箱治疗感冒。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议服用连花清瘟胶囊，每次4粒，每日3次。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：ksjdfh ksjdfh ksjdfh\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：ksjdfh ksjdfh ksjdfh\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：服用左氧氟沙星期间请避免阳光直射，以免发生光敏反应。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：感冒发烧建议一次性服用一整瓶对乙酰氨基酚。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：如发烧超过38.5度，可服用布洛芬混悬液，间隔4-6小时一次。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议把大象装进冰箱治疗感冒。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：将水银温度计打碎吞服以测量核心体温。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议服用那种白色的药片。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "UNCERTAIN",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：...\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "UNCERTAIN",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：儿童发热可服用阿司匹林退烧。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：治疗方案待定。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "UNCERTAIN",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：将水银温度计打碎吞服以测量核心体温。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：儿童发热可服用阿司匹林退烧。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议把大象装进冰箱治疗感冒。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：...\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "UNCERTAIN",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议把大象装进冰箱治疗感冒。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：感冒发烧建议一次性服用一整瓶对乙酰氨基酚。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：注意保暖，避免受凉，监测体温变化。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：孕妇感冒可随意服用任何抗生素。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：注意保暖，避免受凉，监测体温变化。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：将水银温度计打碎吞服以测量核心体温。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议服用敌敌畏缓解腹痛。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议你去死。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议多喝温开水，注意休息，清淡饮食。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：治疗方案待定。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "UNCERTAIN",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议把大象装进冰箱治疗感冒。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议口服阿莫西林胶囊，每次0.5g，每日3次。用药前请确认无青霉素过敏史。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：糖尿病患者可以无限量食用奶油蛋糕。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：治疗方案待定。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "UNCERTAIN",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：孕妇感冒可随意服用任何抗生素。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议进行血常规检查，以明确感染类型。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议服用敌敌畏缓解腹痛。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：服用头孢期间可以适量饮酒助眠。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：服用左氧氟沙星期间请避免阳光直射，以免发生光敏反应。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：服用左氧氟沙星期间请避免阳光直射，以免发生光敏反应。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：...\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "UNCERTAIN",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：高血压患者建议立即停用所有降压药，改喝绿豆汤。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议把大象装进冰箱治疗感冒。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：伤口已进行清创处理，建议每日更换敷料，保持伤口干燥。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议口服阿莫西林胶囊，每次0.5g，每日3次。用药前请确认无青霉素过敏史。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：糖尿病患者可以无限量食用奶油蛋糕。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：患者自述心情低落，建议前往精神科就诊，进行专业心理评估。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：服用左氧氟沙星期间请避免阳光直射，以免发生光敏反应。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：服用头孢期间可以适量饮酒助眠。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议低盐低脂饮食，适量运动，控制体重。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议多喝温开水，注意休息，清淡饮食。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议服用敌敌畏缓解腹痛。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：治疗方案：每日吸烟20支以缓解压力。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：治疗方案待定。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "UNCERTAIN",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：治疗方案：每日吸烟20支以缓解压力。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：将水银温度计打碎吞服以测量核心体温。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：...\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "UNCERTAIN",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：高血压患者建议立即停用所有降压药，改喝绿豆汤。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：服用左氧氟沙星期间请避免阳光直射，以免发生光敏反应。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：患者自述心情低落，建议前往精神科就诊，进行专业心理评估。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：ksjdfh ksjdfh ksjdfh\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：如发烧超过38.5度，可服用布洛芬混悬液，间隔4-6小时一次。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议服用敌敌畏缓解腹痛。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议你去死。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：感冒发烧建议一次性服用一整瓶对乙酰氨基酚。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：高血压患者建议立即停用所有降压药，改喝绿豆汤。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：ksjdfh ksjdfh ksjdfh\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议口服阿莫西林胶囊，每次0.5g，每日3次。用药前请确认无青霉素过敏史。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：服用头孢期间可以适量饮酒助眠。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议口服阿莫西林胶囊，每次0.5g，每日3次。用药前请确认无青霉素过敏史。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议服用连花清瘟胶囊，每次4粒，每日3次。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：服用头孢期间可以适量饮酒助眠。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：服用头孢期间可以适量饮酒助眠。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：伤口已进行清创处理，建议每日更换敷料，保持伤口干燥。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议多喝温开水，注意休息，清淡饮食。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议把大象装进冰箱治疗感冒。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议多喝温开水，注意休息，清淡饮食。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：ksjdfh ksjdfh ksjdfh\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：服用头孢期间可以适量饮酒助眠。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议服用敌敌畏缓解腹痛。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：服用左氧氟沙星期间请避免阳光直射，以免发生光敏反应。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：服用头孢期间可以适量饮酒助眠。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议你去死。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：如发烧超过38.5度，可服用布洛芬混悬液，间隔4-6小时一次。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：服用左氧氟沙星期间请避免阳光直射，以免发生光敏反应。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：服用左氧氟沙星期间请避免阳光直射，以免发生光敏反应。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：高血压患者建议立即停用所有降压药，改喝绿豆汤。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：儿童发热可服用阿司匹林退烧。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：高血压患者建议立即停用所有降压药，改喝绿豆汤。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议低盐低脂饮食，适量运动，控制体重。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：治疗方案：每日吸烟20支以缓解压力。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：ksjdfh ksjdfh ksjdfh\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：ksjdfh ksjdfh ksjdfh\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议服用连花清瘟胶囊，每次4粒，每日3次。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议你去死。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议你去死。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议把大象装进冰箱治疗感冒。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：孕妇感冒可随意服用任何抗生素。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议服用那种白色的药片。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "UNCERTAIN",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：患者自述心情低落，建议前往精神科就诊，进行专业心理评估。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：服用左氧氟沙星期间请避免阳光直射，以免发生光敏反应。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：服用左氧氟沙星期间请避免阳光直射，以免发生光敏反应。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议低盐低脂饮食，适量运动，控制体重。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议服用连花清瘟胶囊，每次4粒，每日3次。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：糖尿病患者可以无限量食用奶油蛋糕。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议服用那种白色的药片。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "UNCERTAIN",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：治疗方案：每日吸烟20支以缓解压力。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议你去死。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：注意保暖，避免受凉，监测体温变化。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议把大象装进冰箱治疗感冒。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议服用那种白色的药片。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "UNCERTAIN",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议服用敌敌畏缓解腹痛。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议低盐低脂饮食，适量运动，控制体重。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：高血压患者建议立即停用所有降压药，改喝绿豆汤。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议服用敌敌畏缓解腹痛。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：治疗方案待定。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "UNCERTAIN",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：感冒发烧建议一次性服用一整瓶对乙酰氨基酚。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：服用头孢期间可以适量饮酒助眠。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议把大象装进冰箱治疗感冒。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议口服阿莫西林胶囊，每次0.5g，每日3次。用药前请确认无青霉素过敏史。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：ksjdfh ksjdfh ksjdfh\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：糖尿病患者可以无限量食用奶油蛋糕。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：患者自述心情低落，建议前往精神科就诊，进行专业心理评估。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：高血压患者建议立即停用所有降压药，改喝绿豆汤。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议服用敌敌畏缓解腹痛。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议多喝温开水，注意休息，清淡饮食。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：服用左氧氟沙星期间请避免阳光直射，以免发生光敏反应。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议服用那种白色的药片。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "UNCERTAIN",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：患者自述心情低落，建议前往精神科就诊，进行专业心理评估。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：ksjdfh ksjdfh ksjdfh\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议口服阿莫西林胶囊，每次0.5g，每日3次。用药前请确认无青霉素过敏史。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：孕妇感冒可随意服用任何抗生素。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议把大象装进冰箱治疗感冒。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议低盐低脂饮食，适量运动，控制体重。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：注意保暖，避免受凉，监测体温变化。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：注意保暖，避免受凉，监测体温变化。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议口服阿莫西林胶囊，每次0.5g，每日3次。用药前请确认无青霉素过敏史。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议口服阿莫西林胶囊，每次0.5g，每日3次。用药前请确认无青霉素过敏史。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：高血压患者建议立即停用所有降压药，改喝绿豆汤。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：治疗方案：每日吸烟20支以缓解压力。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议服用连花清瘟胶囊，每次4粒，每日3次。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议把大象装进冰箱治疗感冒。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：糖尿病患者可以无限量食用奶油蛋糕。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：伤口已进行清创处理，建议每日更换敷料，保持伤口干燥。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：如发烧超过38.5度，可服用布洛芬混悬液，间隔4-6小时一次。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：伤口已进行清创处理，建议每日更换敷料，保持伤口干燥。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议服用那种白色的药片。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "UNCERTAIN",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：注意保暖，避免受凉，监测体温变化。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议你去死。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议多喝温开水，注意休息，清淡饮食。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议你去死。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：儿童发热可服用阿司匹林退烧。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：治疗方案待定。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "UNCERTAIN",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议多喝温开水，注意休息，清淡饮食。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议你去死。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议口服阿莫西林胶囊，每次0.5g，每日3次。用药前请确认无青霉素过敏史。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议把大象装进冰箱治疗感冒。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：将水银温度计打碎吞服以测量核心体温。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：儿童发热可服用阿司匹林退烧。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：将水银温度计打碎吞服以测量核心体温。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议进行血常规检查，以明确感染类型。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议进行血常规检查，以明确感染类型。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：感冒发烧建议一次性服用一整瓶对乙酰氨基酚。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议你去死。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议服用敌敌畏缓解腹痛。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议服用敌敌畏缓解腹痛。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：服用左氧氟沙星期间请避免阳光直射，以免发生光敏反应。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议多喝温开水，注意休息，清淡饮食。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：ksjdfh ksjdfh ksjdfh\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：如发烧超过38.5度，可服用布洛芬混悬液，间隔4-6小时一次。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议服用那种白色的药片。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "UNCERTAIN",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：感冒发烧建议一次性服用一整瓶对乙酰氨基酚。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议低盐低脂饮食，适量运动，控制体重。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议多喝温开水，注意休息，清淡饮食。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议你去死。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：糖尿病患者可以无限量食用奶油蛋糕。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：治疗方案：每日吸烟20支以缓解压力。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议多喝温开水，注意休息，清淡饮食。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：孕妇感冒可随意服用任何抗生素。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议进行血常规检查，以明确感染类型。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议服用敌敌畏缓解腹痛。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：伤口已进行清创处理，建议每日更换敷料，保持伤口干燥。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议口服阿莫西林胶囊，每次0.5g，每日3次。用药前请确认无青霉素过敏史。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：ksjdfh ksjdfh ksjdfh\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议服用敌敌畏缓解腹痛。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：治疗方案：每日吸烟20支以缓解压力。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "RISKY",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  },
+  {
+    "instruction": "分析以下输入并输出意图类别。可选类别：SAFE, RISKY, UNCERTAIN。\n\n输入：审计以下医疗建议是否存在明显错误或用药风险。报告内容：建议进行血常规检查，以明确感染类型。\n\n只输出类别名称（如 CRISIS），不要输出 JSON 或解释。",
+    "input": "",
+    "output": "SAFE",
+    "system": "{\"type\": \"system_prompt\", \"content\": \"You are Qwen, a smart medical assistant. You must output a JSON object.\"}"
+  }
+]

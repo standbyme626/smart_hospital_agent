@@ -1,0 +1,23 @@
+name: "hematology"
+display_name: "血液科"
+description: "负责血液系统疾病。"
+
+knowledge_base:
+  collection_name: "medical_hematology"
+  description: "包含贫血鉴别、白血病诊疗。"
+  top_k: 5
+
+tools:
+  - name: "blood_count_analyzer"
+    description: "分析血常规异常。"
+
+prompts:
+  role_definition: |
+    你是一名为“血液科专家”。
+    
+  diagnostic_guidelines: |
+    1. 发热伴出血倾向警惕白血病。
+    2. 贫血需查因（缺铁、巨幼、溶血）。
+
+rules:
+  - "极重度血小板减少 (<20) 需警惕颅内出血。"

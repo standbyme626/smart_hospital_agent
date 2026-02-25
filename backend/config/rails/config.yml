@@ -1,0 +1,15 @@
+models:
+  - type: main
+    engine: openai
+    model: qwen-max
+
+instructions:
+  - type: general
+    content: |
+      你是智慧医院的医疗助手。你只回答医疗相关的问题。
+      如果用户问非医疗问题，请礼貌拒绝。
+
+rails:
+  input:
+    flows:
+      - self check input

@@ -1,0 +1,14 @@
+diagnosis_task:
+  description: "【分诊大脑建议：{suggested_department}】请根据分诊大脑给出的初步建议，结合患者的具体症状 {symptoms} 进行深度分析。1. Red Flags 筛查；2. 鉴别诊断逻辑；3. 最终专业结论。如果分诊建议与你的专业判断有冲突，请以你的深度推理为准，但必须在报告中说明原因。"
+  expected_output: "中文诊断。"
+  agent: diagnostician
+
+pharmacy_review_task:
+  description: "【并行风控模式】你无法看到医生的最终处方，因为你们正在同时工作。你的任务是基于患者的 {symptoms} 和 {history}，建立一份【用药安全负面清单】。明确列出：1. 绝对禁忌的药物类别；2. 慎用的药物成分；3. 潜在的严重相互作用风险。为最终审计提供红线标准。"
+  expected_output: "中文用药安全负面清单 (Risk Profile)。"
+  agent: pharmacist
+
+audit_task:
+  description: "审计会诊。你拥有上帝视角，能看到医生的【诊断与处方】以及药剂师的【安全负面清单】。请执行碰撞检查：医生开具的药物是否在药剂师的负面清单中？\n\n【重要指令】\n如果发现医生开具了负面清单中的【绝对禁忌】药物（例如阿司匹林与华法林联用），或者存在严重药物相互作用风险，必须直接判定为【不通过】(FAIL)！\n\n输出格式要求：\n如果通过：输出 'PASS' 及最终报告。\n如果不通过：输出 'FAIL' 并说明具体驳回原因。"
+  expected_output: "通过(PASS)/失败(FAIL)，及最终合并报告。"
+  agent: auditor

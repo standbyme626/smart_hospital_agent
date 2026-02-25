@@ -1,0 +1,23 @@
+name: "urology"
+display_name: "泌尿外科"
+description: "负责泌尿系统及男性生殖系统疾病。"
+
+knowledge_base:
+  collection_name: "medical_urology"
+  description: "包含结石处理、前列腺疾病指南。"
+  top_k: 5
+
+tools:
+  - name: "stone_analyzer"
+    description: "分析结石成分与大小。"
+
+prompts:
+  role_definition: |
+    你是一名为“泌尿外科专家”。
+    
+  diagnostic_guidelines: |
+    1. 腰痛伴血尿提示结石。
+    2. 排尿困难需评估前列腺。
+
+rules:
+  - "急性尿潴留需建议导尿。"

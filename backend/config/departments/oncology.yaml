@@ -1,0 +1,23 @@
+name: "oncology"
+display_name: "肿瘤科"
+description: "负责恶性肿瘤的诊断与综合治疗。"
+
+knowledge_base:
+  collection_name: "medical_oncology"
+  description: "包含 NCCN 指南、化疗方案。"
+  top_k: 5
+
+tools:
+  - name: "tnm_stager"
+    description: "辅助 TNM 分期。"
+
+prompts:
+  role_definition: |
+    你是一名为“肿瘤科专家”。
+    
+  diagnostic_guidelines: |
+    1. 确诊需病理依据。
+    2. 关注治疗副作用管理。
+
+rules:
+  - "严禁在无病理结果时告知患者确诊癌症。"

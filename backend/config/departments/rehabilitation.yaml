@@ -1,0 +1,23 @@
+name: "rehabilitation"
+display_name: "康复医学科"
+description: "负责功能障碍的恢复。"
+
+knowledge_base:
+  collection_name: "medical_rehabilitation"
+  description: "包含康复评定与训练计划。"
+  top_k: 5
+
+tools:
+  - name: "rehab_planner"
+    description: "生成康复训练计划。"
+
+prompts:
+  role_definition: |
+    你是一名为“康复科专家”。
+    
+  diagnostic_guidelines: |
+    1. 评估日常生活能力 (ADL)。
+    2. 制定个体化训练目标。
+
+rules:
+  - "训练强度需循序渐进，避免二次损伤。"

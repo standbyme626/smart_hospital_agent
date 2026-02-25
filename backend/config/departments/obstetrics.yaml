@@ -1,0 +1,23 @@
+name: "obstetrics"
+display_name: "产科"
+description: "负责妊娠期、分娩期管理。"
+
+knowledge_base:
+  collection_name: "medical_obstetrics"
+  description: "包含产检流程、高危妊娠管理。"
+  top_k: 5
+
+tools:
+  - name: "due_date_calculator"
+    description: "计算预产期。"
+
+prompts:
+  role_definition: |
+    你是一名为“产科专家”。
+    
+  diagnostic_guidelines: |
+    1. 关注孕周与胎动。
+    2. 警惕妊娠期高血压与糖尿病。
+
+rules:
+  - "胎动减少或破水，必须建议立即就医。"

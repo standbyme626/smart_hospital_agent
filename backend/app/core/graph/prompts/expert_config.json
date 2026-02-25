@@ -1,0 +1,50 @@
+{
+  "Cardiology": {
+    "name_cn": "心血管内科",
+    "description": "Heart and cardiovascular system disorders.",
+    "keywords": ["chest pain", "heart", "palpitations", "blood pressure", "hypertension", "arrhythmia", "胸痛", "心脏", "心悸", "高血压", "心律不齐", "胸闷"],
+    "role_description": "专注于心脏疾病、心律失常及血管健康的资深心内科专家。"
+  },
+  "Neurology": {
+    "name_cn": "神经内科",
+    "description": "Nervous system disorders including brain, spinal cord, and nerves.",
+    "keywords": ["headache", "dizziness", "numbness", "seizure", "stroke", "memory", "migraine", "头痛", "头晕", "麻木", "癫痫", "中风", "记忆力", "偏头痛"],
+    "role_description": "专注于脑功能、神经系统及相关疾病诊断的神经内科专家。"
+  },
+  "Gastroenterology": {
+    "name_cn": "消化内科",
+    "description": "Digestive system disorders affecting stomach, intestines, liver, etc.",
+    "keywords": ["stomach pain", "nausea", "vomiting", "diarrhea", "bloating", "acid reflux", "abdominal", "腹痛", "恶心", "呕吐", "腹泻", "胀气", "反酸", "胃痛"],
+    "role_description": "专注于消化系统健康及胃肠道疾病诊疗的消化科专家。"
+  },
+  "Dermatology": {
+    "name_cn": "皮肤科",
+    "description": "Skin, hair, and nail conditions.",
+    "keywords": ["rash", "itch", "skin", "acne", "eczema", "redness", "lesion", "皮疹", "瘙痒", "皮肤", "痤疮", "湿疹", "红肿"],
+    "role_description": "专注于皮肤病、过敏及相关症状诊疗的皮肤科专家。"
+  },
+  "Orthopedics": {
+    "name_cn": "骨科",
+    "description": "Musculoskeletal system including bones, joints, ligaments, tendons, and muscles.",
+    "keywords": ["joint pain", "bone", "fracture", "muscle", "back pain", "knee", "shoulder", "关节痛", "骨折", "肌肉", "背痛", "膝盖", "肩膀", "骨科"],
+    "role_description": "专注于骨骼、关节及肌肉系统健康的骨科专家。"
+  },
+  "Respiratory": {
+    "name_cn": "呼吸内科",
+    "description": "Respiratory system disorders affecting lungs and breathing.",
+    "keywords": ["cough", "shortness of breath", "asthma", "lung", "phlegm", "wheezing", "咳嗽", "呼吸困难", "哮喘", "肺", "痰", "喘息"],
+    "role_description": "专注于肺部健康及呼吸系统疾病诊疗的呼吸科专家。"
+  },
+  "Endocrinology": {
+    "name_cn": "内分泌科",
+    "description": "Hormone-related disorders including diabetes, thyroid, etc.",
+    "keywords": ["diabetes", "thyroid", "blood sugar", "hormone", "weight change", "fatigue", "糖尿病", "甲状腺", "血糖", "激素", "体重", "内分泌"],
+    "role_description": "专注于激素平衡及代谢性疾病（如糖尿病、甲状腺）的内分泌专家。"
+  },
+  "General Practice": {
+    "name_cn": "全科",
+    "description": "General health concerns and undifferentiated symptoms.",
+    "keywords": ["fever", "fatigue", "checkup", "general", "weakness", "发烧", "乏力", "体检", "不适", "全科"],
+    "role_description": "提供综合性初级诊疗服务的全科医生。"
+  }
+}

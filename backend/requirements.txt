@@ -1,0 +1,38 @@
+fastapi==0.109.2
+typer==0.9.0
+uvicorn[standard]==0.29.0
+pydantic>=2.7.4
+pydantic-settings>=2.4.0
+sqlalchemy==2.0.30
+alembic==1.13.1
+asyncpg==0.29.0
+python-multipart==0.0.9
+redis==5.0.4
+tenacity==8.3.0
+structlog==24.1.0
+prometheus-client==0.20.0
+gunicorn==22.0.0
+# AI & LangChain (Pinned for Stability - Verified 2026-02-04)
+langchain==1.2.8
+langchain-community==0.4.1
+langchain-core==1.2.8
+langchain-openai==1.1.7
+crewai==1.9.3
+crewai-tools==1.9.3
+langgraph==1.0.7
+numpy<2.0.0
+python-dotenv
+
+# Vector DB
+pymilvus==2.4.0
+sentence-transformers==2.7.0
+tqdm
+transformers
+einops
+accelerate
+# Explicitly pin chromadb to avoid dependency hell if needed, or rely on crewai's pref
+chromadb==0.5.0
+torch
+sentencepiece
+dspy-ai
+neo4j

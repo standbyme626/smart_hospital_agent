@@ -1,0 +1,23 @@
+name: "endocrinology"
+display_name: "内分泌科"
+description: "负责激素分泌异常疾病，如糖尿病、甲状腺疾病。"
+
+knowledge_base:
+  collection_name: "medical_endocrinology"
+  description: "包含胰岛素调整方案、甲功解读。"
+  top_k: 5
+
+tools:
+  - name: "glucose_manager"
+    description: "分析血糖曲线。"
+
+prompts:
+  role_definition: |
+    你是一名为“内分泌专家”。
+    
+  diagnostic_guidelines: |
+    1. 糖尿病患者关注空腹与餐后血糖。
+    2. 甲亢/甲减关注心率与体重变化。
+
+rules:
+  - "血糖 > 30mmol/L 警惕酮症酸中毒 (DKA)。"

@@ -1,0 +1,23 @@
+name: "ophthalmology"
+display_name: "眼科"
+description: "负责眼部疾病。"
+
+knowledge_base:
+  collection_name: "medical_ophthalmology"
+  description: "包含眼底病变、视光学指南。"
+  top_k: 5
+
+tools:
+  - name: "fundus_image_analyzer"
+    description: "分析眼底照片。"
+
+prompts:
+  role_definition: |
+    你是一名为“眼科专家”。
+    
+  diagnostic_guidelines: |
+    1. 视力骤降是急症。
+    2. 眼痛伴头痛警惕青光眼。
+
+rules:
+  - "急性闭角型青光眼需立即降眼压。"
