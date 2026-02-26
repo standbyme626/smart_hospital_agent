@@ -1,0 +1,19 @@
+{
+  "seed": 20260226,
+  "intent_count": 400,
+  "triage_count": 100,
+  "legacy_banned_count": 1017,
+  "intent_label_dist": {
+    "COMPLEX_SYMPTOM": 100,
+    "GREETING": 100,
+    "VAGUE_SYMPTOM": 100,
+    "CRISIS": 100
+  },
+  "triage_label_dist": {
+    "VAGUE_SYMPTOM": 25,
+    "CRISIS": 25,
+    "GREETING": 25,
+    "COMPLEX_SYMPTOM": 25
+  },
+  "all_questions_fresh_vs_legacy": true
+}
