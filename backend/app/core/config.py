@@ -60,6 +60,8 @@ class Settings(BaseSettings):
     # We will append the other keys here.
     API_KEY_ROTATION_LIST: str = ""
     API_KEY_CANDIDATES: List[str] = [] # Initialize empty
+    LLM_KEY_BLACKLIST_ENABLED: bool = os.getenv("LLM_KEY_BLACKLIST_ENABLED", "false").lower() == "true"
+    LLM_KEY_BLACKLIST_ON_AUTH_ONLY: bool = os.getenv("LLM_KEY_BLACKLIST_ON_AUTH_ONLY", "true").lower() == "true"
     
     # Internal iterator for Round-Robin rotation
     _key_iterator: Any = None
@@ -158,11 +160,74 @@ class Settings(BaseSettings):
     # Device policy: auto | cuda | cpu
     EMBEDDING_DEVICE: str = os.getenv("EMBEDDING_DEVICE", "auto")
     RERANKER_DEVICE: str = os.getenv("RERANKER_DEVICE", "auto")
+    # Retrieval performance knobs
+    RAG_RECALL_WINDOW: int = int(os.getenv("RAG_RECALL_WINDOW", "100"))
+    RAG_RERANK_CANDIDATE_K: int = int(os.getenv("RAG_RERANK_CANDIDATE_K", "12"))
+    # Pure retrieval mode: bypass all LLM-based rewrite/enhancement in RAG path.
+    RAG_PURE_RETRIEVAL_MODE: bool = os.getenv("RAG_PURE_RETRIEVAL_MODE", "false").lower() == "true"
+    RAG_DISABLE_INTENT_ROUTER_WHEN_PURE: bool = os.getenv("RAG_DISABLE_INTENT_ROUTER_WHEN_PURE", "true").lower() == "true"
+    RAG_DISABLE_HYDE_WHEN_PURE: bool = os.getenv("RAG_DISABLE_HYDE_WHEN_PURE", "true").lower() == "true"
+    RAG_DISABLE_QUERY_REWRITE_WHEN_PURE: bool = os.getenv("RAG_DISABLE_QUERY_REWRITE_WHEN_PURE", "true").lower() == "true"
+    RAG_DISABLE_LOW_SCORE_FALLBACK_REWRITE_WHEN_PURE: bool = os.getenv(
+        "RAG_DISABLE_LOW_SCORE_FALLBACK_REWRITE_WHEN_PURE",
+        "true",
+    ).lower() == "true"
+    RAG_DISABLE_SUMMARIZE_WHEN_PURE: bool = os.getenv("RAG_DISABLE_SUMMARIZE_WHEN_PURE", "true").lower() == "true"
+    # Semantic cache hit verification gates
+    RAG_CACHE_VERIFY_ON_HIT: bool = os.getenv("RAG_CACHE_VERIFY_ON_HIT", "true").lower() == "true"
+    RAG_CACHE_VERIFY_MIN_TERM_OVERLAP: int = int(os.getenv("RAG_CACHE_VERIFY_MIN_TERM_OVERLAP", "1"))
+    RAG_CACHE_VERIFY_MIN_RERANK_SCORE: float = float(os.getenv("RAG_CACHE_VERIFY_MIN_RERANK_SCORE", "0.25"))
+    RAG_CACHE_VERIFY_MAX_DOC_CHARS: int = int(os.getenv("RAG_CACHE_VERIFY_MAX_DOC_CHARS", "600"))
+    RAG_SEMANTIC_CACHE_ENABLED: bool = os.getenv("RAG_SEMANTIC_CACHE_ENABLED", "true").lower() == "true"
+    # Semantic cache governance (minimal hardening set)
+    RAG_CACHE_NAMESPACE_VERSION: str = os.getenv("RAG_CACHE_NAMESPACE_VERSION", "v2")
+    RAG_CACHE_TTL_SECONDS: int = int(os.getenv("RAG_CACHE_TTL_SECONDS", "86400"))
+    RAG_CACHE_REJECT_TTL_SECONDS: int = int(os.getenv("RAG_CACHE_REJECT_TTL_SECONDS", "21600"))
+    RAG_CACHE_WRITE_GATE_ON: bool = os.getenv("RAG_CACHE_WRITE_GATE_ON", "true").lower() == "true"
+    RAG_CACHE_WRITE_MIN_TOP_SCORE: float = float(os.getenv("RAG_CACHE_WRITE_MIN_TOP_SCORE", "0.35"))
+    RAG_CACHE_WRITE_MIN_SCORE_GAP: float = float(os.getenv("RAG_CACHE_WRITE_MIN_SCORE_GAP", "0.03"))
+    RAG_CACHE_WRITE_REQUIRE_NON_UNKNOWN_DEPT: bool = os.getenv("RAG_CACHE_WRITE_REQUIRE_NON_UNKNOWN_DEPT", "false").lower() == "true"
+    # Department post-processing: normalization + lightweight consistency gate
+    RAG_DEPT_NORMALIZE_ON_RESULT: bool = os.getenv("RAG_DEPT_NORMALIZE_ON_RESULT", "true").lower() == "true"
+    RAG_DEPT_CONSISTENCY_GATE_ON: bool = os.getenv("RAG_DEPT_CONSISTENCY_GATE_ON", "true").lower() == "true"
+    RAG_DEPT_CONSISTENCY_BONUS: float = float(os.getenv("RAG_DEPT_CONSISTENCY_BONUS", "0.05"))
+    RAG_DEPT_CONSISTENCY_MAX_SCORE_GAP: float = float(os.getenv("RAG_DEPT_CONSISTENCY_MAX_SCORE_GAP", "0.12"))
+    RAG_DEPT_CONSISTENCY_MIN_KEYWORD_HITS: int = int(os.getenv("RAG_DEPT_CONSISTENCY_MIN_KEYWORD_HITS", "1"))
+    RAG_DEPT_CONSISTENCY_REQUIRE_TOP1_UNSUPPORTED: bool = os.getenv(
+        "RAG_DEPT_CONSISTENCY_REQUIRE_TOP1_UNSUPPORTED",
+        "true",
+    ).lower() == "true"
+    # Pure 模式质量优先：在不启用重写回退时，适度放宽低分阻断阈值。
+    # 例如 rerank_threshold=0.2 且 factor=0.75 -> pure 实际阈值 0.15。
+    RAG_PURE_RERANK_THRESHOLD_FACTOR: float = float(os.getenv("RAG_PURE_RERANK_THRESHOLD_FACTOR", "0.75"))
 
     # Retrieval planner switches (Phase C skeleton; default off to avoid behavior drift)
     ENABLE_QUERY_REWRITE: bool = os.getenv("ENABLE_QUERY_REWRITE", "false").lower() == "true"
     QUERY_REWRITE_USE_LLM: bool = os.getenv("QUERY_REWRITE_USE_LLM", "false").lower() == "true"
     QUERY_REWRITE_MAX_VARIANTS: int = int(os.getenv("QUERY_REWRITE_MAX_VARIANTS", "3"))
+    ENABLE_QUERY_EXPANSION: bool = os.getenv("ENABLE_QUERY_EXPANSION", "false").lower() == "true"
+    ENABLE_MULTI_QUERY: bool = os.getenv("ENABLE_MULTI_QUERY", "false").lower() == "true"
+    ENABLE_RETRIEVAL_ROUTER_ADAPTER: bool = os.getenv("ENABLE_RETRIEVAL_ROUTER_ADAPTER", "false").lower() == "true"
+    QUERY_EXPANSION_MAX_VARIANTS: int = int(os.getenv("QUERY_EXPANSION_MAX_VARIANTS", "4"))
+    QUERY_EXPANSION_MAX_QUERY_LEN_PER_VARIANT: int = int(
+        os.getenv("QUERY_EXPANSION_MAX_QUERY_LEN_PER_VARIANT", "120")
+    )
+    QUERY_EXPANSION_REWRITE_TYPE_BUDGET: str = os.getenv(
+        "QUERY_EXPANSION_REWRITE_TYPE_BUDGET",
+        '{"synonym":2,"typo_fix":1,"llm_expand":1}',
+    )
+    MULTI_QUERY_FUSION_METHOD: str = os.getenv("MULTI_QUERY_FUSION_METHOD", "weighted_rrf")
+    MULTI_QUERY_RRF_K: int = int(os.getenv("MULTI_QUERY_RRF_K", "60"))
+    ENABLE_CONTEXT_WINDOW_AUTOMERGE: bool = os.getenv("ENABLE_CONTEXT_WINDOW_AUTOMERGE", "false").lower() == "true"
+    CONTEXT_WINDOW_SIZE: int = int(os.getenv("CONTEXT_WINDOW_SIZE", "1"))
+    CONTEXT_AUTOMERGE_ENABLED: bool = os.getenv("CONTEXT_AUTOMERGE_ENABLED", "true").lower() == "true"
+    CONTEXT_DIVERSITY_FILTER_ENABLED: bool = os.getenv("CONTEXT_DIVERSITY_FILTER_ENABLED", "true").lower() == "true"
+    CONTEXT_DIVERSITY_MAX_PER_SOURCE: int = int(os.getenv("CONTEXT_DIVERSITY_MAX_PER_SOURCE", "2"))
+    CONTEXT_ORDERING_STRATEGY: str = os.getenv("CONTEXT_ORDERING_STRATEGY", "score_desc")
+    CONTEXT_MAX_EVIDENCE: int = int(os.getenv("CONTEXT_MAX_EVIDENCE", "6"))
+    CONTEXT_MAX_CHARS: int = int(os.getenv("CONTEXT_MAX_CHARS", "3200"))
+    ENABLE_JSON_SCHEMA_GUARDRAIL: bool = os.getenv("ENABLE_JSON_SCHEMA_GUARDRAIL", "false").lower() == "true"
+    DIAGNOSIS_SCHEMA_VERSION: str = os.getenv("DIAGNOSIS_SCHEMA_VERSION", "v1")
 
     ENABLE_ADAPTIVE_RETRIEVAL_K: bool = os.getenv("ENABLE_ADAPTIVE_RETRIEVAL_K", "false").lower() == "true"
     ADAPTIVE_RETRIEVAL_K_MIN: int = int(os.getenv("ADAPTIVE_RETRIEVAL_K_MIN", "2"))
@@ -171,10 +236,19 @@ class Settings(BaseSettings):
 
     ENABLE_HIERARCHICAL_INDEX: bool = os.getenv("ENABLE_HIERARCHICAL_INDEX", "false").lower() == "true"
     DEFAULT_RETRIEVAL_INDEX_SCOPE: str = os.getenv("DEFAULT_RETRIEVAL_INDEX_SCOPE", "paragraph")
+    ENABLE_INGRESS_GUARD: bool = os.getenv("ENABLE_INGRESS_GUARD", "true").lower() == "true"
+    # Triage fast-path guardrails
+    TRIAGE_FAST_PATH_ENABLED: bool = os.getenv("TRIAGE_FAST_PATH_ENABLED", "true").lower() == "true"
+    TRIAGE_TOOL_TIMEOUT_SECONDS: float = float(os.getenv("TRIAGE_TOOL_TIMEOUT_SECONDS", "2.8"))
+    TRIAGE_FAST_CONFIDENCE_THRESHOLD: float = float(os.getenv("TRIAGE_FAST_CONFIDENCE_THRESHOLD", "0.62"))
 
     # SSE protocol compatibility
     ENABLE_UNIFIED_STREAM_SCHEMA: bool = os.getenv("ENABLE_UNIFIED_STREAM_SCHEMA", "false").lower() == "true"
     UNIFIED_STREAM_SCHEMA_VERSION: str = os.getenv("UNIFIED_STREAM_SCHEMA_VERSION", "v1")
+    # HIS integration mode:
+    # - legacy_sim: simulate MCP bridge to legacy HIS protocol (default for local non-HIS env)
+    # - mock_direct: use direct in-process mock data without protocol framing
+    HIS_MCP_MODE: str = os.getenv("HIS_MCP_MODE", "legacy_sim")
 
 
     # LangSmith

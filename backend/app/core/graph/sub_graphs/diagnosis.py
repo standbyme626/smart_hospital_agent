@@ -1,4 +1,5 @@
-from typing import Literal, Dict, Any, List
+import asyncio
+from typing import Literal, Dict, Any, List, Optional, Sequence
 from app.core.llm.llm_factory import get_smart_llm
 from langchain_core.messages import SystemMessage, AIMessage, BaseMessage
 from langgraph.graph import StateGraph, END, START
@@ -8,9 +9,19 @@ from app.core.config import settings
 from app.domain.states.sub_states import DiagnosisState
 from app.core.tool_registry import registry
 from app.core.prompts.diagnosis import diagnosis_prompt
+from app.core.department_normalization import (
+    build_department_result,
+    extract_department_mentions,
+    normalize_department_candidates,
+)
 from app.rag.graph_rag_service import graph_rag_service
 from app.rag.dspy_modules import MedicalConsultant
 from app.rag.retrieval_planner import build_retrieval_plan
+from app.rag.adapters.query_expander_adapter import QueryExpanderAdapter, extract_variant_texts
+from app.rag.adapters.multi_query_retriever_adapter import MultiQueryRetrieverAdapter
+from app.rag.adapters.context_window_adapter import ContextWindowAdapter
+from app.rag.adapters.json_schema_guardrail import JsonSchemaGuardrail
+from app.rag.adapters.retrieval_router_adapter import RetrievalRouterAdapter
 import structlog
 import dspy
 
@@ -28,6 +39,7 @@ from app.core.services.config_manager import config_manager
 async def state_sync_node(state: DiagnosisState):
     logger.info("Diagnosis Node: State_Sync Start", state_keys=list(state.keys()))
     messages = state.get("messages", [])
+    pure_mode = _is_pure_retrieval_mode(state)
     
     # 尝试从消息历史中提取画像和历史（通常由 Ingress 注入到 SystemMessage）
     history_text = "无历史记录"
@@ -45,7 +57,7 @@ async def state_sync_node(state: DiagnosisState):
     
     # 如果 State 中没有 department，尝试从 user_profile 或上下文推断
     # 这里为了演示，我们假设如果找不到就用 cardiology (Mock) 或者 general
-    if department == "general":
+    if department == "general" and not pure_mode:
         # 如果未指定科室，尝试根据 User Profile 或消息内容动态判定
         try:
             logger.info("department_classification_start", profile_snippet=profile_text[:50])
@@ -61,7 +73,7 @@ Available Departments: Cardiology, Respiratory, Gastroenterology, Neurology, Ort
 
 Output ONLY the department name in English. If uncertain, output 'General'."""
 
-            ai_msg = await llm.ainvoke(prompt)
+            ai_msg = await asyncio.wait_for(llm.ainvoke(prompt), timeout=_triage_tool_timeout_s())
             inferred_dept = ai_msg.content.strip().replace(".", "")
             
             # Map back to standard keys if needed (simple normalization)
@@ -71,9 +83,14 @@ Output ONLY the department name in English. If uncertain, output 'General'."""
             else:
                 department = "general"
                 
+        except asyncio.TimeoutError:
+            logger.warning("department_inference_timeout", timeout_s=_triage_tool_timeout_s())
+            department = "general"
         except Exception as e:
             logger.warning("department_inference_failed", error=str(e))
             department = "general" # Fallback 
+    elif pure_mode:
+        logger.info("diagnosis_state_sync_pure_mode_skip_department_llm")
         
     dept_config = config_manager.get_config(department)
     system_prompt = config_manager.get_system_prompt(department)
@@ -85,7 +102,8 @@ Output ONLY the department name in English. If uncertain, output 'General'."""
     return {
         "profile_text": profile_text,
         "department": department,
-        "system_prompt": system_prompt # 注入到 State 中供后续节点使用
+        "system_prompt": system_prompt, # 注入到 State 中供后续节点使用
+        "rag_pure_mode": pure_mode,
     }
 
 
@@ -141,6 +159,299 @@ def _extract_retrieval_query(state: DiagnosisState) -> tuple[str, str]:
     return "", "none"
 
 
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        parsed = float(value)
+    except Exception:
+        return default
+    if parsed < 0:
+        return 0.0
+    if parsed > 1:
+        if parsed <= 100:
+            return round(parsed / 100.0, 4)
+        return 1.0
+    return round(parsed, 4)
+
+
+def _triage_tool_timeout_s() -> float:
+    raw = getattr(settings, "TRIAGE_TOOL_TIMEOUT_SECONDS", 2.8)
+    try:
+        timeout_s = float(raw)
+    except Exception:
+        timeout_s = 2.8
+    return min(max(timeout_s, 1.0), 6.0)
+
+
+def _triage_fast_conf_threshold() -> float:
+    raw = getattr(settings, "TRIAGE_FAST_CONFIDENCE_THRESHOLD", 0.62)
+    return min(max(_safe_float(raw, default=0.62), 0.0), 1.0)
+
+
+def _is_pure_retrieval_mode(state: Dict[str, Any] | None = None) -> bool:
+    if isinstance(state, dict):
+        state_flag = state.get("rag_pure_mode")
+        if isinstance(state_flag, bool):
+            return state_flag
+    return bool(getattr(settings, "RAG_PURE_RETRIEVAL_MODE", False))
+
+
+def _default_topk_source_ratio() -> Dict[str, Any]:
+    return {
+        "original": 1.0,
+        "expanded": 0.0,
+        "original_count": 0,
+        "expanded_count": 0,
+    }
+
+
+def _normalize_fusion_method(raw: Any, default: str = "weighted_rrf") -> str:
+    candidate = str(raw or default).strip().lower()
+    if candidate not in {"weighted_rrf", "rrf", "concat_merge"}:
+        return default
+    return candidate
+
+
+def _default_source_priority() -> List[str]:
+    return ["vector", "graph", "hierarchical"]
+
+
+def _context_ordering_strategy() -> str:
+    raw = str(getattr(settings, "CONTEXT_ORDERING_STRATEGY", "score_desc") or "score_desc").strip().lower()
+    if raw not in {"score_desc", "lost_in_middle_mitigate"}:
+        return "score_desc"
+    return raw
+
+
+def _context_adapter(*, stage_b_enabled: bool) -> ContextWindowAdapter:
+    return ContextWindowAdapter(
+        window_size=max(0, int(getattr(settings, "CONTEXT_WINDOW_SIZE", 1))),
+        max_evidence=max(1, int(getattr(settings, "CONTEXT_MAX_EVIDENCE", 6))),
+        max_per_source=max(1, int(getattr(settings, "CONTEXT_DIVERSITY_MAX_PER_SOURCE", 2))),
+        ordering_strategy=_context_ordering_strategy(),
+        enable_window=stage_b_enabled,
+        enable_merge=stage_b_enabled and bool(getattr(settings, "CONTEXT_AUTOMERGE_ENABLED", True)),
+        enable_diversity=stage_b_enabled and bool(getattr(settings, "CONTEXT_DIVERSITY_FILTER_ENABLED", True)),
+        max_context_chars=max(400, int(getattr(settings, "CONTEXT_MAX_CHARS", 3200))),
+    )
+
+
+def _coerce_context_docs(
+    *,
+    vector_docs_override: Optional[Sequence[Dict[str, Any]]],
+    fallback_context: str,
+) -> List[Dict[str, Any]]:
+    if isinstance(vector_docs_override, list) and vector_docs_override:
+        return [dict(item) for item in vector_docs_override if isinstance(item, dict)]
+    fallback = str(fallback_context or "").strip()
+    if not fallback:
+        return []
+    return [
+        {
+            "id": "fallback_context",
+            "chunk_id": "fallback_context",
+            "source_id": "fallback",
+            "score": 0.0,
+            "content": fallback,
+            "source": "fallback",
+            "source_type": "fallback",
+        }
+    ]
+
+
+def _citations_from_context_pack(state: DiagnosisState, *, max_items: int = 5) -> List[Dict[str, str]]:
+    context_pack = state.get("context_pack") if isinstance(state.get("context_pack"), dict) else {}
+    evidence = context_pack.get("evidence") if isinstance(context_pack, dict) else None
+    if not isinstance(evidence, list):
+        return []
+
+    citations: List[Dict[str, str]] = []
+    for item in evidence:
+        if not isinstance(item, dict):
+            continue
+        content = str(item.get("content") or "").strip()
+        if not content:
+            continue
+        doc_id = str(item.get("doc_id") or item.get("source_id") or item.get("chunk_id") or "unknown").strip()
+        chunk_id = str(item.get("chunk_id") or item.get("doc_id") or doc_id).strip()
+        span = content[:120]
+        citations.append({"doc_id": doc_id, "chunk_id": chunk_id, "span": span})
+        if len(citations) >= max_items:
+            break
+    return citations
+
+
+def _build_diagnosis_output(
+    *,
+    department_top1: str,
+    department_top3: List[str],
+    confidence: float,
+    reasoning: str,
+    citations: List[Dict[str, str]],
+) -> Dict[str, Any]:
+    return {
+        "diagnosis_schema_version": str(getattr(settings, "DIAGNOSIS_SCHEMA_VERSION", "v1") or "v1"),
+        "department_top1": str(department_top1 or "Unknown"),
+        "department_top3": [str(item) for item in department_top3 if str(item or "").strip()],
+        "confidence": _safe_float(confidence, default=0.0),
+        "reasoning": str(reasoning or ""),
+        "citations": citations,
+    }
+
+
+async def _attach_guarded_diagnosis_output(
+    *,
+    state: DiagnosisState,
+    output: Dict[str, Any],
+    diagnosis_output: Dict[str, Any],
+) -> Dict[str, Any]:
+    guardrail = JsonSchemaGuardrail(
+        schema_version=str(getattr(settings, "DIAGNOSIS_SCHEMA_VERSION", "v1") or "v1"),
+        enabled=bool(getattr(settings, "ENABLE_JSON_SCHEMA_GUARDRAIL", False)),
+    )
+    guardrail_result = await guardrail.validate_and_repair(diagnosis_output)
+    merged = dict(output)
+    merged.update(
+        {
+            "diagnosis_output": guardrail_result.get("diagnosis_output"),
+            "validated": guardrail_result.get("validated"),
+            "validation_error": guardrail_result.get("validation_error"),
+            "repair_attempted": guardrail_result.get("repair_attempted"),
+        }
+    )
+    return merged
+
+
+async def _run_tool_with_timeout(
+    *,
+    name: str,
+    coro,
+    timeout_s: float,
+) -> tuple[Any, Dict[str, Any]]:
+    try:
+        result = await asyncio.wait_for(coro, timeout=timeout_s)
+        return result, {"tool": name, "status": "ok", "timeout_s": timeout_s}
+    except asyncio.TimeoutError:
+        logger.warning("diagnosis_tool_timeout", tool=name, timeout_s=timeout_s)
+        return None, {"tool": name, "status": "timeout", "timeout_s": timeout_s}
+    except Exception as exc:
+        logger.warning("diagnosis_tool_failed", tool=name, error=str(exc))
+        return None, {"tool": name, "status": "error", "error": str(exc)[:300], "timeout_s": timeout_s}
+
+
+async def _quick_query_hint_tool(query: str) -> Dict[str, Any]:
+    _, canonical = extract_department_mentions(query, top_k=3)
+    return {"candidates": canonical, "confidence": 0.65 if canonical else 0.0}
+
+
+async def _quick_retrieval_hint_tool(query: str, top_k: int) -> Dict[str, Any]:
+    candidates: List[str] = []
+
+    # Lightweight extractor from SQL pre-filter (pure local parsing).
+    try:
+        sql_filter = getattr(graph_rag_service.vector_retriever, "sql_filter", None)
+        if sql_filter:
+            filters = sql_filter.extract_filters(query)
+            dept = filters.get("department") if isinstance(filters, dict) else None
+            if isinstance(dept, str) and dept.strip():
+                candidates.append(dept.strip())
+    except Exception as exc:
+        logger.warning("quick_retrieval_hint_sql_filter_failed", error=str(exc))
+
+    # Local alias match from query text.
+    _, mention_top = extract_department_mentions(query, top_k=max(3, int(top_k)))
+    candidates.extend(mention_top)
+
+    canonical_top3 = normalize_department_candidates(candidates, top_k=3)
+    if not canonical_top3:
+        return {"candidates": [], "confidence": 0.0}
+
+    conf = 0.78 if len(canonical_top3) >= 2 else 0.70
+    return {"candidates": canonical_top3, "confidence": conf}
+
+
+def _merge_fast_hints(query_hint: Dict[str, Any], retrieval_hint: Dict[str, Any]) -> tuple[List[str], float]:
+    query_candidates = list(query_hint.get("candidates") or [])
+    retrieval_candidates = list(retrieval_hint.get("candidates") or [])
+    merged = normalize_department_candidates(query_candidates + retrieval_candidates, top_k=3)
+    if not merged:
+        return [], 0.0
+
+    query_conf = _safe_float(query_hint.get("confidence"), default=0.0)
+    retrieval_conf = _safe_float(retrieval_hint.get("confidence"), default=0.0)
+    confidence = max(query_conf, retrieval_conf)
+
+    if query_candidates and retrieval_candidates:
+        if query_candidates[0] == retrieval_candidates[0]:
+            confidence = min(0.95, confidence + 0.08)
+        else:
+            confidence = max(0.0, confidence - 0.05)
+
+    return merged, round(confidence, 4)
+
+
+async def quick_triage_node(state: DiagnosisState):
+    query, source = _extract_retrieval_query(state)
+    if not query:
+        logger.warning("quick_triage_no_query")
+        return {"triage_fast_result": None, "triage_fast_ready": False}
+
+    top_k = state.get("retrieval_top_k", 3) or 3
+    timeout_s = _triage_tool_timeout_s()
+    threshold = _triage_fast_conf_threshold()
+
+    (query_hint, trace_query), (retrieval_hint, trace_retrieval) = await asyncio.gather(
+        _run_tool_with_timeout(
+            name="quick_query_hint",
+            coro=_quick_query_hint_tool(query),
+            timeout_s=timeout_s,
+        ),
+        _run_tool_with_timeout(
+            name="quick_retrieval_hint",
+            coro=_quick_retrieval_hint_tool(query, int(top_k)),
+            timeout_s=timeout_s,
+        ),
+    )
+
+    merged_top3, confidence = _merge_fast_hints(query_hint or {}, retrieval_hint or {})
+    fast_result = build_department_result(top3=merged_top3, confidence=confidence, source="triage_fast_path")
+    fast_ready = bool(
+        getattr(settings, "TRIAGE_FAST_PATH_ENABLED", True)
+        and fast_result
+        and _safe_float(fast_result.get("confidence"), default=0.0) >= threshold
+    )
+
+    logger.info(
+        "quick_triage_result",
+        source=source,
+        top3=(fast_result or {}).get("department_top3", []),
+        confidence=(fast_result or {}).get("confidence", 0.0),
+        fast_ready=fast_ready,
+        threshold=threshold,
+    )
+
+    payload: Dict[str, Any] = {
+        "triage_fast_result": fast_result,
+        "triage_fast_ready": fast_ready,
+        "triage_fast_tool_trace": [trace_query, trace_retrieval],
+    }
+    if fast_ready and isinstance(fast_result, dict):
+        payload.update(
+            {
+                "department_top1": fast_result.get("department_top1"),
+                "department_top3": fast_result.get("department_top3"),
+                "recommended_department": fast_result.get("department_top1"),
+                "confidence": fast_result.get("confidence"),
+            }
+        )
+    return payload
+
+
+async def quick_triage_router(state: DiagnosisState) -> Literal["fast_exit", "deep_diagnosis"]:
+    if not getattr(settings, "TRIAGE_FAST_PATH_ENABLED", True):
+        return "deep_diagnosis"
+    return "fast_exit" if bool(state.get("triage_fast_ready")) else "deep_diagnosis"
+
+
 # =================================================================
 # Node 2: Query_Rewrite
 # 职责: Ingress -> Retriever 之间的检索规划（规则优先，模型兜底）
@@ -151,24 +462,134 @@ async def query_rewrite_node(state: DiagnosisState):
         logger.warning("query_rewrite_no_query_found", available_keys=list(state.keys()))
         return {}
 
+    expander = QueryExpanderAdapter(
+        max_variants=max(1, int(getattr(settings, "QUERY_EXPANSION_MAX_VARIANTS", 4))),
+        max_query_len_per_variant=max(1, int(getattr(settings, "QUERY_EXPANSION_MAX_QUERY_LEN_PER_VARIANT", 120))),
+        rewrite_type_budget=getattr(settings, "QUERY_EXPANSION_REWRITE_TYPE_BUDGET", None),
+    )
+    default_fusion_method = _normalize_fusion_method(getattr(settings, "MULTI_QUERY_FUSION_METHOD", "weighted_rrf"))
+    default_enable_multi_query = bool(getattr(settings, "ENABLE_MULTI_QUERY", False))
+
+    if _is_pure_retrieval_mode(state):
+        top_k = state.get("retrieval_top_k", 3) or 3
+        raw_top_k_override = state.get("retrieval_top_k_override")
+        if isinstance(raw_top_k_override, (int, float)):
+            top_k = max(1, min(10, int(raw_top_k_override)))
+
+        raw_use_rerank = state.get("retrieval_use_rerank")
+        use_rerank = raw_use_rerank if isinstance(raw_use_rerank, bool) else None
+
+        raw_rerank_threshold = state.get("retrieval_rerank_threshold")
+        rerank_threshold = None
+        if isinstance(raw_rerank_threshold, (int, float)):
+            rerank_threshold = max(0.0, min(1.0, float(raw_rerank_threshold)))
+
+        logger.info(
+            "query_rewrite_bypassed_pure_mode",
+            source=source,
+            query=query[:120],
+            top_k=top_k,
+            use_rerank=use_rerank,
+            rerank_threshold=rerank_threshold,
+        )
+        expanded_variants = expander.expand(
+            query=query,
+            planned_variants=[query],
+            enable_query_expansion=False,
+            original_only=True,
+        )
+        variant_texts = extract_variant_texts(expanded_variants, original_query=query)
+        return {
+            "retrieval_query": variant_texts[0] if variant_texts else query,
+            "retrieval_query_variants": expanded_variants,
+            "retrieval_top_k": top_k,
+            "retrieval_plan": {
+                "original_query": query,
+                "primary_query": variant_texts[0] if variant_texts else query,
+                "query_variants": variant_texts,
+                "top_k": top_k,
+                "complexity": "pure",
+                "rewrite_source": "pure_bypass",
+                "index_scope": "paragraph",
+                "route_mode": "pure",
+                "pure_mode": True,
+                "enable_multi_query": default_enable_multi_query,
+                "enable_graph_rag": True,
+                "source_priority": _default_source_priority(),
+                "fusion_method": default_fusion_method,
+                "skip_intent_router": bool(getattr(settings, "RAG_DISABLE_INTENT_ROUTER_WHEN_PURE", True)),
+                "router_adapter_version": "v1",
+            },
+            "retrieval_index_scope": "paragraph",
+            "retrieval_use_rerank": use_rerank,
+            "retrieval_rerank_threshold": rerank_threshold,
+            "variant_hits_map": {},
+            "topk_source_ratio": _default_topk_source_ratio(),
+            "fusion_method": default_fusion_method,
+            "rag_pure_mode": True,
+        }
+
     intent = str(state.get("intent", "") or "")
     plan = await build_retrieval_plan(query=query, intent=intent)
+    top_k = plan.top_k
+    raw_top_k_override = state.get("retrieval_top_k_override")
+    if isinstance(raw_top_k_override, (int, float)):
+        top_k = max(1, min(10, int(raw_top_k_override)))
+
+    raw_use_rerank = state.get("retrieval_use_rerank")
+    use_rerank = raw_use_rerank if isinstance(raw_use_rerank, bool) else None
+
+    raw_rerank_threshold = state.get("retrieval_rerank_threshold")
+    rerank_threshold = None
+    if isinstance(raw_rerank_threshold, (int, float)):
+        rerank_threshold = max(0.0, min(1.0, float(raw_rerank_threshold)))
+
     logger.info(
         "query_rewrite_plan",
         source=source,
         primary_query=plan.primary_query[:120],
-        top_k=plan.top_k,
+        top_k=top_k,
         variants=len(plan.query_variants),
         complexity=plan.complexity,
         rewrite_source=plan.rewrite_source,
+        use_rerank=use_rerank,
+        rerank_threshold=rerank_threshold,
     )
 
+    enable_query_expansion = bool(getattr(settings, "ENABLE_QUERY_EXPANSION", False))
+    expanded_variants = expander.expand(
+        query=plan.primary_query,
+        planned_variants=plan.query_variants,
+        enable_query_expansion=enable_query_expansion,
+        original_only=not enable_query_expansion,
+    )
+    variant_texts = extract_variant_texts(expanded_variants, original_query=plan.primary_query)
+    retrieval_plan = plan.to_state_dict()
+    retrieval_plan["query_variants"] = variant_texts
+    retrieval_plan["query_expansion_enabled"] = enable_query_expansion
+    retrieval_plan["max_variants"] = expander.max_variants
+    retrieval_plan["max_query_len_per_variant"] = expander.max_query_len_per_variant
+    retrieval_plan["rewrite_type_budget"] = expander.rewrite_type_budget
+    retrieval_plan["route_mode"] = "multi_query" if default_enable_multi_query else "single_query"
+    retrieval_plan["pure_mode"] = False
+    retrieval_plan["enable_multi_query"] = default_enable_multi_query
+    retrieval_plan["enable_graph_rag"] = True
+    retrieval_plan["source_priority"] = _default_source_priority()
+    retrieval_plan["fusion_method"] = default_fusion_method
+    retrieval_plan["skip_intent_router"] = False
+    retrieval_plan["router_adapter_version"] = "v1"
+
     return {
-        "retrieval_query": plan.primary_query,
-        "retrieval_query_variants": plan.query_variants,
-        "retrieval_top_k": plan.top_k,
-        "retrieval_plan": plan.to_state_dict(),
+        "retrieval_query": variant_texts[0] if variant_texts else plan.primary_query,
+        "retrieval_query_variants": expanded_variants,
+        "retrieval_top_k": top_k,
+        "retrieval_plan": retrieval_plan,
         "retrieval_index_scope": plan.index_scope,
+        "retrieval_use_rerank": use_rerank,
+        "retrieval_rerank_threshold": rerank_threshold,
+        "variant_hits_map": {},
+        "topk_source_ratio": _default_topk_source_ratio(),
+        "fusion_method": default_fusion_method,
     }
 
 # =================================================================
@@ -177,10 +598,48 @@ async def query_rewrite_node(state: DiagnosisState):
 # =================================================================
 async def hybrid_retriever_node(state: DiagnosisState):
     logger.info("Diagnosis Node: Hybrid_Retriever Start")
-    last_user_msg, query_source = _extract_retrieval_query(state)
-    query_variants = state.get("retrieval_query_variants", [])
-    top_k = state.get("retrieval_top_k", 3) or 3
-    index_scope = str(state.get("retrieval_index_scope", "paragraph") or "paragraph")
+    configured_fusion_method = _normalize_fusion_method(getattr(settings, "MULTI_QUERY_FUSION_METHOD", "weighted_rrf"))
+    default_enable_multi_query = bool(getattr(settings, "ENABLE_MULTI_QUERY", False))
+    default_pure_mode = _is_pure_retrieval_mode(state)
+    planned_query = state.get("retrieval_query")
+    if isinstance(planned_query, str) and planned_query.strip():
+        last_user_msg = planned_query.strip()
+        query_source = "retrieval_query"
+    else:
+        last_user_msg, query_source = _extract_retrieval_query(state)
+    router_adapter = RetrievalRouterAdapter(enabled=bool(getattr(settings, "ENABLE_RETRIEVAL_ROUTER_ADAPTER", False)))
+    route_plan = router_adapter.resolve(
+        state=state if isinstance(state, dict) else {},
+        fallback_query=last_user_msg,
+        query_source=query_source,
+        default_top_k=3,
+        default_index_scope="paragraph",
+        default_fusion_method=configured_fusion_method,
+        default_enable_multi_query=default_enable_multi_query,
+        default_pure_mode=default_pure_mode,
+        disable_intent_router_when_pure=bool(getattr(settings, "RAG_DISABLE_INTENT_ROUTER_WHEN_PURE", True)),
+    )
+    pure_mode = bool(route_plan.get("pure_mode"))
+    last_user_msg = str(route_plan.get("query") or "").strip()
+    query_source = str(route_plan.get("query_source") or query_source or "none")
+    query_variants = route_plan.get("retrieval_query_variants", [])
+    variant_texts = extract_variant_texts(query_variants if isinstance(query_variants, list) else None, original_query=last_user_msg)
+    top_k = int(route_plan.get("top_k") or 3)
+    index_scope = str(route_plan.get("index_scope") or "paragraph")
+    use_rerank = route_plan.get("use_rerank")
+    rerank_threshold = route_plan.get("rerank_threshold")
+    enable_multi_query = bool(route_plan.get("enable_multi_query"))
+    route_mode = str(route_plan.get("route_mode") or ("pure" if pure_mode else "single_query"))
+    source_priority = route_plan.get("source_priority") if isinstance(route_plan.get("source_priority"), list) else _default_source_priority()
+    selected_fusion_method = _normalize_fusion_method(
+        route_plan.get("fusion_method"),
+        default=configured_fusion_method,
+    )
+    multi_query_adapter = MultiQueryRetrieverAdapter(
+        retriever=graph_rag_service.vector_retriever,
+        fusion_method=selected_fusion_method,
+        rrf_k=max(1, int(getattr(settings, "MULTI_QUERY_RRF_K", 60))),
+    )
 
     logger.info(
         "hybrid_retriever_query",
@@ -188,7 +647,15 @@ async def hybrid_retriever_node(state: DiagnosisState):
         source=query_source or "none",
         top_k=top_k,
         index_scope=index_scope,
-        variant_count=len(query_variants) if isinstance(query_variants, list) else 0,
+        variant_count=len(variant_texts),
+        use_rerank=use_rerank,
+        rerank_threshold=rerank_threshold,
+        enable_multi_query=enable_multi_query,
+        fusion_method=selected_fusion_method,
+        pure_mode=pure_mode,
+        route_source=route_plan.get("route_source"),
+        route_mode=route_mode,
+        source_priority=source_priority,
     )
 
     if not last_user_msg:
@@ -196,30 +663,158 @@ async def hybrid_retriever_node(state: DiagnosisState):
         return {}
 
     # 简单实体提取 (Placeholder for NER)
-    entities = [last_user_msg] 
-    
-    # 调用 GraphRAG Service (已包含 Vector + Graph 并行检索)
-    try:
-        context = await graph_rag_service.search(
+    entities = [last_user_msg]
+
+    timeout_s = _triage_tool_timeout_s()
+    variant_hits_map: Dict[str, List[Dict[str, Any]]] = {}
+    topk_source_ratio = _default_topk_source_ratio()
+    fusion_method = selected_fusion_method
+    vector_docs_override: Optional[List[Dict[str, Any]]] = None
+    stage_b_context_enabled = bool(getattr(settings, "ENABLE_CONTEXT_WINDOW_AUTOMERGE", False))
+    context_adapter = _context_adapter(stage_b_enabled=stage_b_context_enabled)
+    multi_trace: Dict[str, Any] = {
+        "tool": "multi_query_retriever",
+        "status": "skipped",
+        "reason": "feature_flag_disabled",
+    }
+
+    if enable_multi_query and variant_texts:
+        multi_result, multi_trace = await _run_tool_with_timeout(
+            name="multi_query_retriever",
+            coro=multi_query_adapter.retrieve(
+                query=last_user_msg,
+                retrieval_query_variants=query_variants if isinstance(query_variants, list) else None,
+                top_k=max(1, int(top_k)),
+                enable_multi_query=enable_multi_query,
+                original_only=not enable_multi_query,
+                use_rerank=use_rerank if isinstance(use_rerank, bool) else None,
+                rerank_threshold=float(rerank_threshold) if isinstance(rerank_threshold, (int, float)) else None,
+                pure_mode=pure_mode,
+                fusion_method=selected_fusion_method,
+            ),
+            timeout_s=timeout_s,
+        )
+        if isinstance(multi_result, dict):
+            if isinstance(multi_result.get("fused_docs"), list):
+                vector_docs_override = multi_result.get("fused_docs")
+            if isinstance(multi_result.get("variant_hits_map"), dict):
+                variant_hits_map = multi_result.get("variant_hits_map")
+            if isinstance(multi_result.get("topk_source_ratio"), dict):
+                topk_source_ratio = multi_result.get("topk_source_ratio")
+            fusion_method = str(multi_result.get("fusion_method") or fusion_method)
+        if not variant_hits_map:
+            variant_hits_map = {text: [] for text in variant_texts}
+    elif variant_texts:
+        variant_hits_map = {variant_texts[0]: []}
+        fusion_method = "original_only"
+
+    query_variants_for_graph = None
+    if enable_multi_query and not vector_docs_override:
+        query_variants_for_graph = variant_texts
+
+    result, trace = await _run_tool_with_timeout(
+        name="hybrid_retriever",
+        coro=graph_rag_service.search(
             query=last_user_msg,
             extracted_entities=entities,
             top_k=max(1, int(top_k)),
-            query_variants=query_variants if isinstance(query_variants, list) else None,
+            query_variants=query_variants_for_graph,
+            vector_docs_override=vector_docs_override if isinstance(vector_docs_override, list) else None,
             index_scope=index_scope,
-        )
+            use_rerank=use_rerank if isinstance(use_rerank, bool) else None,
+            rerank_threshold=float(rerank_threshold) if isinstance(rerank_threshold, (int, float)) else None,
+            pure_mode=pure_mode,
+        ),
+        timeout_s=timeout_s,
+    )
+    if isinstance(result, str) and result.strip():
+        context = result
         logger.info("hybrid_retriever_success", context_len=len(context))
-    except Exception as e:
-        logger.error("hybrid_retriever_failed", error=str(e))
-        context = "Knowledge retrieval failed."
+    else:
+        fast_hint = state.get("triage_fast_result") if isinstance(state.get("triage_fast_result"), dict) else {}
+        fast_top3 = fast_hint.get("department_top3") if isinstance(fast_hint.get("department_top3"), list) else []
+        fast_text = f"Fast triage candidates: {', '.join(fast_top3)}." if fast_top3 else "Fast triage unavailable."
+        context = f"{fast_text}\nKnowledge retrieval timeout/degraded."
+        logger.warning("hybrid_retriever_degraded", trace=trace)
     
+    context_docs = _coerce_context_docs(
+        vector_docs_override=vector_docs_override,
+        fallback_context=context,
+    )
+    context_pack = context_adapter.build_context_pack(
+        docs=context_docs,
+        fusion_method=fusion_method,
+        fallback_context=context,
+        ordering_strategy=_context_ordering_strategy(),
+    )
+    context_for_prompt = (
+        context_adapter.render_context(context_pack=context_pack, fallback_context=context)
+        if stage_b_context_enabled
+        else context
+    )
+
+    resolved_retrieval_plan = dict(state.get("retrieval_plan") if isinstance(state.get("retrieval_plan"), dict) else {})
+    resolved_retrieval_plan.update(
+        {
+            "primary_query": last_user_msg,
+            "query_variants": variant_texts,
+            "top_k": max(1, int(top_k)),
+            "index_scope": index_scope,
+            "fusion_method": fusion_method,
+            "pure_mode": pure_mode,
+            "enable_multi_query": enable_multi_query,
+            "source_priority": source_priority,
+            "skip_intent_router": bool(route_plan.get("skip_intent_router")),
+            "route_mode": route_mode,
+            "route_source": route_plan.get("route_source"),
+            "router_adapter_version": "v1",
+        }
+    )
+
     # 将检索结果作为 SystemMessage 注入上下文，供 DSPy 使用
     # 使用特定前缀以便 DSPy 节点识别
-    return {
-        "messages": [SystemMessage(content=f"Medical Context:\n{context}")],
+    output = {
+        "messages": [SystemMessage(content=f"Medical Context:\n{context_for_prompt}")],
         "retrieval_query": last_user_msg,
+        "retrieval_query_variants": query_variants if isinstance(query_variants, list) else [],
         "retrieval_top_k": max(1, int(top_k)),
+        "retrieval_plan": resolved_retrieval_plan,
         "retrieval_index_scope": index_scope,
+        "retrieval_use_rerank": use_rerank if isinstance(use_rerank, bool) else None,
+        "retrieval_rerank_threshold": float(rerank_threshold) if isinstance(rerank_threshold, (int, float)) else None,
+        "variant_hits_map": variant_hits_map,
+        "topk_source_ratio": topk_source_ratio,
+        "fusion_method": fusion_method,
+        "context_pack": context_pack,
+        "triage_tool_trace": [multi_trace, trace],
+        "rag_pure_mode": pure_mode,
     }
+    if pure_mode:
+        fast_result = state.get("triage_fast_result") if isinstance(state.get("triage_fast_result"), dict) else {}
+        candidates: List[str] = []
+        if isinstance(fast_result.get("department_top3"), list):
+            candidates.extend([str(x) for x in fast_result.get("department_top3", []) if str(x or "").strip()])
+        _, mention_top = extract_department_mentions(f"{last_user_msg}\n{context_for_prompt}", top_k=3)
+        candidates.extend(mention_top)
+        dept_result = build_department_result(top3=candidates or ["全科"], source="diagnosis_pure_rag")
+        if dept_result:
+            output.update(
+                {
+                    "pure_retrieval_result": dept_result,
+                    "recommended_department": dept_result.get("department_top1"),
+                    "department_top1": dept_result.get("department_top1"),
+                    "department_top3": dept_result.get("department_top3"),
+                    "confidence": dept_result.get("confidence"),
+                }
+            )
+            output["last_tool_result"] = {
+                "diagnosis": dept_result.get("department_top1"),
+                "confidence": dept_result.get("confidence"),
+                "reasoning": "Pure RAG mode: skipped DSPy reasoning, used retrieval-only department extraction.",
+                "follow_ups": [],
+                "department_top3": dept_result.get("department_top3"),
+            }
+    return output
 
 # =================================================================
 # Node 4: DSPy_Reasoner
@@ -290,12 +885,16 @@ async def dspy_reasoner_node(state: DiagnosisState):
         if system_prompt:
              retrieved_knowledge = f"【系统指令】\n{system_prompt}\n\n【检索知识】\n{retrieved_knowledge}"
 
-        prediction = medical_consultant(
-            patient_profile=profile_text, 
-            medical_history=profile_text, # 暂时复用 Profile
-            conversation_history=conversation_history or "无历史记录",
-            current_symptoms=current_symptoms or "无",
-            retrieved_knowledge=retrieved_knowledge
+        prediction = await asyncio.wait_for(
+            asyncio.to_thread(
+                medical_consultant,
+                patient_profile=profile_text,
+                medical_history=profile_text, # 暂时复用 Profile
+                conversation_history=conversation_history or "无历史记录",
+                current_symptoms=current_symptoms or "无",
+                retrieved_knowledge=retrieved_knowledge,
+            ),
+            timeout=_triage_tool_timeout_s(),
         )
         
         # 4. 保存原始结果到 State
@@ -326,6 +925,23 @@ async def dspy_reasoner_node(state: DiagnosisState):
         return {
             "loop_count": current_loop,
             "last_tool_result": result_payload # HACK: Reuse this field to pass data to next node
+        }
+
+    except asyncio.TimeoutError:
+        fast_result = state.get("triage_fast_result") if isinstance(state.get("triage_fast_result"), dict) else {}
+        top3 = fast_result.get("department_top3") if isinstance(fast_result.get("department_top3"), list) else []
+        top1 = fast_result.get("department_top1") if isinstance(fast_result.get("department_top1"), str) else "Unknown"
+        conf = _safe_float(fast_result.get("confidence"), default=0.55)
+        logger.warning("dspy_reasoner_timeout_fallback", timeout_s=_triage_tool_timeout_s(), fast_top3=top3)
+        return {
+            "loop_count": current_loop,
+            "last_tool_result": {
+                "diagnosis": top1,
+                "confidence": conf,
+                "reasoning": f"DSPy超时，使用快速分诊结果兜底（timeout={_triage_tool_timeout_s():.1f}s）",
+                "follow_ups": [],
+                "department_top3": top3,
+            },
         }
 
     except Exception as e:
@@ -364,10 +980,85 @@ async def confidence_evaluator_node(state: DiagnosisState) -> Literal["end_diagn
 # Helper Nodes for Outputs
 # =================================================================
 async def generate_report_node(state: DiagnosisState):
+    citations = _citations_from_context_pack(state, max_items=5)
+
+    if _is_pure_retrieval_mode(state):
+        dept_result = state.get("pure_retrieval_result") if isinstance(state.get("pure_retrieval_result"), dict) else None
+        if not dept_result:
+            raw_candidates = state.get("department_top3") if isinstance(state.get("department_top3"), list) else []
+            dept_result = build_department_result(top3=raw_candidates or ["全科"], source="diagnosis_pure_rag")
+        if dept_result:
+            top1 = str(dept_result.get("department_top1") or "")
+            top3 = [str(x) for x in dept_result.get("department_top3") or []]
+            conf = _safe_float(dept_result.get("confidence"), default=0.7)
+            report = (
+                "【纯检索分诊建议】\n"
+                f"推荐科室: {top1}\n"
+                f"候选科室Top3: {', '.join(top3)}\n"
+                "说明: 已启用 pure RAG，关闭 Query Rewrite / DSPy 推理，仅基于检索结果。"
+            )
+            output = {
+                "confirmed_diagnosis": top1,
+                "clinical_report": report,
+                "is_diagnosis_confirmed": True,
+                "recommended_department": top1,
+                "department_top1": top1,
+                "department_top3": top3,
+                "confidence": conf,
+                "messages": [AIMessage(content=report)],
+            }
+            diagnosis_output = _build_diagnosis_output(
+                department_top1=top1,
+                department_top3=top3,
+                confidence=conf,
+                reasoning="Pure RAG mode: retrieval-only department extraction.",
+                citations=citations,
+            )
+            return await _attach_guarded_diagnosis_output(
+                state=state,
+                output=output,
+                diagnosis_output=diagnosis_output,
+            )
+
+    if bool(state.get("triage_fast_ready")):
+        fast_result = state.get("triage_fast_result") if isinstance(state.get("triage_fast_result"), dict) else {}
+        top3 = fast_result.get("department_top3") if isinstance(fast_result.get("department_top3"), list) else []
+        top1 = fast_result.get("department_top1") if isinstance(fast_result.get("department_top1"), str) else ""
+        conf = _safe_float(fast_result.get("confidence"), default=0.0)
+        if top1 and top3:
+            report = (
+                f"【快速分诊建议】\n"
+                f"推荐科室: {top1}\n"
+                f"候选科室Top3: {', '.join(top3)}\n"
+                f"置信度: {conf:.2f}"
+            )
+            output = {
+                "confirmed_diagnosis": top1,
+                "clinical_report": report,
+                "is_diagnosis_confirmed": True,
+                "recommended_department": top1,
+                "department_top1": top1,
+                "department_top3": top3,
+                "confidence": conf,
+                "messages": [AIMessage(content=report)],
+            }
+            diagnosis_output = _build_diagnosis_output(
+                department_top1=top1,
+                department_top3=[str(item) for item in top3],
+                confidence=conf,
+                reasoning="Fast triage path result.",
+                citations=citations,
+            )
+            return await _attach_guarded_diagnosis_output(
+                state=state,
+                output=output,
+                diagnosis_output=diagnosis_output,
+            )
+
     payload = state.get("last_tool_result", {})
     diag_str = payload.get("diagnosis", "Unknown")
     reasoning = payload.get("reasoning", "")
-    confidence = payload.get("confidence", 0.0)
+    confidence = _safe_float(payload.get("confidence"), default=0.0)
     
     report = f"【DSPy 诊断报告】\n诊断: {diag_str}\n置信度: {confidence}\n依据: {reasoning}"
     
@@ -375,13 +1066,42 @@ async def generate_report_node(state: DiagnosisState):
     # This allows the flow to proceed to Service/Booking
     intent_update = "REGISTRATION" if diag_str and diag_str != "Unknown" else None
 
-    return {
+    dept_candidates = payload.get("department_top3") if isinstance(payload.get("department_top3"), list) else []
+    if not dept_candidates:
+        _, dept_candidates = extract_department_mentions(f"{diag_str}\n{reasoning}", top_k=3)
+    dept_result = build_department_result(top3=dept_candidates, top1=str(diag_str), confidence=confidence, source="diagnosis_report")
+
+    output = {
         "confirmed_diagnosis": diag_str,
         "clinical_report": report,
         "is_diagnosis_confirmed": True,
         "intent": intent_update, # Update intent to trigger router
         "messages": [AIMessage(content=report)]
     }
+    if dept_result:
+        output.update(
+            {
+                "recommended_department": dept_result.get("department_top1"),
+                "department_top1": dept_result.get("department_top1"),
+                "department_top3": dept_result.get("department_top3"),
+                "confidence": dept_result.get("confidence"),
+            }
+        )
+    diagnosis_top1 = str(output.get("department_top1") or diag_str or "Unknown")
+    diagnosis_top3 = [str(item) for item in output.get("department_top3", [])] if isinstance(output.get("department_top3"), list) else []
+    diagnosis_conf = _safe_float(output.get("confidence"), default=confidence)
+    diagnosis_output = _build_diagnosis_output(
+        department_top1=diagnosis_top1,
+        department_top3=diagnosis_top3,
+        confidence=diagnosis_conf,
+        reasoning=str(reasoning or ""),
+        citations=citations,
+    )
+    return await _attach_guarded_diagnosis_output(
+        state=state,
+        output=output,
+        diagnosis_output=diagnosis_output,
+    )
 
 async def generate_question_node(state: DiagnosisState):
     payload = state.get("last_tool_result", {})
@@ -405,6 +1125,13 @@ async def generate_question_node(state: DiagnosisState):
         # 不设置 is_diagnosis_confirmed，也不增加 loop_count (reasoner 已增加)
     }
 
+
+async def post_retrieval_router(state: DiagnosisState) -> Literal["pure_report", "dspy_reasoner"]:
+    if _is_pure_retrieval_mode(state):
+        return "pure_report"
+    return "dspy_reasoner"
+
+
 def build_diagnosis_graph():
     """
     构建诊断子图 (Diagnosis Subgraph) - [Phase 3 Refactor]
@@ -420,6 +1147,7 @@ def build_diagnosis_graph():
     # =================================================================
     workflow.add_node("State_Sync", state_sync_node)
     workflow.add_node("Query_Rewrite", query_rewrite_node)
+    workflow.add_node("Quick_Triage", quick_triage_node)
     workflow.add_node("Hybrid_Retriever", hybrid_retriever_node)
     workflow.add_node("DSPy_Reasoner", dspy_reasoner_node)
     
@@ -430,8 +1158,23 @@ def build_diagnosis_graph():
     # 边连接
     workflow.set_entry_point("State_Sync")
     workflow.add_edge("State_Sync", "Query_Rewrite")
-    workflow.add_edge("Query_Rewrite", "Hybrid_Retriever")
-    workflow.add_edge("Hybrid_Retriever", "DSPy_Reasoner")
+    workflow.add_edge("Query_Rewrite", "Quick_Triage")
+    workflow.add_conditional_edges(
+        "Quick_Triage",
+        quick_triage_router,
+        {
+            "fast_exit": "Diagnosis_Report",
+            "deep_diagnosis": "Hybrid_Retriever",
+        },
+    )
+    workflow.add_conditional_edges(
+        "Hybrid_Retriever",
+        post_retrieval_router,
+        {
+            "pure_report": "Diagnosis_Report",
+            "dspy_reasoner": "DSPy_Reasoner",
+        },
+    )
     
     # 条件边
     workflow.add_conditional_edges(
