@@ -5,23 +5,35 @@
 ## 项目简介（What / Why）
 
 ### 业务版（给老板看）/ Business View
-- 这不是单点问答系统，而是一个医疗场景的 Research Ops Control Plane：把“咨询、分诊、挂号、风控、观测”统一到一条可控链路。
-- 项目解决 3 类核心问题：
-- 信息分散：历史病历、知识库、图谱、挂号信息分散在多源系统，人工切换成本高。
-- 响应滞后：传统流程在检索、推理、挂号确认之间切换慢，用户等待长。
-- 输出不一致：不同路径或模型输出口径不一致，难以稳定运营与复盘。
-- 端到端目标链路：从请求理解到降级治理，形成“可解释、可监控、可回放”的稳定交付闭环。
-- 用户侧核心能力：分析（症状到建议）、监控（状态与质量可见）、可视化（流式过程与结果）、可靠性（失败可降级、异常可追踪）。
+- 工程定位：医疗场景 `Research Ops Control Plane`（研究能力 + 运营能力 + 治理能力三合一）。
+- 这套系统要解决的不是“能不能回答”，而是“能不能稳定运营”：
+- 信息分散：咨询、分诊、检索、挂号、支付状态分布在不同环节。当前已通过统一入口 `/api/v1/chat/stream` 和 `service` 子图把业务链路串起来。
+- 响应滞后：传统问诊是“算完再回”，体验卡顿。当前采用 SSE 流式回传 `thought/token/status/final`，边推理边反馈。
+- 输出不一致：不同模型、不同路径、不同参数容易导致口径漂移。当前通过 `Decision_Judge` + `quality_gate` + 审计日志把输出收敛到可治理口径。
+- 端到端目标链路（老板视角）：请求理解 -> 风险与意图判断 -> 医疗推理/服务执行 -> 结果治理 -> 持久化留痕 -> 运营复盘。
+- 用户侧核心能力（贴合当前产品形态）：
+- 分析：症状输入后给出科室建议、诊断报告或追问，不只返回“聊天文本”。
+- 监控：会话内可见实时状态流（例如 rewrite fallback、支付环节、错误事件）。
+- 可视化：前端展示推理过程、号源卡片、支付状态、RAG 调试结果。
+- 可靠性：云模型异常时仍可走回退链路，尽量保证服务不断线。
+- 面向管理层的落地价值：把“AI 医疗能力”从演示功能，升级为可上线、可审计、可迭代的业务控制面。
 
 ### 技术版（给开发看）/ Technical View
-- What: 一个以 `backend/app/core/graph/workflow.py::create_agent_graph` 为核心的多子图医疗 Agent 系统，后端通过 SSE 提供流式对话，前端通过 Next.js 展示问诊与挂号交互。
-- Why: 把“请求理解 -> 路由 -> 检索推理 -> 输出治理 -> 异步持久化 -> 观测审计”收敛为统一协议和可观测执行面。
+- What: 一个以 `backend/app/core/graph/workflow.py::create_agent_graph` 为核心的多子图医疗 Agent 系统，后端 FastAPI + LangGraph，前端 Next.js + SSE。
+- Why: 把“策略配置、执行编排、质量治理、故障降级、观测追踪、评测迭代”统一成同一个技术控制面，减少散点逻辑和线上不可控行为。
+- 工程定位（Research Ops Control Plane）在本项目中的技术拆解：
+- 策略平面（Policy Plane）：`backend/app/core/config.py` 统一托管模型路由、RAG 参数、RBAC、超时和回退开关；`frontend_new/app/settings/page.tsx` 支持运行时参数注入。
+- 执行平面（Execution Plane）：`workflow` 主图调度 `ingress/diagnosis/service/egress`，把医疗问答和挂号流程放进同一执行图。
+- 治理平面（Governance Plane）：`guard` 负责高风险拦截，`Decision_Judge` 负责诊断动作裁决，`quality_gate` 负责最终输出门禁。
+- 数据平面（Data Plane）：`retriever` 聚合 Milvus、BM25、SQL 预过滤、GraphRAG；`persistence_node` 异步写入 PostgreSQL/Milvus/Redis。
+- 观测平面（Observability Plane）：`/metrics` + 结构化日志 + Langfuse bridge，形成“实时监控 + 事后追踪”双视角。
+- 演进平面（Evolution Plane）：`/api/v1/evolution/*` 与 `EvolutionRunner` 提供离线对抗、评分与改进闭环。
 - E2E 目标链路（代码对应）：
 - 请求理解：`Ingress`（`backend/app/core/graph/sub_graphs/ingress.py`）
 - 检索与推理：`Diagnosis`（`backend/app/core/graph/sub_graphs/diagnosis.py`）
 - 服务闭环：`Service`（`backend/app/core/graph/sub_graphs/service.py`）
 - 输出治理：`Egress`（`backend/app/core/graph/sub_graphs/egress.py`）
-- 降级与治理：LLM 回退/重写回退/检索降级（`backend/app/core/llm/llm_factory.py`、`backend/app/core/graph/sub_graphs/diagnosis.py`、`backend/app/rag/modules/vector.py`）
+- 降级治理：LLM 回退/重写回退/检索降级（`backend/app/core/llm/llm_factory.py`、`backend/app/core/graph/sub_graphs/diagnosis.py`、`backend/app/rag/modules/vector.py`）
 
 ## Repo Discovery（代码库发现）
 
@@ -109,8 +121,8 @@
 ```mermaid
 graph LR
     U[User] --> F[frontend_new Next.js]
-    F --> P[/frontend_new/api/chat proxy/]
-    P --> B[/backend api v1 chat stream/]
+    F --> P[frontend_new/api/chat proxy]
+    P --> B[backend api v1 chat stream]
 
     B --> W[LangGraph workflow]
     W --> I[Ingress subgraph]
@@ -128,7 +140,7 @@ graph LR
 
     S --> HIS[LegacyHIS MCP Simulator]
 
-    B --> M[/metrics Prometheus/]
+    B --> M[metrics Prometheus]
     M --> PR[Prometheus]
     PR --> GF[Grafana]
 
@@ -203,7 +215,7 @@ flowchart TD
     P --> M2[(Milvus patient memory)]
     P --> M3[(Redis semantic/exact cache)]
 
-    D --> X1[/metrics + structured logs]
+    D --> X1[metrics + structured logs]
     D --> X2[Langfuse trace optional]
     D --> C
 ```
