@@ -2,14 +2,26 @@
 
 面向医疗分诊与问答场景的 LangGraph + FastAPI + Next.js 系统，支持流式问诊、RAG 检索、挂号闭环、审计与演进测试。
 
-## 项目简介（What/Why）
+## 项目简介（What / Why）
+
+### 业务版（给老板看）/ Business View
+- 这不是单点问答系统，而是一个医疗场景的 Research Ops Control Plane：把“咨询、分诊、挂号、风控、观测”统一到一条可控链路。
+- 项目解决 3 类核心问题：
+- 信息分散：历史病历、知识库、图谱、挂号信息分散在多源系统，人工切换成本高。
+- 响应滞后：传统流程在检索、推理、挂号确认之间切换慢，用户等待长。
+- 输出不一致：不同路径或模型输出口径不一致，难以稳定运营与复盘。
+- 端到端目标链路：从请求理解到降级治理，形成“可解释、可监控、可回放”的稳定交付闭环。
+- 用户侧核心能力：分析（症状到建议）、监控（状态与质量可见）、可视化（流式过程与结果）、可靠性（失败可降级、异常可追踪）。
+
+### 技术版（给开发看）/ Technical View
 - What: 一个以 `backend/app/core/graph/workflow.py::create_agent_graph` 为核心的多子图医疗 Agent 系统，后端通过 SSE 提供流式对话，前端通过 Next.js 展示问诊与挂号交互。
-- Why: 把“医疗咨询 + 分诊建议 + 挂号支付确认 + 可观测与审计”放到同一链路，减少多系统跳转和人工中断。
-- 核心设计目标来自代码：
-- `Ingress` 负责安全与意图分类（`backend/app/core/graph/sub_graphs/ingress.py`）
-- `Diagnosis` 负责检索与推理（`backend/app/core/graph/sub_graphs/diagnosis.py`）
-- `Service` 负责挂号工具闭环（`backend/app/core/graph/sub_graphs/service.py`）
-- `Egress` 负责聚合与质量门控（`backend/app/core/graph/sub_graphs/egress.py`）
+- Why: 把“请求理解 -> 路由 -> 检索推理 -> 输出治理 -> 异步持久化 -> 观测审计”收敛为统一协议和可观测执行面。
+- E2E 目标链路（代码对应）：
+- 请求理解：`Ingress`（`backend/app/core/graph/sub_graphs/ingress.py`）
+- 检索与推理：`Diagnosis`（`backend/app/core/graph/sub_graphs/diagnosis.py`）
+- 服务闭环：`Service`（`backend/app/core/graph/sub_graphs/service.py`）
+- 输出治理：`Egress`（`backend/app/core/graph/sub_graphs/egress.py`）
+- 降级与治理：LLM 回退/重写回退/检索降级（`backend/app/core/llm/llm_factory.py`、`backend/app/core/graph/sub_graphs/diagnosis.py`、`backend/app/rag/modules/vector.py`）
 
 ## Repo Discovery（代码库发现）
 
@@ -75,9 +87,25 @@
 - 新闻抓取：⚠️ Unknown/Needs verify（未发现 RSS/News pipeline）
 - 主动提醒/定时告警：⚠️ Unknown/Needs verify（未发现 APScheduler/Celery/cron worker）
 
-## 架构与模块（开发者视角）
+## 架构与模块（开发者视角 / Architecture & Modules）
 
-### 组件关系图
+### 模块分层（中文）
+- 接入层：`frontend_new` + `backend/app/api/v1/endpoints/*`，负责请求接入、SSE 协议、参数注入。
+- 编排层：`backend/app/core/graph/workflow.py`，负责主图路由与子图协同。
+- 推理层：`backend/app/core/graph/sub_graphs/diagnosis.py`，负责 Query Rewrite、Hybrid Retriever、Reasoner、Decision Judge。
+- 服务层：`backend/app/core/graph/sub_graphs/service.py` + `backend/app/services/mcp/his_server.py`，负责挂号工具闭环。
+- 数据层：PostgreSQL、Redis、Milvus、Neo4j（`backend/app/db/*`、`backend/app/rag/*`）。
+- 可观测层：`/metrics`、Langfuse bridge、结构化日志（`backend/app/core/middleware/instrumentation.py`、`backend/app/core/monitoring/langfuse_bridge.py`、`backend/app/core/logging/setup.py`）。
+
+### Module Layers (English)
+- Ingress/API Layer: `frontend_new` and `backend/app/api/v1/endpoints/*` for request intake, SSE contracts, runtime knobs.
+- Orchestration Layer: `backend/app/core/graph/workflow.py` for master routing and subgraph coordination.
+- Reasoning Layer: `backend/app/core/graph/sub_graphs/diagnosis.py` for rewrite, retrieval, reasoning, and decision governance.
+- Service Layer: `backend/app/core/graph/sub_graphs/service.py` + `backend/app/services/mcp/his_server.py` for appointment workflow execution.
+- Data Layer: PostgreSQL, Redis, Milvus, Neo4j adapters under `backend/app/db/*` and `backend/app/rag/*`.
+- Observability Layer: Prometheus `/metrics`, Langfuse bridge, structured logging.
+
+### 组件关系图 / Component Topology
 ```mermaid
 graph LR
     U[User] --> F[frontend_new Next.js]
@@ -107,7 +135,7 @@ graph LR
     B --> LF[Langfuse bridge optional]
 ```
 
-### 一次分析请求数据流图
+### 一次分析请求数据流图 / Request Data Flow
 ```mermaid
 sequenceDiagram
     participant User
@@ -130,6 +158,54 @@ sequenceDiagram
     BE-->>Proxy: SSE
     Proxy-->>FE: normalized SSE events
     FE-->>User: 实时回答 + 状态 + 号源卡片
+```
+
+### 详细流程图（含降级治理）/ Detailed Flow (with Degradation & Governance)
+```mermaid
+flowchart TD
+    A[User Request] --> B[FE ChatShell]
+    B --> C[Next Proxy /api/chat]
+    C --> D[BE /api/v1/chat/stream]
+    D --> E[workflow entry cache_lookup]
+
+    E -->|cache hit| P[persistence async write]
+    E -->|cache miss| F[Ingress: pii_filter -> guard -> intent_classifier]
+
+    F -->|GREETING| G1[fast_reply]
+    F -->|REGISTRATION| G2[service subgraph]
+    F -->|MEDICAL/CRISIS| G3[diagnosis subgraph]
+    F -->|blocked| P
+
+    G3 --> H1[Query_Rewrite]
+    H1 -->|timeout/error| H1F[rewrite fallback rule path]
+    H1 --> H2[Quick_Triage]
+    H2 -->|fast path ready| H6[Diagnosis_Report]
+    H2 -->|need deep path| H3[Hybrid_Retriever]
+
+    H3 --> H31[Milvus + BM25 + SQL prefilter + GraphRAG]
+    H31 -->|vector unavailable| H31F[degrade without vector]
+    H31 --> H4[DSPy_Reasoner]
+    H4 --> H5[Decision_Judge]
+    H5 -->|end_diagnosis| H6
+    H5 -->|clarify| H7[Clarify_Question]
+
+    G2 --> S1[get_department_slots]
+    S1 --> S2[lock_slot]
+    S2 --> S3[confirm_appointment]
+
+    G1 --> O[Egress quality_gate]
+    H6 --> O
+    H7 --> O
+    S3 --> O
+    O --> P
+
+    P --> M1[(PostgreSQL consultation)]
+    P --> M2[(Milvus patient memory)]
+    P --> M3[(Redis semantic/exact cache)]
+
+    D --> X1[/metrics + structured logs]
+    D --> X2[Langfuse trace optional]
+    D --> C
 ```
 
 ## 数据源与证据口径（行情/新闻/指标，字段说明）
