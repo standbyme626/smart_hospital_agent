@@ -28,7 +28,12 @@ class GraphRAGService:
         extracted_entities: Optional[List[str]] = None,
         top_k: int = 3,
         query_variants: Optional[List[str]] = None,
+        vector_docs_override: Optional[List[Dict[str, Any]]] = None,
         index_scope: str = "paragraph",
+        use_rerank: Optional[bool] = None,
+        rerank_threshold: Optional[float] = None,
+        skip_intent_router: bool = False,
+        pure_mode: Optional[bool] = None,
     ) -> str:
         """
         Hybrid search combining Vector Search (Milvus), Graph Search (Neo4j),
@@ -37,10 +42,23 @@ class GraphRAGService:
 
         safe_top_k = max(1, int(top_k))
 
-        # 1. Vector Search (Parallel)
-        vector_task = asyncio.create_task(
-            self._run_vector_search(query=query, top_k=safe_top_k, query_variants=query_variants)
-        )
+        vector_task: Optional[asyncio.Task] = None
+        vector_res_override = None
+        if isinstance(vector_docs_override, list) and vector_docs_override:
+            vector_res_override = self._format_vector_results(vector_docs_override[:safe_top_k])
+        else:
+            # 1. Vector Search (Parallel)
+            vector_task = asyncio.create_task(
+                self._run_vector_search(
+                    query=query,
+                    top_k=safe_top_k,
+                    query_variants=query_variants,
+                    use_rerank=use_rerank,
+                    rerank_threshold=rerank_threshold,
+                    skip_intent_router=skip_intent_router,
+                    pure_mode=pure_mode,
+                )
+            )
 
         # 2. Graph Search (Parallel)
         graph_task = asyncio.create_task(self._run_graph_search(extracted_entities or []))
@@ -52,11 +70,23 @@ class GraphRAGService:
 
         # [Phase C] Wait for all with robust error handling
         try:
-            results = await asyncio.gather(vector_task, graph_task, hier_task, return_exceptions=True)
+            tasks: List[asyncio.Task] = [graph_task, hier_task]
+            if vector_task:
+                tasks.insert(0, vector_task)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            vector_res = results[0] if not isinstance(results[0], Exception) else f"Vector search error: {str(results[0])}"
-            graph_res = results[1] if not isinstance(results[1], Exception) else f"Graph search error: {str(results[1])}"
-            hier_res = results[2] if not isinstance(results[2], Exception) else f"Hierarchical index error: {str(results[2])}"
+            offset = 0
+            if vector_task:
+                vector_raw = results[0]
+                vector_res = vector_raw if not isinstance(vector_raw, Exception) else f"Vector search error: {str(vector_raw)}"
+                offset = 1
+            else:
+                vector_res = vector_res_override or "No vector context available."
+
+            graph_raw = results[offset]
+            hier_raw = results[offset + 1]
+            graph_res = graph_raw if not isinstance(graph_raw, Exception) else f"Graph search error: {str(graph_raw)}"
+            hier_res = hier_raw if not isinstance(hier_raw, Exception) else f"Hierarchical index error: {str(hier_raw)}"
 
         except Exception as e:
             logger.error("hybrid_search_crash", error=str(e))
@@ -75,7 +105,16 @@ class GraphRAGService:
 """
         return context
 
-    async def _run_vector_search(self, query: str, top_k: int = 3, query_variants: Optional[List[str]] = None) -> str:
+    async def _run_vector_search(
+        self,
+        query: str,
+        top_k: int = 3,
+        query_variants: Optional[List[str]] = None,
+        use_rerank: Optional[bool] = None,
+        rerank_threshold: Optional[float] = None,
+        skip_intent_router: bool = False,
+        pure_mode: Optional[bool] = None,
+    ) -> str:
         try:
             normalized = (query or "").strip()
             candidates: List[str] = []
@@ -92,7 +131,16 @@ class GraphRAGService:
 
             per_query_k = max(1, int(top_k))
             tasks = [
-                asyncio.create_task(self.vector_retriever.search_rag30(q, top_k=per_query_k))
+                asyncio.create_task(
+                    self.vector_retriever.search_rag30(
+                        q,
+                        top_k=per_query_k,
+                        use_rerank=use_rerank,
+                        rerank_threshold=rerank_threshold,
+                        skip_intent_router=skip_intent_router,
+                        pure_mode=pure_mode,
+                    )
+                )
                 for q in candidates
             ]
 

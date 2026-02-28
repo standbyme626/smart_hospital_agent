@@ -108,16 +108,18 @@ class RetrievalRouterAdapter:
             query = plan_primary or plan_original or state_query or fallback
             route_source = "router_adapter"
             resolved_query_source = "retrieval_plan"
-            top_k = _as_top_k(
-                state.get("retrieval_top_k_override", plan.get("top_k", state.get("retrieval_top_k", default_top_k))),
-                default=default_top_k,
-            )
-            index_scope = _as_scope(
-                plan.get("index_scope", state.get("retrieval_index_scope", default_index_scope)),
-                default=default_index_scope,
-            )
+            top_k = _as_top_k(plan.get("top_k", default_top_k), default=default_top_k)
+            index_scope = _as_scope(plan.get("index_scope", default_index_scope), default=default_index_scope)
             pure_mode = _as_bool(plan.get("pure_mode"), default=default_pure_mode)
             retrieval_query_variants = plan.get("query_variants")
+            use_rerank = plan.get("use_rerank")
+            if not isinstance(use_rerank, bool):
+                use_rerank = None
+            rerank_threshold = plan.get("rerank_threshold")
+            if not isinstance(rerank_threshold, (int, float)):
+                rerank_threshold = None
+            else:
+                rerank_threshold = max(0.0, min(1.0, float(rerank_threshold)))
         else:
             query = state_query or fallback
             route_source = "legacy_state"
@@ -130,24 +132,24 @@ class RetrievalRouterAdapter:
                 else _as_bool(plan.get("pure_mode"), default=default_pure_mode)
             )
             retrieval_query_variants = state.get("retrieval_query_variants")
+            use_rerank = state.get("retrieval_use_rerank")
+            if not isinstance(use_rerank, bool):
+                use_rerank = None
+            rerank_threshold = state.get("retrieval_rerank_threshold")
+            if not isinstance(rerank_threshold, (int, float)):
+                rerank_threshold = None
+            else:
+                rerank_threshold = max(0.0, min(1.0, float(rerank_threshold)))
 
         if not query:
             query = fallback
             resolved_query_source = query_source or "fallback"
 
-        use_rerank = state.get("retrieval_use_rerank")
-        if not isinstance(use_rerank, bool):
-            use_rerank = None
-        rerank_threshold = state.get("retrieval_rerank_threshold")
-        if not isinstance(rerank_threshold, (int, float)):
-            rerank_threshold = None
-        else:
-            rerank_threshold = max(0.0, min(1.0, float(rerank_threshold)))
-
         enable_multi_query = _as_bool(
             plan.get("enable_multi_query"),
             default=default_enable_multi_query,
         )
+        enable_graph_rag = _as_bool(plan.get("enable_graph_rag"), default=True)
         fusion_method = _as_fusion_method(
             plan.get("fusion_method", default_fusion_method),
             default=default_fusion_method,
@@ -186,6 +188,7 @@ class RetrievalRouterAdapter:
             "rerank_threshold": rerank_threshold,
             "pure_mode": pure_mode,
             "enable_multi_query": enable_multi_query,
+            "enable_graph_rag": enable_graph_rag,
             "fusion_method": fusion_method,
             "source_priority": source_priority,
             "skip_intent_router": skip_intent_router,

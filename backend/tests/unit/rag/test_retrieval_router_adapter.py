@@ -39,6 +39,9 @@ def test_router_adapter_disabled_keeps_legacy_state_behavior():
 def test_router_adapter_enabled_prefers_retrieval_plan_contract():
     adapter = RetrievalRouterAdapter(enabled=True)
     state = {
+        "retrieval_top_k_override": 9,
+        "retrieval_use_rerank": True,
+        "retrieval_rerank_threshold": 0.95,
         "retrieval_plan": {
             "primary_query": "plan query",
             "query_variants": ["plan query", "expanded query"],
@@ -46,6 +49,8 @@ def test_router_adapter_enabled_prefers_retrieval_plan_contract():
             "index_scope": "document",
             "pure_mode": True,
             "enable_multi_query": False,
+            "use_rerank": False,
+            "rerank_threshold": 0.2,
             "fusion_method": "rrf",
             "source_priority": ["vector", "hierarchical"],
         },
@@ -67,6 +72,8 @@ def test_router_adapter_enabled_prefers_retrieval_plan_contract():
     assert resolved["query"] == "plan query"
     assert resolved["top_k"] == 6
     assert resolved["index_scope"] == "document"
+    assert resolved["use_rerank"] is False
+    assert resolved["rerank_threshold"] == 0.2
     assert resolved["pure_mode"] is True
     assert resolved["enable_multi_query"] is False
     assert resolved["fusion_method"] == "rrf"

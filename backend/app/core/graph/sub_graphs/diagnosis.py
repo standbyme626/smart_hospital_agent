@@ -1,4 +1,7 @@
 import asyncio
+import hashlib
+import time
+import uuid
 from typing import Literal, Dict, Any, List, Optional, Sequence
 from app.core.llm.llm_factory import get_smart_llm
 from langchain_core.messages import SystemMessage, AIMessage, BaseMessage
@@ -215,6 +218,215 @@ def _default_source_priority() -> List[str]:
     return ["vector", "graph", "hierarchical"]
 
 
+def _diagnosis_graph_version() -> str:
+    return str(getattr(settings, "DIAGNOSIS_GRAPH_VERSION", getattr(settings, "VERSION", "v1")) or "v1")
+
+
+def _diagnosis_data_contract_version() -> str:
+    return str(getattr(settings, "DIAGNOSIS_DATA_CONTRACT_VERSION", "v1") or "v1")
+
+
+def _is_debug_snapshot_enabled(state: Dict[str, Any] | None = None) -> bool:
+    if isinstance(state, dict):
+        state_flag = state.get("enable_debug_snapshot")
+        if isinstance(state_flag, bool):
+            return state_flag
+    return bool(getattr(settings, "ENABLE_DEBUG_SNAPSHOT", False))
+
+
+def _parse_debug_include_nodes(raw: Any) -> List[str]:
+    if isinstance(raw, list):
+        items = [str(item).strip() for item in raw if str(item or "").strip()]
+        return list(dict.fromkeys(items))
+    if isinstance(raw, str):
+        parts = [item.strip() for item in raw.split(",")]
+        items = [item for item in parts if item]
+        return list(dict.fromkeys(items))
+    return []
+
+
+def _resolve_debug_include_nodes(state: Dict[str, Any] | None = None) -> List[str]:
+    if isinstance(state, dict):
+        state_nodes = _parse_debug_include_nodes(state.get("debug_include_nodes"))
+        if state_nodes:
+            return state_nodes
+    return _parse_debug_include_nodes(getattr(settings, "DEBUG_INCLUDE_NODES", ""))
+
+
+def _resolve_request_id(state: Dict[str, Any] | None = None) -> str:
+    if isinstance(state, dict):
+        candidate = state.get("request_id")
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+        event = state.get("event")
+        if isinstance(event, dict):
+            payload = event.get("payload")
+            if isinstance(payload, dict):
+                payload_id = payload.get("request_id")
+                if isinstance(payload_id, str) and payload_id.strip():
+                    return payload_id.strip()
+            event_id = event.get("request_id")
+            if isinstance(event_id, str) and event_id.strip():
+                return event_id.strip()
+        session_id = state.get("session_id")
+        if isinstance(session_id, str) and session_id.strip():
+            return f"{session_id.strip()}-{uuid.uuid4().hex[:8]}"
+    return f"req-{uuid.uuid4().hex}"
+
+
+def _hash_value(value: str) -> str:
+    if not value:
+        return ""
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
+
+
+def _query_ref(value: Any) -> Dict[str, Any]:
+    text = str(value or "").strip()
+    return {"hash": _hash_value(text), "len": len(text)}
+
+
+def _safe_doc_refs(docs: Any, *, max_items: int = 8) -> List[Dict[str, Any]]:
+    if not isinstance(docs, list):
+        return []
+
+    refs: List[Dict[str, Any]] = []
+    for item in docs:
+        if not isinstance(item, dict):
+            continue
+        doc_id = str(item.get("doc_id") or item.get("source_id") or "unknown").strip()
+        chunk_id = str(item.get("chunk_id") or item.get("id") or doc_id).strip()
+        content_hash = str(item.get("hash") or "").strip()
+        if not content_hash:
+            content = str(item.get("content") or item.get("text") or "").strip()
+            content_hash = _hash_value(content) if content else ""
+
+        ref: Dict[str, Any] = {
+            "doc_id": doc_id or "unknown",
+            "chunk_id": chunk_id or doc_id or "unknown",
+            "hash": content_hash,
+        }
+        source_type = str(item.get("source_type") or item.get("source") or "").strip()
+        if source_type:
+            ref["source_type"] = source_type
+        score = item.get("score")
+        if isinstance(score, (int, float)):
+            ref["score"] = round(float(score), 6)
+
+        refs.append(ref)
+        if len(refs) >= max_items:
+            break
+    return refs
+
+
+def _safe_tool_trace(trace: Any) -> Dict[str, Any]:
+    if not isinstance(trace, dict):
+        return {}
+    safe = {
+        "tool": str(trace.get("tool") or ""),
+        "status": str(trace.get("status") or ""),
+    }
+    timeout_s = trace.get("timeout_s")
+    if isinstance(timeout_s, (int, float)):
+        safe["timeout_s"] = float(timeout_s)
+    error = str(trace.get("error") or "").strip()
+    if error:
+        safe["error_hash"] = _hash_value(error)
+    reason = str(trace.get("reason") or "").strip()
+    if reason:
+        safe["reason"] = reason
+    return safe
+
+
+def _build_route_snapshot(route_plan: Dict[str, Any]) -> Dict[str, Any]:
+    query_variants = route_plan.get("retrieval_query_variants")
+    if not isinstance(query_variants, list):
+        query_variants = []
+
+    return {
+        "route_source": route_plan.get("route_source"),
+        "route_mode": route_plan.get("route_mode"),
+        "query": _query_ref(route_plan.get("query")),
+        "query_source": route_plan.get("query_source"),
+        "query_variants": [_query_ref(item.get("text")) for item in query_variants if isinstance(item, dict)],
+        "top_k": route_plan.get("top_k"),
+        "index_scope": route_plan.get("index_scope"),
+        "use_rerank": route_plan.get("use_rerank"),
+        "rerank_threshold": route_plan.get("rerank_threshold"),
+        "pure_mode": route_plan.get("pure_mode"),
+        "enable_multi_query": route_plan.get("enable_multi_query"),
+        "fusion_method": route_plan.get("fusion_method"),
+        "source_priority": route_plan.get("source_priority"),
+        "skip_intent_router": route_plan.get("skip_intent_router"),
+    }
+
+
+def _build_debug_snapshot(
+    *,
+    state: DiagnosisState,
+    node_name: str,
+    node_version: str,
+    payload: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    if not _is_debug_snapshot_enabled(state if isinstance(state, dict) else None):
+        return None
+
+    include_nodes = _resolve_debug_include_nodes(state if isinstance(state, dict) else None)
+    if not include_nodes:
+        return None
+    include_nodes_set = {item.lower() for item in include_nodes}
+    if node_name.lower() not in include_nodes_set:
+        return None
+
+    return {
+        "request_id": _resolve_request_id(state if isinstance(state, dict) else None),
+        "graph_version": _diagnosis_graph_version(),
+        "node_version": str(node_version or "v1"),
+        "data_contract_version": _diagnosis_data_contract_version(),
+        "schema_version": str(getattr(settings, "DIAGNOSIS_SCHEMA_VERSION", "v1") or "v1"),
+        "node": node_name,
+        "captured_at": round(time.time(), 6),
+        "payload": payload,
+    }
+
+
+def _merge_debug_snapshot(
+    *,
+    state: DiagnosisState,
+    snapshot: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    if not isinstance(snapshot, dict):
+        return {}
+
+    existing = state.get("debug_snapshots")
+    merged = dict(existing) if isinstance(existing, dict) else {}
+    node_name = str(snapshot.get("node") or "unknown")
+    merged[node_name] = snapshot
+    return {"debug_snapshots": merged}
+
+
+def _resolve_route_plan(
+    *,
+    state: DiagnosisState,
+    fallback_query: str,
+    query_source: str,
+) -> Dict[str, Any]:
+    configured_fusion_method = _normalize_fusion_method(getattr(settings, "MULTI_QUERY_FUSION_METHOD", "weighted_rrf"))
+    default_enable_multi_query = bool(getattr(settings, "ENABLE_MULTI_QUERY", False))
+    default_pure_mode = _is_pure_retrieval_mode(state)
+    router_adapter = RetrievalRouterAdapter(enabled=bool(getattr(settings, "ENABLE_RETRIEVAL_ROUTER_ADAPTER", False)))
+    return router_adapter.resolve(
+        state=state if isinstance(state, dict) else {},
+        fallback_query=fallback_query,
+        query_source=query_source,
+        default_top_k=3,
+        default_index_scope="paragraph",
+        default_fusion_method=configured_fusion_method,
+        default_enable_multi_query=default_enable_multi_query,
+        default_pure_mode=default_pure_mode,
+        disable_intent_router_when_pure=bool(getattr(settings, "RAG_DISABLE_INTENT_ROUTER_WHEN_PURE", True)),
+    )
+
+
 def _context_ordering_strategy() -> str:
     raw = str(getattr(settings, "CONTEXT_ORDERING_STRATEGY", "score_desc") or "score_desc").strip().lower()
     if raw not in {"score_desc", "lost_in_middle_mitigate"}:
@@ -395,19 +607,25 @@ async def quick_triage_node(state: DiagnosisState):
         logger.warning("quick_triage_no_query")
         return {"triage_fast_result": None, "triage_fast_ready": False}
 
-    top_k = state.get("retrieval_top_k", 3) or 3
+    route_plan = _resolve_route_plan(
+        state=state,
+        fallback_query=query,
+        query_source=source,
+    )
+    resolved_query = str(route_plan.get("query") or query).strip()
+    top_k = int(route_plan.get("top_k") or 3)
     timeout_s = _triage_tool_timeout_s()
     threshold = _triage_fast_conf_threshold()
 
     (query_hint, trace_query), (retrieval_hint, trace_retrieval) = await asyncio.gather(
         _run_tool_with_timeout(
             name="quick_query_hint",
-            coro=_quick_query_hint_tool(query),
+            coro=_quick_query_hint_tool(resolved_query),
             timeout_s=timeout_s,
         ),
         _run_tool_with_timeout(
             name="quick_retrieval_hint",
-            coro=_quick_retrieval_hint_tool(query, int(top_k)),
+            coro=_quick_retrieval_hint_tool(resolved_query, int(top_k)),
             timeout_s=timeout_s,
         ),
     )
@@ -423,6 +641,7 @@ async def quick_triage_node(state: DiagnosisState):
     logger.info(
         "quick_triage_result",
         source=source,
+        route_source=route_plan.get("route_source"),
         top3=(fast_result or {}).get("department_top3", []),
         confidence=(fast_result or {}).get("confidence", 0.0),
         fast_ready=fast_ready,
@@ -443,6 +662,24 @@ async def quick_triage_node(state: DiagnosisState):
                 "confidence": fast_result.get("confidence"),
             }
         )
+    debug_snapshot = _build_debug_snapshot(
+        state=state,
+        node_name="Quick_Triage",
+        node_version="v2",
+        payload={
+            "route_plan": _build_route_snapshot(route_plan),
+            "fast_ready": fast_ready,
+            "threshold": threshold,
+            "top_k": top_k,
+            "triage_fast_result": {
+                "department_top1": (fast_result or {}).get("department_top1"),
+                "department_top3": (fast_result or {}).get("department_top3"),
+                "confidence": (fast_result or {}).get("confidence"),
+            },
+            "tool_trace": [_safe_tool_trace(trace_query), _safe_tool_trace(trace_retrieval)],
+        },
+    )
+    payload.update(_merge_debug_snapshot(state=state, snapshot=debug_snapshot))
     return payload
 
 
@@ -499,7 +736,7 @@ async def query_rewrite_node(state: DiagnosisState):
             original_only=True,
         )
         variant_texts = extract_variant_texts(expanded_variants, original_query=query)
-        return {
+        output = {
             "retrieval_query": variant_texts[0] if variant_texts else query,
             "retrieval_query_variants": expanded_variants,
             "retrieval_top_k": top_k,
@@ -518,6 +755,8 @@ async def query_rewrite_node(state: DiagnosisState):
                 "source_priority": _default_source_priority(),
                 "fusion_method": default_fusion_method,
                 "skip_intent_router": bool(getattr(settings, "RAG_DISABLE_INTENT_ROUTER_WHEN_PURE", True)),
+                "use_rerank": use_rerank,
+                "rerank_threshold": rerank_threshold,
                 "router_adapter_version": "v1",
             },
             "retrieval_index_scope": "paragraph",
@@ -528,6 +767,30 @@ async def query_rewrite_node(state: DiagnosisState):
             "fusion_method": default_fusion_method,
             "rag_pure_mode": True,
         }
+        debug_snapshot = _build_debug_snapshot(
+            state=state,
+            node_name="Query_Rewrite",
+            node_version="v2",
+            payload={
+                "query_source": source,
+                "query": _query_ref(query),
+                "retrieval_plan": {
+                    "top_k": top_k,
+                    "index_scope": "paragraph",
+                    "route_mode": "pure",
+                    "pure_mode": True,
+                    "enable_multi_query": default_enable_multi_query,
+                    "fusion_method": default_fusion_method,
+                    "skip_intent_router": bool(getattr(settings, "RAG_DISABLE_INTENT_ROUTER_WHEN_PURE", True)),
+                    "use_rerank": use_rerank,
+                    "rerank_threshold": rerank_threshold,
+                    "source_priority": _default_source_priority(),
+                    "query_variants": [_query_ref(v) for v in variant_texts],
+                },
+            },
+        )
+        output.update(_merge_debug_snapshot(state=state, snapshot=debug_snapshot))
+        return output
 
     intent = str(state.get("intent", "") or "")
     plan = await build_retrieval_plan(query=query, intent=intent)
@@ -577,9 +840,10 @@ async def query_rewrite_node(state: DiagnosisState):
     retrieval_plan["source_priority"] = _default_source_priority()
     retrieval_plan["fusion_method"] = default_fusion_method
     retrieval_plan["skip_intent_router"] = False
+    retrieval_plan["use_rerank"] = use_rerank
+    retrieval_plan["rerank_threshold"] = rerank_threshold
     retrieval_plan["router_adapter_version"] = "v1"
-
-    return {
+    output = {
         "retrieval_query": variant_texts[0] if variant_texts else plan.primary_query,
         "retrieval_query_variants": expanded_variants,
         "retrieval_top_k": top_k,
@@ -592,33 +856,50 @@ async def query_rewrite_node(state: DiagnosisState):
         "fusion_method": default_fusion_method,
     }
 
+    debug_snapshot = _build_debug_snapshot(
+        state=state,
+        node_name="Query_Rewrite",
+        node_version="v2",
+        payload={
+            "query_source": source,
+            "query": _query_ref(query),
+            "retrieval_plan": {
+                "top_k": retrieval_plan.get("top_k"),
+                "index_scope": retrieval_plan.get("index_scope"),
+                "route_mode": retrieval_plan.get("route_mode"),
+                "pure_mode": retrieval_plan.get("pure_mode"),
+                "enable_multi_query": retrieval_plan.get("enable_multi_query"),
+                "fusion_method": retrieval_plan.get("fusion_method"),
+                "skip_intent_router": retrieval_plan.get("skip_intent_router"),
+                "use_rerank": retrieval_plan.get("use_rerank"),
+                "rerank_threshold": retrieval_plan.get("rerank_threshold"),
+                "source_priority": retrieval_plan.get("source_priority"),
+                "query_variants": [_query_ref(v) for v in retrieval_plan.get("query_variants", [])],
+            },
+        },
+    )
+    output.update(_merge_debug_snapshot(state=state, snapshot=debug_snapshot))
+    return output
+
 # =================================================================
 # Node 3: Hybrid_Retriever
 # 职责: 启动 Neo4j (GraphRAG) 和 Milvus (VectorRAG) 进行知识检索
 # =================================================================
 async def hybrid_retriever_node(state: DiagnosisState):
     logger.info("Diagnosis Node: Hybrid_Retriever Start")
-    configured_fusion_method = _normalize_fusion_method(getattr(settings, "MULTI_QUERY_FUSION_METHOD", "weighted_rrf"))
-    default_enable_multi_query = bool(getattr(settings, "ENABLE_MULTI_QUERY", False))
-    default_pure_mode = _is_pure_retrieval_mode(state)
     planned_query = state.get("retrieval_query")
     if isinstance(planned_query, str) and planned_query.strip():
         last_user_msg = planned_query.strip()
         query_source = "retrieval_query"
     else:
         last_user_msg, query_source = _extract_retrieval_query(state)
-    router_adapter = RetrievalRouterAdapter(enabled=bool(getattr(settings, "ENABLE_RETRIEVAL_ROUTER_ADAPTER", False)))
-    route_plan = router_adapter.resolve(
-        state=state if isinstance(state, dict) else {},
+    route_plan = _resolve_route_plan(
+        state=state,
         fallback_query=last_user_msg,
         query_source=query_source,
-        default_top_k=3,
-        default_index_scope="paragraph",
-        default_fusion_method=configured_fusion_method,
-        default_enable_multi_query=default_enable_multi_query,
-        default_pure_mode=default_pure_mode,
-        disable_intent_router_when_pure=bool(getattr(settings, "RAG_DISABLE_INTENT_ROUTER_WHEN_PURE", True)),
     )
+
+    configured_fusion_method = _normalize_fusion_method(getattr(settings, "MULTI_QUERY_FUSION_METHOD", "weighted_rrf"))
     pure_mode = bool(route_plan.get("pure_mode"))
     last_user_msg = str(route_plan.get("query") or "").strip()
     query_source = str(route_plan.get("query_source") or query_source or "none")
@@ -631,6 +912,7 @@ async def hybrid_retriever_node(state: DiagnosisState):
     enable_multi_query = bool(route_plan.get("enable_multi_query"))
     route_mode = str(route_plan.get("route_mode") or ("pure" if pure_mode else "single_query"))
     source_priority = route_plan.get("source_priority") if isinstance(route_plan.get("source_priority"), list) else _default_source_priority()
+    skip_intent_router = bool(route_plan.get("skip_intent_router"))
     selected_fusion_method = _normalize_fusion_method(
         route_plan.get("fusion_method"),
         default=configured_fusion_method,
@@ -723,6 +1005,7 @@ async def hybrid_retriever_node(state: DiagnosisState):
             index_scope=index_scope,
             use_rerank=use_rerank if isinstance(use_rerank, bool) else None,
             rerank_threshold=float(rerank_threshold) if isinstance(rerank_threshold, (int, float)) else None,
+            skip_intent_router=skip_intent_router,
             pure_mode=pure_mode,
         ),
         timeout_s=timeout_s,
@@ -763,8 +1046,11 @@ async def hybrid_retriever_node(state: DiagnosisState):
             "fusion_method": fusion_method,
             "pure_mode": pure_mode,
             "enable_multi_query": enable_multi_query,
+            "enable_graph_rag": bool(route_plan.get("enable_graph_rag", True)),
             "source_priority": source_priority,
-            "skip_intent_router": bool(route_plan.get("skip_intent_router")),
+            "skip_intent_router": skip_intent_router,
+            "use_rerank": use_rerank if isinstance(use_rerank, bool) else None,
+            "rerank_threshold": float(rerank_threshold) if isinstance(rerank_threshold, (int, float)) else None,
             "route_mode": route_mode,
             "route_source": route_plan.get("route_source"),
             "router_adapter_version": "v1",
@@ -814,6 +1100,40 @@ async def hybrid_retriever_node(state: DiagnosisState):
                 "follow_ups": [],
                 "department_top3": dept_result.get("department_top3"),
             }
+
+    variant_hits_summary: List[Dict[str, Any]] = []
+    for variant, docs in (variant_hits_map or {}).items():
+        if not isinstance(docs, list):
+            continue
+        variant_hits_summary.append(
+            {
+                "query": _query_ref(variant),
+                "hit_count": len(docs),
+                "doc_refs": _safe_doc_refs(docs, max_items=2),
+            }
+        )
+    evidence_refs = _safe_doc_refs(context_pack.get("evidence") if isinstance(context_pack, dict) else [], max_items=8)
+
+    debug_snapshot = _build_debug_snapshot(
+        state=state,
+        node_name="Hybrid_Retriever",
+        node_version="v2",
+        payload={
+            "route_plan": _build_route_snapshot(route_plan),
+            "variant_count": len(variant_texts),
+            "variant_hits_map": variant_hits_summary,
+            "topk_source_ratio": topk_source_ratio,
+            "fusion_method": fusion_method,
+            "pure_mode": pure_mode,
+            "context_pack": {
+                "ordering": context_pack.get("ordering") if isinstance(context_pack, dict) else None,
+                "truncation": context_pack.get("truncation") if isinstance(context_pack, dict) else None,
+                "evidence_refs": evidence_refs,
+            },
+            "tool_trace": [_safe_tool_trace(multi_trace), _safe_tool_trace(trace)],
+        },
+    )
+    output.update(_merge_debug_snapshot(state=state, snapshot=debug_snapshot))
     return output
 
 # =================================================================
@@ -948,37 +1268,180 @@ async def dspy_reasoner_node(state: DiagnosisState):
         logger.error("DSPy Execution Failed", error=str(e))
         return {"loop_count": current_loop, "last_tool_result": {"error": str(e), "confidence": 0.0}}
 
+def _decision_confidence_threshold() -> float:
+    raw = getattr(settings, "DIAGNOSIS_DECISION_CONFIDENCE_THRESHOLD", 0.8)
+    return min(max(_safe_float(raw, default=0.8), 0.0), 1.0)
+
+
+def _decision_grounded_min_evidence() -> int:
+    raw = getattr(settings, "DIAGNOSIS_DECISION_MIN_EVIDENCE", 1)
+    try:
+        return max(1, int(raw))
+    except Exception:
+        return 1
+
+
+def _decision_high_risk_keywords() -> List[str]:
+    raw = str(
+        getattr(
+            settings,
+            "DIAGNOSIS_DECISION_HIGH_RISK_KEYWORDS",
+            "紧急,急性,胸痛,呼吸困难,抽搐,昏迷,休克,high risk,emergency",
+        )
+        or ""
+    )
+    keywords = [item.strip().lower() for item in raw.split(",") if item.strip()]
+    return keywords or ["紧急", "high risk", "emergency"]
+
+
+def _decision_has_conflict(payload: Dict[str, Any]) -> bool:
+    reasoning = str(payload.get("reasoning") or "").lower()
+    diagnosis = str(payload.get("diagnosis") or "").lower()
+    if not reasoning and not diagnosis:
+        return False
+    conflict_markers = ["矛盾", "冲突", "conflict", "inconsistent", "不一致"]
+    text = f"{diagnosis}\n{reasoning}"
+    return any(marker in text for marker in conflict_markers)
+
+
+def _decision_is_high_risk(payload: Dict[str, Any]) -> bool:
+    text = f"{payload.get('diagnosis', '')}\n{payload.get('reasoning', '')}".lower()
+    return any(keyword in text for keyword in _decision_high_risk_keywords())
+
+
+def _build_decision_contract(*, state: DiagnosisState, payload: Dict[str, Any]) -> Dict[str, Any]:
+    confidence_score = _safe_float(payload.get("confidence"), default=0.0)
+    evidence = []
+    context_pack = state.get("context_pack")
+    if isinstance(context_pack, dict):
+        evidence = context_pack.get("evidence") if isinstance(context_pack.get("evidence"), list) else []
+
+    evidence_refs = _safe_doc_refs(evidence, max_items=4)
+    grounded_flag = len(evidence_refs) >= _decision_grounded_min_evidence() and confidence_score >= 0.4
+
+    if _decision_is_high_risk(payload):
+        decision_action = "human_review"
+        decision_reason = "high_risk"
+    elif len(evidence_refs) < _decision_grounded_min_evidence():
+        decision_action = "retrieve_more"
+        decision_reason = "insufficient_evidence"
+    elif _decision_has_conflict(payload):
+        decision_action = "clarify"
+        decision_reason = "conflicting_evidence"
+    elif confidence_score < _decision_confidence_threshold():
+        decision_action = "clarify"
+        decision_reason = "low_confidence"
+    else:
+        decision_action = "end_diagnosis"
+        decision_reason = "sufficient_evidence"
+
+    return {
+        "decision_action": decision_action,
+        "decision_reason": decision_reason,
+        "confidence_score": confidence_score,
+        "grounded_flag": bool(grounded_flag),
+        "evidence_refs": evidence_refs,
+    }
+
+
 # =================================================================
-# Node 4: Confidence_Evaluator
-# 职责: 判断推理结果是否可靠（>0.8）
+# Node 4: Decision_Judge
+# 职责: 统一置信裁决治理（Evidence/Risk/Action）
+# =================================================================
+async def decision_judge_node(state: DiagnosisState):
+    logger.info("Diagnosis Node: Decision_Judge Start")
+    payload = state.get("last_tool_result")
+    payload = dict(payload) if isinstance(payload, dict) else {}
+    decision = _build_decision_contract(state=state, payload=payload)
+    payload.update({k: decision[k] for k in ("decision_action", "decision_reason", "confidence_score", "grounded_flag")})
+
+    logger.info(
+        "diagnosis_decision_judged",
+        action=decision.get("decision_action"),
+        reason=decision.get("decision_reason"),
+        confidence_score=decision.get("confidence_score"),
+        grounded_flag=decision.get("grounded_flag"),
+    )
+
+    output = {
+        "last_tool_result": payload,
+        "decision_action": decision.get("decision_action"),
+        "decision_reason": decision.get("decision_reason"),
+        "confidence_score": decision.get("confidence_score"),
+        "grounded_flag": decision.get("grounded_flag"),
+    }
+    debug_snapshot = _build_debug_snapshot(
+        state=state,
+        node_name="Decision_Judge",
+        node_version="v1",
+        payload={
+            "decision_action": decision.get("decision_action"),
+            "decision_reason": decision.get("decision_reason"),
+            "confidence_score": decision.get("confidence_score"),
+            "grounded_flag": decision.get("grounded_flag"),
+            "evidence_refs": decision.get("evidence_refs"),
+            "diagnosis": _query_ref(payload.get("diagnosis")),
+            "reasoning": _query_ref(payload.get("reasoning")),
+        },
+    )
+    output.update(_merge_debug_snapshot(state=state, snapshot=debug_snapshot))
+    return output
+
+
+# =================================================================
+# Node 5: Confidence_Evaluator
+# 职责: 将裁决动作映射到子图分支
 # =================================================================
 async def confidence_evaluator_node(state: DiagnosisState) -> Literal["end_diagnosis", "clarify_question"]:
     logger.info("Diagnosis Node: Confidence_Evaluator Start")
-    
+
     payload = state.get("last_tool_result", {})
-    confidence = payload.get("confidence", 0.0)
-    diagnosis_str = payload.get("diagnosis", "")
-    
-    # [Fix Over-Safety] 即使是紧急情况，也允许完成诊断流程（提供初步判断），而不是提前跳出
-    # 如果置信度极低，才进行追问。
-    
-    # 强制置信度阈值 0.8
-    THRESHOLD = 0.8
-    
-    if confidence > THRESHOLD:
+    action = state.get("decision_action")
+    if not isinstance(action, str) or not action.strip():
+        if isinstance(payload, dict):
+            action = str(payload.get("decision_action") or "").strip()
+        else:
+            action = ""
+
+    if action in {"end_diagnosis", "human_review", "reject"}:
+        return "end_diagnosis"
+    if action in {"retrieve_more", "clarify"}:
+        return "clarify_question"
+
+    confidence = _safe_float(payload.get("confidence"), default=0.0) if isinstance(payload, dict) else 0.0
+    diagnosis_str = str(payload.get("diagnosis") or "") if isinstance(payload, dict) else ""
+    if confidence > _decision_confidence_threshold():
         logger.info("diagnosis_confirmed", confidence=confidence, diagnosis=diagnosis_str)
         return "end_diagnosis"
-    elif "紧急" in diagnosis_str or "Emergency" in diagnosis_str:
-         # 如果 DSPy 已经识别出紧急情况，即使置信度不高，也应尽快结束并报警，而不是反复追问
-         logger.warning("emergency_detected_in_diagnosis", diagnosis=diagnosis_str)
-         return "end_diagnosis"
-    else:
-        logger.info("diagnosis_uncertain_clarify", confidence=confidence)
-        return "clarify_question"
+    if "紧急" in diagnosis_str or "Emergency" in diagnosis_str:
+        logger.warning("emergency_detected_in_diagnosis", diagnosis=diagnosis_str)
+        return "end_diagnosis"
+    logger.info("diagnosis_uncertain_clarify", confidence=confidence)
+    return "clarify_question"
 
 # =================================================================
 # Helper Nodes for Outputs
 # =================================================================
+def _decision_fields_from_state(state: DiagnosisState, *, fallback_confidence: float = 0.0) -> Dict[str, Any]:
+    payload = state.get("last_tool_result") if isinstance(state.get("last_tool_result"), dict) else {}
+    action = str(state.get("decision_action") or payload.get("decision_action") or "").strip()
+    reason = str(state.get("decision_reason") or payload.get("decision_reason") or "").strip()
+    confidence_score = _safe_float(
+        state.get("confidence_score") if state.get("confidence_score") is not None else payload.get("confidence_score"),
+        default=fallback_confidence,
+    )
+    grounded_flag_raw = state.get("grounded_flag")
+    if grounded_flag_raw is None:
+        grounded_flag_raw = payload.get("grounded_flag")
+    grounded_flag = bool(grounded_flag_raw) if isinstance(grounded_flag_raw, bool) else None
+    return {
+        "decision_action": action or None,
+        "decision_reason": reason or None,
+        "confidence_score": confidence_score,
+        "grounded_flag": grounded_flag,
+    }
+
+
 async def generate_report_node(state: DiagnosisState):
     citations = _citations_from_context_pack(state, max_items=5)
 
@@ -1007,6 +1470,7 @@ async def generate_report_node(state: DiagnosisState):
                 "confidence": conf,
                 "messages": [AIMessage(content=report)],
             }
+            output.update(_decision_fields_from_state(state, fallback_confidence=conf))
             diagnosis_output = _build_diagnosis_output(
                 department_top1=top1,
                 department_top3=top3,
@@ -1042,6 +1506,7 @@ async def generate_report_node(state: DiagnosisState):
                 "confidence": conf,
                 "messages": [AIMessage(content=report)],
             }
+            output.update(_decision_fields_from_state(state, fallback_confidence=conf))
             diagnosis_output = _build_diagnosis_output(
                 department_top1=top1,
                 department_top3=[str(item) for item in top3],
@@ -1078,6 +1543,7 @@ async def generate_report_node(state: DiagnosisState):
         "intent": intent_update, # Update intent to trigger router
         "messages": [AIMessage(content=report)]
     }
+    output.update(_decision_fields_from_state(state, fallback_confidence=confidence))
     if dept_result:
         output.update(
             {
@@ -1107,6 +1573,7 @@ async def generate_question_node(state: DiagnosisState):
     payload = state.get("last_tool_result", {})
     follow_ups = payload.get("follow_ups", [])
     confidence = payload.get("confidence", 0.0)
+    decision_reason = str(state.get("decision_reason") or payload.get("decision_reason") or "").strip()
     
     question = ""
     if follow_ups:
@@ -1118,7 +1585,8 @@ async def generate_question_node(state: DiagnosisState):
     if not question:
          question = "请您详细描述一下您的主要症状，包括发病时间、持续时间以及是否有其他伴随不适？"
          
-    msg = f"基于目前信息，我尚不能完全确定诊断（置信度 {confidence:.2f}）。\n建议补充：{question}"
+    reason_text = f"（原因：{decision_reason}）" if decision_reason else ""
+    msg = f"基于目前信息，我尚不能完全确定诊断（置信度 {confidence:.2f}）{reason_text}。\n建议补充：{question}"
     
     return {
         "messages": [AIMessage(content=msg)]
@@ -1150,6 +1618,7 @@ def build_diagnosis_graph():
     workflow.add_node("Quick_Triage", quick_triage_node)
     workflow.add_node("Hybrid_Retriever", hybrid_retriever_node)
     workflow.add_node("DSPy_Reasoner", dspy_reasoner_node)
+    workflow.add_node("Decision_Judge", decision_judge_node)
     
     # 动作节点
     workflow.add_node("Diagnosis_Report", generate_report_node)
@@ -1177,8 +1646,9 @@ def build_diagnosis_graph():
     )
     
     # 条件边
+    workflow.add_edge("DSPy_Reasoner", "Decision_Judge")
     workflow.add_conditional_edges(
-        "DSPy_Reasoner",
+        "Decision_Judge",
         confidence_evaluator_node,
         {
             "end_diagnosis": "Diagnosis_Report",

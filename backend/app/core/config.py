@@ -228,6 +228,18 @@ class Settings(BaseSettings):
     CONTEXT_MAX_CHARS: int = int(os.getenv("CONTEXT_MAX_CHARS", "3200"))
     ENABLE_JSON_SCHEMA_GUARDRAIL: bool = os.getenv("ENABLE_JSON_SCHEMA_GUARDRAIL", "false").lower() == "true"
     DIAGNOSIS_SCHEMA_VERSION: str = os.getenv("DIAGNOSIS_SCHEMA_VERSION", "v1")
+    ENABLE_DEBUG_SNAPSHOT: bool = os.getenv("ENABLE_DEBUG_SNAPSHOT", "false").lower() == "true"
+    DEBUG_INCLUDE_NODES: str = os.getenv("DEBUG_INCLUDE_NODES", "")
+    DIAGNOSIS_GRAPH_VERSION: str = os.getenv("DIAGNOSIS_GRAPH_VERSION", VERSION)
+    DIAGNOSIS_DATA_CONTRACT_VERSION: str = os.getenv("DIAGNOSIS_DATA_CONTRACT_VERSION", "v1")
+    DIAGNOSIS_DECISION_CONFIDENCE_THRESHOLD: float = float(
+        os.getenv("DIAGNOSIS_DECISION_CONFIDENCE_THRESHOLD", "0.8")
+    )
+    DIAGNOSIS_DECISION_MIN_EVIDENCE: int = int(os.getenv("DIAGNOSIS_DECISION_MIN_EVIDENCE", "1"))
+    DIAGNOSIS_DECISION_HIGH_RISK_KEYWORDS: str = os.getenv(
+        "DIAGNOSIS_DECISION_HIGH_RISK_KEYWORDS",
+        "紧急,急性,胸痛,呼吸困难,抽搐,昏迷,休克,high risk,emergency",
+    )
 
     ENABLE_ADAPTIVE_RETRIEVAL_K: bool = os.getenv("ENABLE_ADAPTIVE_RETRIEVAL_K", "false").lower() == "true"
     ADAPTIVE_RETRIEVAL_K_MIN: int = int(os.getenv("ADAPTIVE_RETRIEVAL_K_MIN", "2"))
