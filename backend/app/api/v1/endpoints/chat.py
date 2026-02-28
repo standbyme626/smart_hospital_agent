@@ -3,7 +3,7 @@ import json
 import logging
 import time
 import uuid
-from typing import Any, AsyncGenerator, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
@@ -36,12 +36,85 @@ class ChatRequest(BaseModel):
     rag: Optional[RagTuningRequest] = None
     request_id: Optional[str] = None
     debug_include_nodes: Optional[list[str]] = None
+    rewrite_timeout: Optional[float] = Field(default=None, ge=1.0, le=10.0)
+    crisis_fastlane: Optional[bool] = None
 
 
 def _dump_model(model: BaseModel) -> dict:
     if hasattr(model, "model_dump"):
         return model.model_dump(exclude_none=True)  # type: ignore[attr-defined]
     return model.dict(exclude_none=True)
+
+
+def _parse_debug_include_nodes(raw: Any) -> List[str]:
+    if isinstance(raw, list):
+        items = [str(item).strip() for item in raw if str(item or "").strip()]
+        return list(dict.fromkeys(items))
+    if isinstance(raw, str):
+        items = [item.strip() for item in raw.split(",") if item.strip()]
+        return list(dict.fromkeys(items))
+    return []
+
+
+def _default_debug_include_nodes() -> List[str]:
+    return _parse_debug_include_nodes(getattr(settings, "DEBUG_INCLUDE_NODES", ""))
+
+
+def _resolve_rewrite_timeout_s(override: Any = None) -> float:
+    raw = override if isinstance(override, (int, float)) else getattr(settings, "QUERY_REWRITE_TIMEOUT_SECONDS", 4.0)
+    try:
+        timeout_s = float(raw)
+    except Exception:
+        timeout_s = 4.0
+    return min(max(timeout_s, 1.0), 10.0)
+
+
+def _resolve_runtime_config(
+    *,
+    rag_options: Dict[str, Any],
+    debug_include_nodes: Any,
+    rewrite_timeout: Any,
+    crisis_fastlane: Any,
+) -> Dict[str, Dict[str, Any]]:
+    requested: Dict[str, Any] = {}
+    effective: Dict[str, Any] = {}
+
+    requested_nodes = _parse_debug_include_nodes(debug_include_nodes)
+    effective_nodes = requested_nodes or _default_debug_include_nodes()
+    requested["debug_include_nodes"] = requested_nodes
+    effective["debug_include_nodes"] = effective_nodes
+
+    requested_top_k = rag_options.get("top_k")
+    if isinstance(requested_top_k, (int, float)):
+        requested["top_k"] = int(requested_top_k)
+        effective["top_k"] = max(1, min(10, int(requested_top_k)))
+    else:
+        requested["top_k"] = None
+        effective["top_k"] = 3
+
+    requested_rerank_threshold = rag_options.get("rerank_threshold")
+    if isinstance(requested_rerank_threshold, (int, float)):
+        requested["rerank_threshold"] = float(requested_rerank_threshold)
+        effective["rerank_threshold"] = max(0.0, min(1.0, float(requested_rerank_threshold)))
+    else:
+        requested["rerank_threshold"] = None
+        effective["rerank_threshold"] = None
+
+    requested["rewrite_timeout_s"] = float(rewrite_timeout) if isinstance(rewrite_timeout, (int, float)) else None
+    effective["rewrite_timeout_s"] = _resolve_rewrite_timeout_s(rewrite_timeout)
+
+    if isinstance(crisis_fastlane, bool):
+        requested_fastlane = crisis_fastlane
+    else:
+        requested_fastlane = None
+    requested["crisis_fastlane"] = requested_fastlane
+    effective["crisis_fastlane"] = (
+        requested_fastlane
+        if isinstance(requested_fastlane, bool)
+        else bool(getattr(settings, "CRISIS_FASTLANE_ENABLED", True))
+    )
+
+    return {"requested": requested, "effective": effective}
 
 # Nodes that should never stream model tokens to user.
 EXCLUDED_STREAM_NODES = {
@@ -377,6 +450,8 @@ async def event_generator(
     rag_options: Optional[dict] = None,
     request_id: Optional[str] = None,
     debug_include_nodes: Optional[list[str]] = None,
+    rewrite_timeout: Optional[float] = None,
+    crisis_fastlane: Optional[bool] = None,
 ) -> AsyncGenerator[str, None]:
     """
     SSE Generator using astream_events (v2) for real-time token streaming.
@@ -392,6 +467,17 @@ async def event_generator(
     top_k_override = rag_options.get("top_k")
     use_rerank = rag_options.get("use_rerank")
     rerank_threshold = rag_options.get("rerank_threshold")
+    runtime_config = _resolve_runtime_config(
+        rag_options=rag_options,
+        debug_include_nodes=debug_include_nodes,
+        rewrite_timeout=rewrite_timeout,
+        crisis_fastlane=crisis_fastlane,
+    )
+    runtime_requested = runtime_config["requested"]
+    runtime_effective = runtime_config["effective"]
+    resolved_debug_nodes = runtime_effective.get("debug_include_nodes")
+    if not isinstance(resolved_debug_nodes, list):
+        resolved_debug_nodes = []
 
     inputs = {
         "symptoms": message,
@@ -399,10 +485,14 @@ async def event_generator(
         "current_turn_input": message,    # 本轮输入（防止读到上一轮 AI）
         "retrieval_query": message,       # 统一检索入口字段
         "request_id": resolved_request_id,
-        "debug_include_nodes": debug_include_nodes if isinstance(debug_include_nodes, list) else None,
-        "retrieval_top_k_override": top_k_override if isinstance(top_k_override, int) else None,
+        "debug_include_nodes": resolved_debug_nodes,
+        "retrieval_top_k_override": int(top_k_override) if isinstance(top_k_override, (int, float)) else None,
         "retrieval_use_rerank": use_rerank if isinstance(use_rerank, bool) else None,
         "retrieval_rerank_threshold": float(rerank_threshold) if isinstance(rerank_threshold, (int, float)) else None,
+        "query_rewrite_timeout_override_s": runtime_effective.get("rewrite_timeout_s"),
+        "crisis_fastlane_override": runtime_effective.get("crisis_fastlane"),
+        "runtime_config_requested": runtime_requested,
+        "runtime_config_effective": runtime_effective,
         "event": {
             "event_type": "SYMPTOM_DESCRIPTION",
             "payload": {"session_id": session_id, "request_id": resolved_request_id},
@@ -442,6 +532,7 @@ async def event_generator(
     stream_started = time.perf_counter()
     first_event_ms: int | None = None
     first_token_ms: int | None = None
+    runtime_config_final = dict(runtime_effective)
     cancelled = False
 
     def emit(
@@ -482,6 +573,8 @@ async def event_generator(
             "entry": "chat_stream",
             "request_id": resolved_request_id,
             "message_len": len(str(message or "")),
+            "runtime_config_requested": runtime_requested,
+            "runtime_config_effective": runtime_effective,
         },
     )
 
@@ -489,7 +582,12 @@ async def event_generator(
         "status",
         "stream_opened",
         node="chat_stream",
-        meta={"phase": "opened", "metrics": {"t_connect_ms": 0}},
+        meta={
+            "phase": "opened",
+            "metrics": {"t_connect_ms": 0},
+            "runtime_config_requested": runtime_requested,
+            "runtime_config_effective": runtime_effective,
+        },
         stage="route",
     )
 
@@ -562,11 +660,26 @@ async def event_generator(
                         rewrite_fallback = bool(retrieval_plan.get("rewrite_fallback"))
                         fallback_reason = str(retrieval_plan.get("rewrite_fallback_reason") or "").strip()
                         crisis_fastlane = bool(retrieval_plan.get("crisis_fastlane"))
+                        effective_runtime_config = retrieval_plan.get("effective_runtime_config")
+                        if isinstance(effective_runtime_config, dict):
+                            runtime_config_final = dict(effective_runtime_config)
+                            yield emit(
+                                "status",
+                                "runtime_config_applied",
+                                node=node_name,
+                                meta={"runtime_config_effective": runtime_config_final},
+                                stage="rewrite",
+                            )
+                            langfuse_bridge.annotate_trace(
+                                resolved_request_id,
+                                metadata={"runtime_config_effective": runtime_config_final},
+                            )
                         if rewrite_fallback or crisis_fastlane:
                             rewrite_meta = {
                                 "rewrite_fallback": rewrite_fallback,
                                 "fallback_reason": fallback_reason or "",
                                 "crisis_fastlane": crisis_fastlane,
+                                "runtime_config_effective": runtime_config_final,
                             }
                             yield emit(
                                 "status",
@@ -656,14 +769,23 @@ async def event_generator(
             "emitted_status_count": emitted_status_count,
             "cancelled": cancelled,
         }
-        langfuse_bridge.annotate_trace(resolved_request_id, metadata={"sse_metrics": metrics})
+        langfuse_bridge.annotate_trace(
+            resolved_request_id,
+            metadata={
+                "sse_metrics": metrics,
+                "runtime_config_effective": runtime_config_final,
+            },
+        )
         langfuse_bridge.finish_trace(
             request_id=resolved_request_id,
             output={
                 "token_count": emitted_token_count,
                 "cancelled": cancelled,
             },
-            metadata={"sse_metrics": metrics},
+            metadata={
+                "sse_metrics": metrics,
+                "runtime_config_effective": runtime_config_final,
+            },
         )
 
         if not cancelled:
@@ -679,7 +801,11 @@ async def event_generator(
                 "status",
                 "stream_closed",
                 node="chat_stream",
-                meta={"phase": "closed", "metrics": metrics},
+                meta={
+                    "phase": "closed",
+                    "metrics": metrics,
+                    "runtime_config_effective": runtime_config_final,
+                },
                 stage="route",
             )
             yield "data: [DONE]\n\n"
@@ -704,6 +830,8 @@ async def stream_chat(payload: ChatRequest, request: Request):
             _dump_model(payload.rag) if payload.rag else None,
             resolved_request_id,
             payload.debug_include_nodes,
+            payload.rewrite_timeout,
+            payload.crisis_fastlane,
         ),
         media_type="text/event-stream",
         headers={

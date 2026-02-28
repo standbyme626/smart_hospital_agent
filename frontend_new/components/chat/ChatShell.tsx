@@ -5,6 +5,7 @@ import Link from "next/link";
 
 import { Composer } from "@/components/chat/Composer";
 import { MessageList } from "@/components/chat/MessageList";
+import { loadRuntimeSettings, type RuntimeSettings } from "@/lib/runtime-settings";
 import { streamChat } from "@/lib/stream";
 import type { BookingPayload, ChatMessage, SlotItem } from "@/lib/types";
 
@@ -25,6 +26,15 @@ interface BookingFlowState {
   waitingPay: boolean;
   error: string;
   details: Record<string, unknown> | null;
+}
+
+interface EffectiveRuntimeConfig {
+  debug_include_nodes?: string[];
+  top_k?: number;
+  rerank_threshold?: number | null;
+  rewrite_timeout_s?: number;
+  crisis_fastlane?: boolean;
+  rewrite_tier?: string;
 }
 
 const BOOT_TEXT = "你好，我是智慧医院助理。请描述症状，或先查询号源后预约挂号。";
@@ -115,6 +125,8 @@ export function ChatShell() {
   const [autoFollow, setAutoFollow] = useState(true);
   const [clock, setClock] = useState(0);
   const [lastTurnMs, setLastTurnMs] = useState(0);
+  const [runtimeSettings, setRuntimeSettings] = useState<RuntimeSettings>(loadRuntimeSettings);
+  const [effectiveRuntimeConfig, setEffectiveRuntimeConfig] = useState<EffectiveRuntimeConfig | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
   const listRef = useRef<HTMLElement>(null);
@@ -129,6 +141,16 @@ export function ChatShell() {
     const timer = window.setInterval(() => setClock(Date.now()), 500);
     return () => {
       window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    const onStorage = () => {
+      setRuntimeSettings(loadRuntimeSettings());
+    };
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("storage", onStorage);
     };
   }, []);
 
@@ -266,6 +288,7 @@ export function ChatShell() {
       await streamChat({
         message: content,
         sessionId: activeSessionId,
+        runtimeSettings,
         signal: controller.signal,
         onEvent: (event) => {
           if (event.type === "thought") {
@@ -300,6 +323,16 @@ export function ChatShell() {
           if (event.type === "status") {
             const text = event.content || "状态更新";
             setStatus(text);
+            const effective = event.meta?.runtime_config_effective as EffectiveRuntimeConfig | undefined;
+            if (effective && typeof effective === "object") {
+              setEffectiveRuntimeConfig(effective);
+              appendTrace(
+                `effective config: top_k=${String(effective.top_k ?? "-")}, timeout=${String(
+                  effective.rewrite_timeout_s ?? "-",
+                )}s, fastlane=${String(effective.crisis_fastlane ?? "-")}`,
+                "info",
+              );
+            }
             const rewriteFallback = Boolean(event.meta?.rewrite_fallback);
             if (rewriteFallback) {
               appendTrace(`rewrite fallback: ${String(event.meta?.fallback_reason || "unknown")}`, "info");
@@ -443,6 +476,9 @@ export function ChatShell() {
           <Link className="nav-btn rag-link" href="/rag">
             RAG 医学文档检索
           </Link>
+          <Link className="nav-btn" href="/settings">
+            运行参数设置
+          </Link>
 
           <div className="side-card">
             <h3>系统状态</h3>
@@ -450,6 +486,10 @@ export function ChatShell() {
             <p>Frontend: 3000</p>
             <p>协议: SSE 流式</p>
             <p>总耗时: {formatDuration(totalMs)}</p>
+            <p>top_k: {runtimeSettings.topK}</p>
+            <p>rerank_threshold: {runtimeSettings.rerankThreshold}</p>
+            <p>rewrite_timeout: {runtimeSettings.rewriteTimeout}s</p>
+            <p>crisis_fastlane: {String(runtimeSettings.crisisFastlane)}</p>
           </div>
         </aside>
 
@@ -471,6 +511,16 @@ export function ChatShell() {
           <h2>运行过程</h2>
           <p>会话耗时: {formatDuration(totalMs)}</p>
           <p>本轮耗时: {pending ? formatDuration(activeTurnMs) : formatDuration(lastTurnMs)}</p>
+          {effectiveRuntimeConfig ? (
+            <div className="side-card">
+              <h3>最终生效配置</h3>
+              <p>top_k: {String(effectiveRuntimeConfig.top_k ?? "-")}</p>
+              <p>rerank_threshold: {String(effectiveRuntimeConfig.rerank_threshold ?? "-")}</p>
+              <p>rewrite_timeout_s: {String(effectiveRuntimeConfig.rewrite_timeout_s ?? "-")}</p>
+              <p>crisis_fastlane: {String(effectiveRuntimeConfig.crisis_fastlane ?? "-")}</p>
+              <p>rewrite_tier: {String(effectiveRuntimeConfig.rewrite_tier ?? "-")}</p>
+            </div>
+          ) : null}
           <div className="trace-list" aria-live="polite">
             {trace.length === 0 ? <p className="trace-empty">等待请求...</p> : null}
             {trace.map((item) => (

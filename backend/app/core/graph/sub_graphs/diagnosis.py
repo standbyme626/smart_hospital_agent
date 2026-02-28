@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import threading
 import time
 import uuid
 from typing import Literal, Dict, Any, List, Optional, Sequence
@@ -35,6 +36,10 @@ logger = structlog.get_logger(__name__)
 medical_consultant = MedicalConsultant()
 
 from app.core.services.config_manager import config_manager
+
+_REWRITE_CACHE_LOCK = threading.RLock()
+_REWRITE_CACHE: Dict[str, Dict[str, Any]] = {}
+_REWRITE_CACHE_STATS: Dict[str, int] = {"hits": 0, "misses": 0, "writes": 0, "evictions": 0}
 
 # =================================================================
 # Node 1: State_Sync
@@ -200,14 +205,140 @@ def _query_rewrite_timeout_s() -> float:
     return min(max(timeout_s, 1.0), 10.0)
 
 
+def _resolve_query_rewrite_timeout_s(state: Dict[str, Any] | None = None) -> float:
+    if isinstance(state, dict):
+        override = state.get("query_rewrite_timeout_override_s")
+        if isinstance(override, (int, float)):
+            try:
+                timeout_s = float(override)
+            except Exception:
+                timeout_s = _query_rewrite_timeout_s()
+            else:
+                return min(max(timeout_s, 1.0), 10.0)
+    return _query_rewrite_timeout_s()
+
+
+def _resolve_crisis_fastlane_enabled(state: Dict[str, Any] | None = None) -> bool:
+    if isinstance(state, dict):
+        override = state.get("crisis_fastlane_override")
+        if isinstance(override, bool):
+            return override
+    return bool(getattr(settings, "CRISIS_FASTLANE_ENABLED", True))
+
+
 def _is_crisis_fastlane(state: Dict[str, Any] | None = None) -> bool:
-    if not bool(getattr(settings, "CRISIS_FASTLANE_ENABLED", True)):
+    if not _resolve_crisis_fastlane_enabled(state):
         return False
     if not isinstance(state, dict):
         return False
     status = str(state.get("status") or "").strip().lower()
     intent = str(state.get("intent") or "").strip().upper()
     return status == "crisis" or intent == "CRISIS"
+
+
+def _high_risk_keywords() -> List[str]:
+    raw = str(getattr(settings, "DIAGNOSIS_DECISION_HIGH_RISK_KEYWORDS", "") or "").strip()
+    if not raw:
+        return []
+    return [item.strip().lower() for item in raw.split(",") if item.strip()]
+
+
+def _is_high_risk_query(query: str) -> bool:
+    text = str(query or "").strip().lower()
+    if not text:
+        return False
+    for keyword in _high_risk_keywords():
+        if keyword and keyword in text:
+            return True
+    return False
+
+
+def _rule_rewrite_query(query: str) -> str:
+    text = " ".join(str(query or "").strip().split())
+    return text or str(query or "").strip()
+
+
+def _rewrite_cache_enabled() -> bool:
+    return bool(getattr(settings, "ENABLE_QUERY_REWRITE_CACHE", True))
+
+
+def _rewrite_cache_ttl_s() -> int:
+    raw = getattr(settings, "QUERY_REWRITE_CACHE_TTL_SECONDS", 900)
+    try:
+        ttl = int(raw)
+    except Exception:
+        ttl = 900
+    return min(max(ttl, 30), 86400)
+
+
+def _rewrite_cache_max_entries() -> int:
+    raw = getattr(settings, "QUERY_REWRITE_CACHE_MAX_ENTRIES", 512)
+    try:
+        count = int(raw)
+    except Exception:
+        count = 512
+    return min(max(count, 32), 4096)
+
+
+def _rewrite_cache_key(*, query: str, intent: str) -> str:
+    basis = f"{str(intent or '').strip().upper()}|{str(query or '').strip()}"
+    return hashlib.sha256(basis.encode("utf-8")).hexdigest()
+
+
+def _rewrite_cache_get(key: str) -> Optional[Dict[str, Any]]:
+    now = time.time()
+    with _REWRITE_CACHE_LOCK:
+        expired_keys: List[str] = []
+        for cache_key, entry in _REWRITE_CACHE.items():
+            if float(entry.get("expires_at") or 0.0) <= now:
+                expired_keys.append(cache_key)
+        for cache_key in expired_keys:
+            _REWRITE_CACHE.pop(cache_key, None)
+        if expired_keys:
+            _REWRITE_CACHE_STATS["evictions"] = int(_REWRITE_CACHE_STATS.get("evictions", 0)) + len(expired_keys)
+
+        entry = _REWRITE_CACHE.get(key)
+        if not isinstance(entry, dict):
+            _REWRITE_CACHE_STATS["misses"] = int(_REWRITE_CACHE_STATS.get("misses", 0)) + 1
+            return None
+        payload = entry.get("payload")
+        if not isinstance(payload, dict):
+            _REWRITE_CACHE_STATS["misses"] = int(_REWRITE_CACHE_STATS.get("misses", 0)) + 1
+            return None
+        entry["hits"] = int(entry.get("hits", 0)) + 1
+        _REWRITE_CACHE_STATS["hits"] = int(_REWRITE_CACHE_STATS.get("hits", 0)) + 1
+        return dict(payload)
+
+
+def _rewrite_cache_set(key: str, payload: Dict[str, Any], *, ttl_s: int) -> None:
+    if not isinstance(payload, dict) or not key:
+        return
+    now = time.time()
+    with _REWRITE_CACHE_LOCK:
+        if len(_REWRITE_CACHE) >= _rewrite_cache_max_entries():
+            oldest_key = min(_REWRITE_CACHE.items(), key=lambda item: float(item[1].get("created_at") or now))[0]
+            _REWRITE_CACHE.pop(oldest_key, None)
+            _REWRITE_CACHE_STATS["evictions"] = int(_REWRITE_CACHE_STATS.get("evictions", 0)) + 1
+        _REWRITE_CACHE[key] = {
+            "created_at": now,
+            "expires_at": now + max(1, int(ttl_s)),
+            "hits": 0,
+            "payload": dict(payload),
+        }
+        _REWRITE_CACHE_STATS["writes"] = int(_REWRITE_CACHE_STATS.get("writes", 0)) + 1
+
+
+def _rewrite_cache_snapshot() -> Dict[str, Any]:
+    with _REWRITE_CACHE_LOCK:
+        return {
+            "enabled": _rewrite_cache_enabled(),
+            "size": len(_REWRITE_CACHE),
+            "hits": int(_REWRITE_CACHE_STATS.get("hits", 0)),
+            "misses": int(_REWRITE_CACHE_STATS.get("misses", 0)),
+            "writes": int(_REWRITE_CACHE_STATS.get("writes", 0)),
+            "evictions": int(_REWRITE_CACHE_STATS.get("evictions", 0)),
+            "ttl_s": _rewrite_cache_ttl_s(),
+        }
 
 
 def _is_pure_retrieval_mode(state: Dict[str, Any] | None = None) -> bool:
@@ -271,6 +402,27 @@ def _resolve_debug_include_nodes(state: Dict[str, Any] | None = None) -> List[st
         if state_nodes:
             return state_nodes
     return _parse_debug_include_nodes(getattr(settings, "DEBUG_INCLUDE_NODES", ""))
+
+
+def _runtime_config_effective(
+    *,
+    state: Dict[str, Any] | None,
+    top_k: int,
+    rerank_threshold: Optional[float],
+    rewrite_timeout_s: float,
+    crisis_fastlane: bool,
+    rewrite_tier: str,
+    rewrite_cache_hit: bool,
+) -> Dict[str, Any]:
+    return {
+        "debug_include_nodes": _resolve_debug_include_nodes(state),
+        "top_k": max(1, min(10, int(top_k))),
+        "rerank_threshold": float(rerank_threshold) if isinstance(rerank_threshold, (int, float)) else None,
+        "rewrite_timeout_s": round(float(rewrite_timeout_s), 3),
+        "crisis_fastlane": bool(crisis_fastlane),
+        "rewrite_tier": str(rewrite_tier or ""),
+        "rewrite_cache_hit": bool(rewrite_cache_hit),
+    }
 
 
 def _resolve_request_id(state: Dict[str, Any] | None = None) -> str:
@@ -719,15 +871,17 @@ async def query_rewrite_node(state: DiagnosisState):
         logger.warning("query_rewrite_no_query_found", available_keys=list(state.keys()))
         return {}
 
+    state_dict = state if isinstance(state, dict) else {}
     request_id = _resolve_request_id(state if isinstance(state, dict) else None)
     node_started_at = time.perf_counter()
+    rewrite_timeout_s = _resolve_query_rewrite_timeout_s(state_dict)
     span_id = langfuse_bridge.start_span(
         request_id=request_id,
         name="Query_Rewrite",
         metadata={
             "query": _query_ref(query),
             "query_source": source,
-            "timeout_config_s": _query_rewrite_timeout_s(),
+            "timeout_config_s": rewrite_timeout_s,
         },
         input_data={"query": _query_ref(query)},
     )
@@ -741,7 +895,7 @@ async def query_rewrite_node(state: DiagnosisState):
     default_enable_multi_query = bool(getattr(settings, "ENABLE_MULTI_QUERY", False))
     rewrite_fallback = False
     rewrite_fallback_reason = ""
-    crisis_fastlane = _is_crisis_fastlane(state if isinstance(state, dict) else None)
+    crisis_fastlane = _is_crisis_fastlane(state_dict)
 
     raw_use_rerank = state.get("retrieval_use_rerank")
     use_rerank = raw_use_rerank if isinstance(raw_use_rerank, bool) else None
@@ -750,9 +904,20 @@ async def query_rewrite_node(state: DiagnosisState):
     rerank_threshold = None
     if isinstance(raw_rerank_threshold, (int, float)):
         rerank_threshold = max(0.0, min(1.0, float(raw_rerank_threshold)))
+    runtime_requested = state_dict.get("runtime_config_requested")
+    if not isinstance(runtime_requested, dict):
+        runtime_requested = {}
+    rewrite_cache_hit = False
+    rewrite_cache = _rewrite_cache_snapshot()
+    intent = str(state.get("intent", "") or "")
+    high_risk_query = _is_high_risk_query(query) or intent.upper() in {"CRISIS", "EMERGENCY"}
+    rewrite_tier = "rule_only" if (crisis_fastlane or high_risk_query) else "llm_with_fallback"
 
     if _is_pure_retrieval_mode(state):
-        top_k = state.get("retrieval_top_k", 3) or 3
+        try:
+            top_k = int(state.get("retrieval_top_k", 3) or 3)
+        except Exception:
+            top_k = 3
         raw_top_k_override = state.get("retrieval_top_k_override")
         if isinstance(raw_top_k_override, (int, float)):
             top_k = max(1, min(10, int(raw_top_k_override)))
@@ -797,6 +962,20 @@ async def query_rewrite_node(state: DiagnosisState):
                 "rewrite_fallback": False,
                 "rewrite_fallback_reason": "",
                 "crisis_fastlane": crisis_fastlane,
+                "rewrite_tier": "pure_bypass",
+                "rewrite_timeout_s": rewrite_timeout_s,
+                "rewrite_cache_hit": False,
+                "rewrite_cache": rewrite_cache,
+                "requested_runtime_config": runtime_requested,
+                "effective_runtime_config": _runtime_config_effective(
+                    state=state_dict,
+                    top_k=top_k,
+                    rerank_threshold=rerank_threshold,
+                    rewrite_timeout_s=rewrite_timeout_s,
+                    crisis_fastlane=crisis_fastlane,
+                    rewrite_tier="pure_bypass",
+                    rewrite_cache_hit=False,
+                ),
             },
             "retrieval_index_scope": "paragraph",
             "retrieval_use_rerank": use_rerank,
@@ -805,6 +984,15 @@ async def query_rewrite_node(state: DiagnosisState):
             "topk_source_ratio": _default_topk_source_ratio(),
             "fusion_method": default_fusion_method,
             "rag_pure_mode": True,
+            "runtime_config_effective": _runtime_config_effective(
+                state=state_dict,
+                top_k=top_k,
+                rerank_threshold=rerank_threshold,
+                rewrite_timeout_s=rewrite_timeout_s,
+                crisis_fastlane=crisis_fastlane,
+                rewrite_tier="pure_bypass",
+                rewrite_cache_hit=False,
+            ),
         }
         debug_snapshot = _build_debug_snapshot(
             state=state,
@@ -833,18 +1021,31 @@ async def query_rewrite_node(state: DiagnosisState):
         span_meta = {
             "input_len": len(query),
             "variant_count": len(variant_texts),
-            "timeout_config_s": _query_rewrite_timeout_s(),
+            "timeout_config_s": rewrite_timeout_s,
             "elapsed_ms": elapsed_ms,
             "fallback_used": False,
             "fallback_reason": "",
             "crisis_fastlane": crisis_fastlane,
+            "rewrite_tier": "pure_bypass",
+            "rewrite_cache_hit": False,
+            "rewrite_cache": rewrite_cache,
+            "runtime_config_effective": output["retrieval_plan"].get("effective_runtime_config"),
         }
         langfuse_bridge.end_span(request_id=request_id, span_id=span_id, metadata=span_meta, output={"query": _query_ref(output.get("retrieval_query"))})
-        langfuse_bridge.annotate_trace(request_id, metadata={"query_rewrite": span_meta})
+        langfuse_bridge.annotate_trace(
+            request_id,
+            metadata={
+                "query_rewrite": span_meta,
+                "runtime_config_effective": output["retrieval_plan"].get("effective_runtime_config"),
+                "rewrite_cache": rewrite_cache,
+            },
+        )
         return output
 
-    intent = str(state.get("intent", "") or "")
-    top_k = state.get("retrieval_top_k", 3) or 3
+    try:
+        top_k = int(state.get("retrieval_top_k", 3) or 3)
+    except Exception:
+        top_k = 3
     if (intent or "").upper() == "CRISIS":
         top_k = max(int(top_k), 4)
 
@@ -856,26 +1057,70 @@ async def query_rewrite_node(state: DiagnosisState):
     base_primary_query = query
     base_variants = [query]
 
-    if crisis_fastlane:
-        base_variants = [query]
-        rewrite_source = "crisis_fastlane_rule"
+    if rewrite_tier == "rule_only":
+        base_primary_query = _rule_rewrite_query(query)
+        base_variants = [base_primary_query]
+        if crisis_fastlane:
+            rewrite_source = "crisis_fastlane_rule"
+        else:
+            rewrite_source = "high_risk_rule"
+            top_k = max(top_k, 4)
+        plan_complexity = "high_risk_rule"
     else:
+        cache_key = _rewrite_cache_key(query=query, intent=intent)
+        if _rewrite_cache_enabled():
+            cached_plan = _rewrite_cache_get(cache_key)
+            rewrite_cache = _rewrite_cache_snapshot()
+            if isinstance(cached_plan, dict):
+                rewrite_cache_hit = True
+                top_k = max(1, min(10, int(cached_plan.get("top_k") or top_k)))
+                base_primary_query = str(cached_plan.get("primary_query") or query).strip() or query
+                cached_variants = cached_plan.get("query_variants")
+                if isinstance(cached_variants, list) and cached_variants:
+                    base_variants = [str(item).strip() for item in cached_variants if str(item or "").strip()] or [base_primary_query]
+                else:
+                    base_variants = [base_primary_query]
+                plan_index_scope = str(cached_plan.get("index_scope") or plan_index_scope)
+                plan_complexity = str(cached_plan.get("complexity") or "cached")
+                cached_source = str(cached_plan.get("rewrite_source") or "cached_rewrite").strip()
+                rewrite_source = cached_source if cached_source.endswith("_cache") else f"{cached_source}_cache"
+
+        if rewrite_cache_hit:
+            logger.info("query_rewrite_cache_hit", query_hash=_hash_value(query), intent=intent.upper() or "UNKNOWN", top_k=top_k)
+        else:
+            rewrite_cache = _rewrite_cache_snapshot()
         try:
-            plan = await asyncio.wait_for(
-                build_retrieval_plan(query=query, intent=intent),
-                timeout=_query_rewrite_timeout_s(),
-            )
-            top_k = plan.top_k
-            base_primary_query = plan.primary_query or query
-            base_variants = plan.query_variants or [base_primary_query]
-            plan_index_scope = plan.index_scope
-            plan_complexity = plan.complexity
-            rewrite_source = plan.rewrite_source
+            if not rewrite_cache_hit:
+                plan = await asyncio.wait_for(
+                    build_retrieval_plan(query=query, intent=intent),
+                    timeout=rewrite_timeout_s,
+                )
+                top_k = plan.top_k
+                base_primary_query = plan.primary_query or query
+                base_variants = plan.query_variants or [base_primary_query]
+                plan_index_scope = plan.index_scope
+                plan_complexity = plan.complexity
+                rewrite_source = plan.rewrite_source
+
+                if _rewrite_cache_enabled():
+                    _rewrite_cache_set(
+                        cache_key,
+                        payload={
+                            "top_k": top_k,
+                            "primary_query": base_primary_query,
+                            "query_variants": list(base_variants),
+                            "index_scope": plan_index_scope,
+                            "complexity": plan_complexity,
+                            "rewrite_source": rewrite_source,
+                        },
+                        ttl_s=_rewrite_cache_ttl_s(),
+                    )
+                    rewrite_cache = _rewrite_cache_snapshot()
         except asyncio.TimeoutError:
             rewrite_fallback = True
             rewrite_fallback_reason = "timeout"
             rewrite_source = "fallback_timeout"
-            logger.warning("query_rewrite_timeout_fallback", timeout_s=_query_rewrite_timeout_s(), query=query[:120])
+            logger.warning("query_rewrite_timeout_fallback", timeout_s=rewrite_timeout_s, query=query[:120])
         except Exception as exc:
             rewrite_fallback = True
             rewrite_fallback_reason = "error"
@@ -898,11 +1143,15 @@ async def query_rewrite_node(state: DiagnosisState):
         variants=len(base_variants),
         complexity=plan_complexity,
         rewrite_source=rewrite_source,
+        rewrite_tier=rewrite_tier,
+        high_risk_query=high_risk_query,
+        rewrite_cache_hit=rewrite_cache_hit,
         rewrite_fallback=rewrite_fallback,
         fallback_reason=rewrite_fallback_reason or "",
         crisis_fastlane=crisis_fastlane,
         use_rerank=use_rerank,
         rerank_threshold=rerank_threshold,
+        rewrite_timeout_s=rewrite_timeout_s,
     )
 
     enable_query_expansion = bool(getattr(settings, "ENABLE_QUERY_EXPANSION", False))
@@ -910,7 +1159,7 @@ async def query_rewrite_node(state: DiagnosisState):
         query=base_primary_query,
         planned_variants=base_variants,
         enable_query_expansion=enable_query_expansion,
-        original_only=not enable_query_expansion or crisis_fastlane or rewrite_fallback,
+        original_only=not enable_query_expansion or rewrite_tier == "rule_only" or rewrite_fallback,
     )
     variant_texts = extract_variant_texts(expanded_variants, original_query=base_primary_query)
     retrieval_plan = {
@@ -929,6 +1178,8 @@ async def query_rewrite_node(state: DiagnosisState):
     retrieval_plan["rewrite_type_budget"] = expander.rewrite_type_budget
     if crisis_fastlane:
         retrieval_plan["route_mode"] = "crisis_fastlane"
+    elif rewrite_tier == "rule_only":
+        retrieval_plan["route_mode"] = "high_risk_rule"
     else:
         retrieval_plan["route_mode"] = "multi_query" if default_enable_multi_query else "single_query"
     retrieval_plan["pure_mode"] = False
@@ -943,8 +1194,22 @@ async def query_rewrite_node(state: DiagnosisState):
     retrieval_plan["rewrite_fallback"] = rewrite_fallback
     retrieval_plan["rewrite_fallback_reason"] = rewrite_fallback_reason
     retrieval_plan["crisis_fastlane"] = crisis_fastlane
-    retrieval_plan["rewrite_timeout_s"] = _query_rewrite_timeout_s()
+    retrieval_plan["rewrite_timeout_s"] = rewrite_timeout_s
     retrieval_plan["rewrite_elapsed_ms"] = int((time.perf_counter() - node_started_at) * 1000)
+    retrieval_plan["rewrite_tier"] = rewrite_tier
+    retrieval_plan["high_risk_query"] = high_risk_query
+    retrieval_plan["rewrite_cache_hit"] = rewrite_cache_hit
+    retrieval_plan["rewrite_cache"] = rewrite_cache
+    retrieval_plan["requested_runtime_config"] = runtime_requested
+    retrieval_plan["effective_runtime_config"] = _runtime_config_effective(
+        state=state_dict,
+        top_k=top_k,
+        rerank_threshold=rerank_threshold,
+        rewrite_timeout_s=rewrite_timeout_s,
+        crisis_fastlane=crisis_fastlane,
+        rewrite_tier=rewrite_tier,
+        rewrite_cache_hit=rewrite_cache_hit,
+    )
     output = {
         "retrieval_query": variant_texts[0] if variant_texts else base_primary_query,
         "retrieval_query_variants": expanded_variants,
@@ -956,6 +1221,7 @@ async def query_rewrite_node(state: DiagnosisState):
         "variant_hits_map": {},
         "topk_source_ratio": _default_topk_source_ratio(),
         "fusion_method": default_fusion_method,
+        "runtime_config_effective": retrieval_plan.get("effective_runtime_config"),
     }
 
     debug_snapshot = _build_debug_snapshot(
@@ -977,6 +1243,9 @@ async def query_rewrite_node(state: DiagnosisState):
                 "rerank_threshold": retrieval_plan.get("rerank_threshold"),
                 "source_priority": retrieval_plan.get("source_priority"),
                 "query_variants": [_query_ref(v) for v in retrieval_plan.get("query_variants", [])],
+                "rewrite_tier": retrieval_plan.get("rewrite_tier"),
+                "rewrite_cache_hit": retrieval_plan.get("rewrite_cache_hit"),
+                "effective_runtime_config": retrieval_plan.get("effective_runtime_config"),
             },
         },
     )
@@ -985,11 +1254,16 @@ async def query_rewrite_node(state: DiagnosisState):
     span_meta = {
         "input_len": len(query),
         "variant_count": len(variant_texts),
-        "timeout_config_s": _query_rewrite_timeout_s(),
+        "timeout_config_s": rewrite_timeout_s,
         "elapsed_ms": elapsed_ms,
         "fallback_used": rewrite_fallback,
         "fallback_reason": rewrite_fallback_reason,
         "crisis_fastlane": crisis_fastlane,
+        "rewrite_tier": rewrite_tier,
+        "high_risk_query": high_risk_query,
+        "rewrite_cache_hit": rewrite_cache_hit,
+        "rewrite_cache": rewrite_cache,
+        "runtime_config_effective": retrieval_plan.get("effective_runtime_config"),
     }
     langfuse_bridge.end_span(
         request_id=request_id,
@@ -997,7 +1271,14 @@ async def query_rewrite_node(state: DiagnosisState):
         metadata=span_meta,
         output={"query": _query_ref(output.get("retrieval_query"))},
     )
-    langfuse_bridge.annotate_trace(request_id, metadata={"query_rewrite": span_meta})
+    langfuse_bridge.annotate_trace(
+        request_id,
+        metadata={
+            "query_rewrite": span_meta,
+            "runtime_config_effective": retrieval_plan.get("effective_runtime_config"),
+            "rewrite_cache": rewrite_cache,
+        },
+    )
     return output
 
 # =================================================================

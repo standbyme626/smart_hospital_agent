@@ -259,6 +259,9 @@ class Settings(BaseSettings):
     TRIAGE_TOOL_TIMEOUT_SECONDS: float = float(os.getenv("TRIAGE_TOOL_TIMEOUT_SECONDS", "2.8"))
     TRIAGE_FAST_CONFIDENCE_THRESHOLD: float = float(os.getenv("TRIAGE_FAST_CONFIDENCE_THRESHOLD", "0.62"))
     QUERY_REWRITE_TIMEOUT_SECONDS: float = float(os.getenv("QUERY_REWRITE_TIMEOUT_SECONDS", "4.0"))
+    ENABLE_QUERY_REWRITE_CACHE: bool = os.getenv("ENABLE_QUERY_REWRITE_CACHE", "true").lower() == "true"
+    QUERY_REWRITE_CACHE_TTL_SECONDS: int = int(os.getenv("QUERY_REWRITE_CACHE_TTL_SECONDS", "900"))
+    QUERY_REWRITE_CACHE_MAX_ENTRIES: int = int(os.getenv("QUERY_REWRITE_CACHE_MAX_ENTRIES", "512"))
     CRISIS_FASTLANE_ENABLED: bool = os.getenv("CRISIS_FASTLANE_ENABLED", "true").lower() == "true"
     SSE_PING_INTERVAL_SECONDS: float = float(os.getenv("SSE_PING_INTERVAL_SECONDS", "8.0"))
 

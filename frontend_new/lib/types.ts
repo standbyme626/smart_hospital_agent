@@ -33,6 +33,7 @@ export type StreamEventType =
   | "thought"
   | "status"
   | "ping"
+  | "department_result"
   | "doctor_slots"
   | "booking_preview"
   | "payment_required"

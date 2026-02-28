@@ -1,4 +1,5 @@
 import type { BookingPayload, ParsedStreamEvent, SlotItem, StreamEventType } from "@/lib/types";
+import type { RuntimeSettings } from "@/lib/runtime-settings";
 
 const DEFAULT_BACKEND_BASE = "http://127.0.0.1:8001";
 
@@ -62,7 +63,12 @@ function toEvent(payload: Record<string, unknown>): ParsedStreamEvent | null {
   const seq = asNumber(payload.seq);
   const stage = typeof payload.stage === "string" ? payload.stage : undefined;
   const ts = asNumber(payload.ts);
-  const meta = payload.meta && typeof payload.meta === "object" ? (payload.meta as Record<string, unknown>) : undefined;
+  const meta = payload.meta && typeof payload.meta === "object" ? (payload.meta as Record<string, unknown>) : {};
+  for (const key of ["runtime_config_effective", "runtime_config_requested", "rewrite_fallback", "fallback_reason", "crisis_fastlane", "metrics"]) {
+    if (payload[key] !== undefined && meta[key] === undefined) {
+      meta[key] = payload[key];
+    }
+  }
 
   if (type === "doctor_slots") {
     const slots = normalizeSlots(payload.data ?? payload.slots ?? meta?.slots);
@@ -91,6 +97,7 @@ function parseEventBlock(block: string): string[] {
 export async function streamChat(params: {
   message: string;
   sessionId: string;
+  runtimeSettings: RuntimeSettings;
   rag?: {
     top_k?: number;
     use_rerank?: boolean;
@@ -101,9 +108,15 @@ export async function streamChat(params: {
   onDone: () => void;
   onError: (error: string) => void;
 }): Promise<void> {
-  const { message, sessionId, rag, signal, onEvent, onDone, onError } = params;
+  const { message, sessionId, runtimeSettings, rag, signal, onEvent, onDone, onError } = params;
   const endpoint = "/api/chat";
   const requestId = createRequestId();
+  const normalizedRag = rag || {
+    top_k: runtimeSettings.topK,
+    use_rerank: true,
+    rerank_threshold: runtimeSettings.rerankThreshold,
+  };
+  const debugNodes = runtimeSettings.debugIncludeNodes.filter(Boolean);
 
   const response = await fetch(endpoint, {
     method: "POST",
@@ -113,7 +126,15 @@ export async function streamChat(params: {
       "Cache-Control": "no-cache",
       "X-Request-ID": requestId,
     },
-    body: JSON.stringify({ message, session_id: sessionId, request_id: requestId, ...(rag ? { rag } : {}) }),
+    body: JSON.stringify({
+      message,
+      session_id: sessionId,
+      request_id: requestId,
+      rag: normalizedRag,
+      debug_include_nodes: debugNodes,
+      rewrite_timeout: runtimeSettings.rewriteTimeout,
+      crisis_fastlane: runtimeSettings.crisisFastlane,
+    }),
     signal,
     cache: "no-store",
   });

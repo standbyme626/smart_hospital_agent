@@ -192,6 +192,7 @@ class CaseResult:
     failure_category: str = ""
     failure_segment: str = ""
     ok: bool = False
+    effective_runtime_config: Dict[str, Any] = field(default_factory=dict)
 
 
 def now_iso() -> str:
@@ -293,6 +294,86 @@ def resolve_backend_python(project_root: Path, preferred: str) -> str:
 def write_jsonl(path: Path, record: Dict[str, Any]) -> None:
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def _langfuse_host() -> str:
+    return str(os.getenv("LANGFUSE_HOST", "http://127.0.0.1:3000") or "http://127.0.0.1:3000").rstrip("/")
+
+
+def _trace_mapping_entries(
+    *,
+    run_id: str,
+    out_dir: Path,
+    results: List[CaseResult],
+    summary_json: Path,
+    report_md: Path,
+    events_jsonl: Path,
+    backend_log_path: Optional[Path],
+) -> List[Dict[str, Any]]:
+    host = _langfuse_host()
+    entries: List[Dict[str, Any]] = []
+    for item in results:
+        entries.append(
+            {
+                "source": "e2e_fullchain",
+                "run_id": run_id,
+                "request_id": item.request_id,
+                "trace_id": item.request_id,
+                "langfuse_host": host,
+                "langfuse_lookup_hint": f"search trace id `{item.request_id}` in Langfuse",
+                "case_id": item.case_id,
+                "session_id": item.session_id,
+                "ok": item.ok,
+                "effective_runtime_config": item.effective_runtime_config,
+                "artifacts": {
+                    "out_dir": str(out_dir),
+                    "summary_json": str(summary_json),
+                    "report_md": str(report_md),
+                    "events_jsonl": str(events_jsonl),
+                    "backend_log": str(backend_log_path) if backend_log_path else "",
+                },
+            }
+        )
+    return entries
+
+
+def _write_trace_mapping_artifacts(
+    *,
+    project_root: Path,
+    out_dir: Path,
+    entries: List[Dict[str, Any]],
+) -> Tuple[Path, Path]:
+    mapping_jsonl = out_dir / "trace_request_map.jsonl"
+    mapping_md = out_dir / "trace_request_map.md"
+    if mapping_jsonl.exists():
+        mapping_jsonl.unlink()
+    for entry in entries:
+        write_jsonl(mapping_jsonl, entry)
+
+    lines = [
+        "# Trace ↔ Request Mapping (E2E)",
+        "",
+        "| request_id | case_id | ok | langfuse | summary | report | events |",
+        "|---|---|---:|---|---|---|---|",
+    ]
+    for entry in entries:
+        request_id = entry.get("request_id", "")
+        artifacts = entry.get("artifacts", {}) if isinstance(entry.get("artifacts"), dict) else {}
+        summary_path = str(artifacts.get("summary_json", ""))
+        report_path = str(artifacts.get("report_md", ""))
+        events_path = str(artifacts.get("events_jsonl", ""))
+        host = str(entry.get("langfuse_host", ""))
+        lines.append(
+            f"| `{request_id}` | `{entry.get('case_id', '')}` | `{entry.get('ok', False)}` | `{host}` (search `{request_id}`) | `{summary_path}` | `{report_path}` | `{events_path}` |"
+        )
+    mapping_md.write_text("\n".join(lines), encoding="utf-8")
+
+    global_dir = project_root / "logs" / "trace_replay"
+    global_dir.mkdir(parents=True, exist_ok=True)
+    global_jsonl = global_dir / "replay_index.jsonl"
+    for entry in entries:
+        write_jsonl(global_jsonl, entry)
+    return mapping_jsonl, mapping_md
 
 
 def read_new_log_lines(log_path: Path, start_offset: int, max_bytes: int = 2_000_000) -> Tuple[List[str], int]:
@@ -587,6 +668,10 @@ def build_report_md(run_id: str, summary: Dict[str, Any]) -> str:
     lines.append(f"- total_cases: `{summary['total_cases']}`")
     lines.append(f"- passed_cases: `{summary['passed_cases']}`")
     lines.append(f"- ok: `{summary['ok']}`")
+    if summary.get("trace_request_map_jsonl"):
+        lines.append(f"- trace_request_map_jsonl: `{summary['trace_request_map_jsonl']}`")
+    if summary.get("trace_request_map_md"):
+        lines.append(f"- trace_request_map_md: `{summary['trace_request_map_md']}`")
     if summary.get("node_timing_summary"):
         lines.append("")
         lines.append("## Node Timing Summary")
@@ -602,6 +687,7 @@ def build_report_md(run_id: str, summary: Dict[str, Any]) -> str:
         lines.append(f"## Case `{case['case_id']}`")
         lines.append(f"- session_id: `{case['session_id']}`")
         lines.append(f"- request_id: `{case.get('request_id', '')}`")
+        lines.append(f"- effective_runtime_config: `{json.dumps(case.get('effective_runtime_config', {}), ensure_ascii=False)}`")
         lines.append(f"- ok: `{case['ok']}`")
         lines.append(f"- duration_s: `{case['duration_s']}`")
         lines.append(f"- terminated_by: `{case['terminated_by']}`")
@@ -892,6 +978,13 @@ async def run_case(
                         inferred_retrieval_signal = True
                 elif kind == "status":
                     result.status_count += 1
+                    effective_cfg = evt.get("runtime_config_effective")
+                    if not isinstance(effective_cfg, dict):
+                        meta_obj = evt.get("meta")
+                        if isinstance(meta_obj, dict):
+                            effective_cfg = meta_obj.get("runtime_config_effective")
+                    if isinstance(effective_cfg, dict):
+                        result.effective_runtime_config = dict(effective_cfg)
                 elif kind == "error":
                     result.error = content
                     result.terminated_by = "error_event"
@@ -1198,11 +1291,28 @@ async def run(args: argparse.Namespace) -> int:
                 "timeout_segment": r.timeout_segment,
                 "failure_category": r.failure_category,
                 "failure_segment": r.failure_segment,
+                "effective_runtime_config": r.effective_runtime_config,
                 "ok": r.ok,
             }
             for r in results
         ],
     }
+    trace_entries = _trace_mapping_entries(
+        run_id=run_id,
+        out_dir=out_dir,
+        results=results,
+        summary_json=summary_json,
+        report_md=report_md,
+        events_jsonl=events_jsonl,
+        backend_log_path=backend_log_path,
+    )
+    trace_map_jsonl, trace_map_md = _write_trace_mapping_artifacts(
+        project_root=project_root,
+        out_dir=out_dir,
+        entries=trace_entries,
+    )
+    summary["trace_request_map_jsonl"] = str(trace_map_jsonl)
+    summary["trace_request_map_md"] = str(trace_map_md)
     summary_json.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
     report_md.write_text(build_report_md(run_id, summary), encoding="utf-8")
 
