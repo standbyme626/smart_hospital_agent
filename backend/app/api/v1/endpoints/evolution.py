@@ -6,6 +6,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from app.services.evolution_runner import EvolutionRunner
 from pathlib import Path
+from app.core.config import settings
 
 router = APIRouter()
 
@@ -63,6 +64,11 @@ class EvolutionManager:
 
 manager = EvolutionManager()
 
+
+def _ensure_evolution_enabled() -> None:
+    if not bool(getattr(settings, "EVOLUTION_MODE", False)):
+        raise HTTPException(status_code=404, detail="evolution endpoint disabled")
+
 async def run_evolution_background(department: str, speed_multiplier: float):
     """
     Background task wrapper for EvolutionRunner.
@@ -89,6 +95,7 @@ async def start_evolution(req: EvolutionStartRequest, background_tasks: Backgrou
     """
     Start the evolution loop in the background.
     """
+    _ensure_evolution_enabled()
     if manager.is_running:
         raise HTTPException(status_code=409, detail="Evolution cycle is already running.")
     
@@ -106,6 +113,7 @@ async def stop_evolution():
     """
     Force stop the running evolution cycle.
     """
+    _ensure_evolution_enabled()
     if not manager.is_running:
         return {"status": "ignored", "message": "No evolution running."}
     
@@ -117,6 +125,7 @@ async def stream_evolution():
     """
     SSE Stream for evolution events.
     """
+    _ensure_evolution_enabled()
     return StreamingResponse(manager.subscribe(), media_type="text/event-stream")
 
 @router.post("/human_judge")
@@ -124,6 +133,7 @@ async def human_judge(req: HumanJudgeRequest):
     """
     Record human feedback for Audit Agent fine-tuning.
     """
+    _ensure_evolution_enabled()
     # Save to data/knowledge_base/audit_training_set.json
     file_path = Path("data/knowledge_base/audit_training_set.json")
     

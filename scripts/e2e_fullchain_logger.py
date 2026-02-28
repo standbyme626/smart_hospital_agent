@@ -156,6 +156,7 @@ class NodeEvent:
 class CaseResult:
     case_id: str
     session_id: str
+    request_id: str
     sent_content: str
     started_at: str
     finished_at: str = ""
@@ -600,6 +601,7 @@ def build_report_md(run_id: str, summary: Dict[str, Any]) -> str:
     for case in summary["results"]:
         lines.append(f"## Case `{case['case_id']}`")
         lines.append(f"- session_id: `{case['session_id']}`")
+        lines.append(f"- request_id: `{case.get('request_id', '')}`")
         lines.append(f"- ok: `{case['ok']}`")
         lines.append(f"- duration_s: `{case['duration_s']}`")
         lines.append(f"- terminated_by: `{case['terminated_by']}`")
@@ -726,9 +728,11 @@ async def run_case(
     progress_interval_s: float,
 ) -> Tuple[CaseResult, int]:
     started = now_iso()
+    request_id = f"e2e-{case_id}-{int(time.time() * 1000)}"
     result = CaseResult(
         case_id=case_id,
         session_id=session_id,
+        request_id=request_id,
         sent_content=message,
         started_at=started,
         expected_intent=expected_intent,
@@ -743,7 +747,7 @@ async def run_case(
     inferred_retrieval_signal = False
     token_parts: List[str] = []
     offset = backend_offset
-    payload = {"message": message, "session_id": session_id}
+    payload = {"message": message, "session_id": session_id, "request_id": request_id}
     stop_progress = asyncio.Event()
 
     async def progress_pulse() -> None:
@@ -776,6 +780,7 @@ async def run_case(
             "ts_iso": now_iso(),
             "case_id": case_id,
             "session_id": session_id,
+            "request_id": request_id,
             "kind": "request_sent",
             "payload": payload,
         },
@@ -826,6 +831,7 @@ async def run_case(
                             "ts_iso": ts_iso,
                             "case_id": case_id,
                             "session_id": session_id,
+                            "request_id": request_id,
                             "kind": "done",
                             "rel_ms": rel_ms,
                         },
@@ -841,6 +847,7 @@ async def run_case(
                             "ts_iso": ts_iso,
                             "case_id": case_id,
                             "session_id": session_id,
+                            "request_id": request_id,
                             "kind": "unparsed",
                             "rel_ms": rel_ms,
                             "raw": payload_raw,
@@ -895,6 +902,7 @@ async def run_case(
                         "ts_iso": ts_iso,
                         "case_id": case_id,
                         "session_id": session_id,
+                        "request_id": request_id,
                         "kind": kind,
                         "rel_ms": rel_ms,
                         "content": content,
@@ -1155,6 +1163,7 @@ async def run(args: argparse.Namespace) -> int:
             {
                 "case_id": r.case_id,
                 "session_id": r.session_id,
+                "request_id": r.request_id,
                 "sent_content": r.sent_content,
                 "started_at": r.started_at,
                 "finished_at": r.finished_at,

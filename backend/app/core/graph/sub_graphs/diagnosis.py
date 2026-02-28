@@ -25,6 +25,7 @@ from app.rag.adapters.multi_query_retriever_adapter import MultiQueryRetrieverAd
 from app.rag.adapters.context_window_adapter import ContextWindowAdapter
 from app.rag.adapters.json_schema_guardrail import JsonSchemaGuardrail
 from app.rag.adapters.retrieval_router_adapter import RetrievalRouterAdapter
+from app.core.monitoring.langfuse_bridge import langfuse_bridge
 import structlog
 import dspy
 
@@ -188,6 +189,25 @@ def _triage_tool_timeout_s() -> float:
 def _triage_fast_conf_threshold() -> float:
     raw = getattr(settings, "TRIAGE_FAST_CONFIDENCE_THRESHOLD", 0.62)
     return min(max(_safe_float(raw, default=0.62), 0.0), 1.0)
+
+
+def _query_rewrite_timeout_s() -> float:
+    raw = getattr(settings, "QUERY_REWRITE_TIMEOUT_SECONDS", 4.0)
+    try:
+        timeout_s = float(raw)
+    except Exception:
+        timeout_s = 4.0
+    return min(max(timeout_s, 1.0), 10.0)
+
+
+def _is_crisis_fastlane(state: Dict[str, Any] | None = None) -> bool:
+    if not bool(getattr(settings, "CRISIS_FASTLANE_ENABLED", True)):
+        return False
+    if not isinstance(state, dict):
+        return False
+    status = str(state.get("status") or "").strip().lower()
+    intent = str(state.get("intent") or "").strip().upper()
+    return status == "crisis" or intent == "CRISIS"
 
 
 def _is_pure_retrieval_mode(state: Dict[str, Any] | None = None) -> bool:
@@ -699,6 +719,19 @@ async def query_rewrite_node(state: DiagnosisState):
         logger.warning("query_rewrite_no_query_found", available_keys=list(state.keys()))
         return {}
 
+    request_id = _resolve_request_id(state if isinstance(state, dict) else None)
+    node_started_at = time.perf_counter()
+    span_id = langfuse_bridge.start_span(
+        request_id=request_id,
+        name="Query_Rewrite",
+        metadata={
+            "query": _query_ref(query),
+            "query_source": source,
+            "timeout_config_s": _query_rewrite_timeout_s(),
+        },
+        input_data={"query": _query_ref(query)},
+    )
+
     expander = QueryExpanderAdapter(
         max_variants=max(1, int(getattr(settings, "QUERY_EXPANSION_MAX_VARIANTS", 4))),
         max_query_len_per_variant=max(1, int(getattr(settings, "QUERY_EXPANSION_MAX_QUERY_LEN_PER_VARIANT", 120))),
@@ -706,20 +739,23 @@ async def query_rewrite_node(state: DiagnosisState):
     )
     default_fusion_method = _normalize_fusion_method(getattr(settings, "MULTI_QUERY_FUSION_METHOD", "weighted_rrf"))
     default_enable_multi_query = bool(getattr(settings, "ENABLE_MULTI_QUERY", False))
+    rewrite_fallback = False
+    rewrite_fallback_reason = ""
+    crisis_fastlane = _is_crisis_fastlane(state if isinstance(state, dict) else None)
+
+    raw_use_rerank = state.get("retrieval_use_rerank")
+    use_rerank = raw_use_rerank if isinstance(raw_use_rerank, bool) else None
+
+    raw_rerank_threshold = state.get("retrieval_rerank_threshold")
+    rerank_threshold = None
+    if isinstance(raw_rerank_threshold, (int, float)):
+        rerank_threshold = max(0.0, min(1.0, float(raw_rerank_threshold)))
 
     if _is_pure_retrieval_mode(state):
         top_k = state.get("retrieval_top_k", 3) or 3
         raw_top_k_override = state.get("retrieval_top_k_override")
         if isinstance(raw_top_k_override, (int, float)):
             top_k = max(1, min(10, int(raw_top_k_override)))
-
-        raw_use_rerank = state.get("retrieval_use_rerank")
-        use_rerank = raw_use_rerank if isinstance(raw_use_rerank, bool) else None
-
-        raw_rerank_threshold = state.get("retrieval_rerank_threshold")
-        rerank_threshold = None
-        if isinstance(raw_rerank_threshold, (int, float)):
-            rerank_threshold = max(0.0, min(1.0, float(raw_rerank_threshold)))
 
         logger.info(
             "query_rewrite_bypassed_pure_mode",
@@ -758,6 +794,9 @@ async def query_rewrite_node(state: DiagnosisState):
                 "use_rerank": use_rerank,
                 "rerank_threshold": rerank_threshold,
                 "router_adapter_version": "v1",
+                "rewrite_fallback": False,
+                "rewrite_fallback_reason": "",
+                "crisis_fastlane": crisis_fastlane,
             },
             "retrieval_index_scope": "paragraph",
             "retrieval_use_rerank": use_rerank,
@@ -790,50 +829,108 @@ async def query_rewrite_node(state: DiagnosisState):
             },
         )
         output.update(_merge_debug_snapshot(state=state, snapshot=debug_snapshot))
+        elapsed_ms = int((time.perf_counter() - node_started_at) * 1000)
+        span_meta = {
+            "input_len": len(query),
+            "variant_count": len(variant_texts),
+            "timeout_config_s": _query_rewrite_timeout_s(),
+            "elapsed_ms": elapsed_ms,
+            "fallback_used": False,
+            "fallback_reason": "",
+            "crisis_fastlane": crisis_fastlane,
+        }
+        langfuse_bridge.end_span(request_id=request_id, span_id=span_id, metadata=span_meta, output={"query": _query_ref(output.get("retrieval_query"))})
+        langfuse_bridge.annotate_trace(request_id, metadata={"query_rewrite": span_meta})
         return output
 
     intent = str(state.get("intent", "") or "")
-    plan = await build_retrieval_plan(query=query, intent=intent)
-    top_k = plan.top_k
+    top_k = state.get("retrieval_top_k", 3) or 3
+    if (intent or "").upper() == "CRISIS":
+        top_k = max(int(top_k), 4)
+
+    plan_index_scope = str(getattr(settings, "DEFAULT_RETRIEVAL_INDEX_SCOPE", "paragraph") or "paragraph").lower().strip()
+    if plan_index_scope not in {"document", "section", "paragraph"}:
+        plan_index_scope = "paragraph"
+    plan_complexity = "low"
+    rewrite_source = "none"
+    base_primary_query = query
+    base_variants = [query]
+
+    if crisis_fastlane:
+        base_variants = [query]
+        rewrite_source = "crisis_fastlane_rule"
+    else:
+        try:
+            plan = await asyncio.wait_for(
+                build_retrieval_plan(query=query, intent=intent),
+                timeout=_query_rewrite_timeout_s(),
+            )
+            top_k = plan.top_k
+            base_primary_query = plan.primary_query or query
+            base_variants = plan.query_variants or [base_primary_query]
+            plan_index_scope = plan.index_scope
+            plan_complexity = plan.complexity
+            rewrite_source = plan.rewrite_source
+        except asyncio.TimeoutError:
+            rewrite_fallback = True
+            rewrite_fallback_reason = "timeout"
+            rewrite_source = "fallback_timeout"
+            logger.warning("query_rewrite_timeout_fallback", timeout_s=_query_rewrite_timeout_s(), query=query[:120])
+        except Exception as exc:
+            rewrite_fallback = True
+            rewrite_fallback_reason = "error"
+            rewrite_source = "fallback_error"
+            logger.warning("query_rewrite_error_fallback", error=str(exc), query=query[:120])
+
+    if rewrite_fallback:
+        base_primary_query = query
+        base_variants = [query]
+
     raw_top_k_override = state.get("retrieval_top_k_override")
     if isinstance(raw_top_k_override, (int, float)):
         top_k = max(1, min(10, int(raw_top_k_override)))
 
-    raw_use_rerank = state.get("retrieval_use_rerank")
-    use_rerank = raw_use_rerank if isinstance(raw_use_rerank, bool) else None
-
-    raw_rerank_threshold = state.get("retrieval_rerank_threshold")
-    rerank_threshold = None
-    if isinstance(raw_rerank_threshold, (int, float)):
-        rerank_threshold = max(0.0, min(1.0, float(raw_rerank_threshold)))
-
     logger.info(
         "query_rewrite_plan",
         source=source,
-        primary_query=plan.primary_query[:120],
+        primary_query=base_primary_query[:120],
         top_k=top_k,
-        variants=len(plan.query_variants),
-        complexity=plan.complexity,
-        rewrite_source=plan.rewrite_source,
+        variants=len(base_variants),
+        complexity=plan_complexity,
+        rewrite_source=rewrite_source,
+        rewrite_fallback=rewrite_fallback,
+        fallback_reason=rewrite_fallback_reason or "",
+        crisis_fastlane=crisis_fastlane,
         use_rerank=use_rerank,
         rerank_threshold=rerank_threshold,
     )
 
     enable_query_expansion = bool(getattr(settings, "ENABLE_QUERY_EXPANSION", False))
     expanded_variants = expander.expand(
-        query=plan.primary_query,
-        planned_variants=plan.query_variants,
+        query=base_primary_query,
+        planned_variants=base_variants,
         enable_query_expansion=enable_query_expansion,
-        original_only=not enable_query_expansion,
+        original_only=not enable_query_expansion or crisis_fastlane or rewrite_fallback,
     )
-    variant_texts = extract_variant_texts(expanded_variants, original_query=plan.primary_query)
-    retrieval_plan = plan.to_state_dict()
+    variant_texts = extract_variant_texts(expanded_variants, original_query=base_primary_query)
+    retrieval_plan = {
+        "original_query": query,
+        "primary_query": base_primary_query,
+        "query_variants": variant_texts,
+        "top_k": top_k,
+        "complexity": plan_complexity,
+        "rewrite_source": rewrite_source,
+        "index_scope": plan_index_scope,
+    }
     retrieval_plan["query_variants"] = variant_texts
     retrieval_plan["query_expansion_enabled"] = enable_query_expansion
     retrieval_plan["max_variants"] = expander.max_variants
     retrieval_plan["max_query_len_per_variant"] = expander.max_query_len_per_variant
     retrieval_plan["rewrite_type_budget"] = expander.rewrite_type_budget
-    retrieval_plan["route_mode"] = "multi_query" if default_enable_multi_query else "single_query"
+    if crisis_fastlane:
+        retrieval_plan["route_mode"] = "crisis_fastlane"
+    else:
+        retrieval_plan["route_mode"] = "multi_query" if default_enable_multi_query else "single_query"
     retrieval_plan["pure_mode"] = False
     retrieval_plan["enable_multi_query"] = default_enable_multi_query
     retrieval_plan["enable_graph_rag"] = True
@@ -843,12 +940,17 @@ async def query_rewrite_node(state: DiagnosisState):
     retrieval_plan["use_rerank"] = use_rerank
     retrieval_plan["rerank_threshold"] = rerank_threshold
     retrieval_plan["router_adapter_version"] = "v1"
+    retrieval_plan["rewrite_fallback"] = rewrite_fallback
+    retrieval_plan["rewrite_fallback_reason"] = rewrite_fallback_reason
+    retrieval_plan["crisis_fastlane"] = crisis_fastlane
+    retrieval_plan["rewrite_timeout_s"] = _query_rewrite_timeout_s()
+    retrieval_plan["rewrite_elapsed_ms"] = int((time.perf_counter() - node_started_at) * 1000)
     output = {
-        "retrieval_query": variant_texts[0] if variant_texts else plan.primary_query,
+        "retrieval_query": variant_texts[0] if variant_texts else base_primary_query,
         "retrieval_query_variants": expanded_variants,
         "retrieval_top_k": top_k,
         "retrieval_plan": retrieval_plan,
-        "retrieval_index_scope": plan.index_scope,
+        "retrieval_index_scope": plan_index_scope,
         "retrieval_use_rerank": use_rerank,
         "retrieval_rerank_threshold": rerank_threshold,
         "variant_hits_map": {},
@@ -879,6 +981,23 @@ async def query_rewrite_node(state: DiagnosisState):
         },
     )
     output.update(_merge_debug_snapshot(state=state, snapshot=debug_snapshot))
+    elapsed_ms = int((time.perf_counter() - node_started_at) * 1000)
+    span_meta = {
+        "input_len": len(query),
+        "variant_count": len(variant_texts),
+        "timeout_config_s": _query_rewrite_timeout_s(),
+        "elapsed_ms": elapsed_ms,
+        "fallback_used": rewrite_fallback,
+        "fallback_reason": rewrite_fallback_reason,
+        "crisis_fastlane": crisis_fastlane,
+    }
+    langfuse_bridge.end_span(
+        request_id=request_id,
+        span_id=span_id,
+        metadata=span_meta,
+        output={"query": _query_ref(output.get("retrieval_query"))},
+    )
+    langfuse_bridge.annotate_trace(request_id, metadata={"query_rewrite": span_meta})
     return output
 
 # =================================================================
@@ -887,6 +1006,8 @@ async def query_rewrite_node(state: DiagnosisState):
 # =================================================================
 async def hybrid_retriever_node(state: DiagnosisState):
     logger.info("Diagnosis Node: Hybrid_Retriever Start")
+    request_id = _resolve_request_id(state if isinstance(state, dict) else None)
+    node_started_at = time.perf_counter()
     planned_query = state.get("retrieval_query")
     if isinstance(planned_query, str) and planned_query.strip():
         last_user_msg = planned_query.strip()
@@ -897,6 +1018,16 @@ async def hybrid_retriever_node(state: DiagnosisState):
         state=state,
         fallback_query=last_user_msg,
         query_source=query_source,
+    )
+    span_id = langfuse_bridge.start_span(
+        request_id=request_id,
+        name="Hybrid_Retriever",
+        metadata={
+            "query": _query_ref(last_user_msg),
+            "query_source": query_source,
+            "route_mode": route_plan.get("route_mode"),
+        },
+        input_data={"query": _query_ref(last_user_msg)},
     )
 
     configured_fusion_method = _normalize_fusion_method(getattr(settings, "MULTI_QUERY_FUSION_METHOD", "weighted_rrf"))
@@ -942,6 +1073,12 @@ async def hybrid_retriever_node(state: DiagnosisState):
 
     if not last_user_msg:
         logger.warning("hybrid_retriever_no_query_found", available_keys=list(state.keys()))
+        langfuse_bridge.end_span(
+            request_id=request_id,
+            span_id=span_id,
+            metadata={"elapsed_ms": int((time.perf_counter() - node_started_at) * 1000)},
+            output={"final_docs_count": 0},
+        )
         return {}
 
     # 简单实体提取 (Placeholder for NER)
@@ -1134,6 +1271,21 @@ async def hybrid_retriever_node(state: DiagnosisState):
         },
     )
     output.update(_merge_debug_snapshot(state=state, snapshot=debug_snapshot))
+    span_meta = {
+        "query_variants": len(variant_texts),
+        "vector_k": max(1, int(top_k)),
+        "bm25_k": max(1, int(top_k)),
+        "rrf": fusion_method,
+        "rerank_elapsed_ms": int((time.perf_counter() - node_started_at) * 1000),
+        "final_docs_count": len(evidence_refs),
+    }
+    langfuse_bridge.end_span(
+        request_id=request_id,
+        span_id=span_id,
+        metadata=span_meta,
+        output={"final_docs_count": len(evidence_refs)},
+    )
+    langfuse_bridge.annotate_trace(request_id, metadata={"hybrid_retriever": span_meta})
     return output
 
 # =================================================================
@@ -1350,8 +1502,19 @@ def _build_decision_contract(*, state: DiagnosisState, payload: Dict[str, Any]) 
 # =================================================================
 async def decision_judge_node(state: DiagnosisState):
     logger.info("Diagnosis Node: Decision_Judge Start")
+    request_id = _resolve_request_id(state if isinstance(state, dict) else None)
+    node_started_at = time.perf_counter()
     payload = state.get("last_tool_result")
     payload = dict(payload) if isinstance(payload, dict) else {}
+    span_id = langfuse_bridge.start_span(
+        request_id=request_id,
+        name="Decision_Judge",
+        metadata={
+            "diagnosis": _query_ref(payload.get("diagnosis")),
+            "reasoning": _query_ref(payload.get("reasoning")),
+        },
+        input_data={"diagnosis": _query_ref(payload.get("diagnosis"))},
+    )
     decision = _build_decision_contract(state=state, payload=payload)
     payload.update({k: decision[k] for k in ("decision_action", "decision_reason", "confidence_score", "grounded_flag")})
 
@@ -1385,6 +1548,19 @@ async def decision_judge_node(state: DiagnosisState):
         },
     )
     output.update(_merge_debug_snapshot(state=state, snapshot=debug_snapshot))
+    span_meta = {
+        "decision_action": decision.get("decision_action"),
+        "confidence": decision.get("confidence_score"),
+        "guardrail_hit": decision.get("decision_action") in {"human_review", "retrieve_more"},
+        "elapsed_ms": int((time.perf_counter() - node_started_at) * 1000),
+    }
+    langfuse_bridge.end_span(
+        request_id=request_id,
+        span_id=span_id,
+        metadata=span_meta,
+        output={"decision_action": decision.get("decision_action")},
+    )
+    langfuse_bridge.annotate_trace(request_id, metadata={"decision_judge": span_meta})
     return output
 
 

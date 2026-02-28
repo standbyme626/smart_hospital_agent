@@ -17,7 +17,12 @@ class GlobalExceptionHandlerMiddleware(BaseHTTPMiddleware):
     """
     async def dispatch(self, request: Request, call_next):
         start_time = time.time()
-        request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+        request_id = (
+            request.headers.get("X-Request-ID")
+            or getattr(getattr(request, "state", object()), "request_id", "")
+            or str(uuid.uuid4())
+        )
+        request.state.request_id = request_id
         
         # 将 Request ID 绑定到当前 Context
         structlog.contextvars.clear_contextvars()
@@ -70,6 +75,7 @@ class RequestLogMiddleware(BaseHTTPMiddleware):
     """
     async def dispatch(self, request: Request, call_next):
         request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+        request.state.request_id = request_id
         structlog.contextvars.bind_contextvars(request_id=request_id)
         
         response = await call_next(request)

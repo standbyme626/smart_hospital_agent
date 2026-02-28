@@ -11,6 +11,8 @@ from app.core.config import settings
 StreamEventType = Literal[
     "thought",
     "token",
+    "status",
+    "ping",
     "department_result",
     "doctor_slots",
     "booking_preview",
@@ -31,6 +33,9 @@ class UnifiedStreamEnvelope(BaseModel):
     content: str = ""
     node: str = ""
     session_id: str = ""
+    request_id: str = ""
+    seq: int = 0
+    stage: str = ""
     ts: float = Field(default_factory=lambda: time.time())
     meta: Dict[str, Any] = Field(default_factory=dict)
 
@@ -40,6 +45,9 @@ def build_stream_payload(
     event_type: StreamEventType,
     content: str,
     session_id: str = "",
+    request_id: str = "",
+    seq: int = 0,
+    stage: str = "",
     node: str = "",
     meta: Optional[Dict[str, Any]] = None,
     force_unified: bool = False,
@@ -55,11 +63,24 @@ def build_stream_payload(
             content=content,
             node=node,
             session_id=session_id,
+            request_id=request_id,
+            seq=seq,
+            stage=stage,
             meta=meta or {},
         )
         return envelope.model_dump()
 
-    payload: Dict[str, Any] = {"type": event_type, "content": content}
+    payload: Dict[str, Any] = {
+        "type": event_type,
+        "content": content,
+        "ts": time.time(),
+    }
+    if request_id:
+        payload["request_id"] = request_id
+    if seq > 0:
+        payload["seq"] = seq
+    if stage:
+        payload["stage"] = stage
     if node:
         payload["node"] = node
     if meta:

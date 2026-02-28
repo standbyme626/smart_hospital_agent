@@ -258,6 +258,9 @@ class Settings(BaseSettings):
     TRIAGE_FAST_PATH_ENABLED: bool = os.getenv("TRIAGE_FAST_PATH_ENABLED", "true").lower() == "true"
     TRIAGE_TOOL_TIMEOUT_SECONDS: float = float(os.getenv("TRIAGE_TOOL_TIMEOUT_SECONDS", "2.8"))
     TRIAGE_FAST_CONFIDENCE_THRESHOLD: float = float(os.getenv("TRIAGE_FAST_CONFIDENCE_THRESHOLD", "0.62"))
+    QUERY_REWRITE_TIMEOUT_SECONDS: float = float(os.getenv("QUERY_REWRITE_TIMEOUT_SECONDS", "4.0"))
+    CRISIS_FASTLANE_ENABLED: bool = os.getenv("CRISIS_FASTLANE_ENABLED", "true").lower() == "true"
+    SSE_PING_INTERVAL_SECONDS: float = float(os.getenv("SSE_PING_INTERVAL_SECONDS", "8.0"))
 
     # SSE protocol compatibility
     ENABLE_UNIFIED_STREAM_SCHEMA: bool = os.getenv("ENABLE_UNIFIED_STREAM_SCHEMA", "false").lower() == "true"
@@ -273,6 +276,11 @@ class Settings(BaseSettings):
     LANGCHAIN_ENDPOINT: str = "https://api.smith.langchain.com"
     LANGCHAIN_API_KEY: str = ""
     LANGCHAIN_PROJECT: str = "Smart-Hospital-Agent-V6"
+    LANGFUSE_ENABLED: bool = os.getenv("LANGFUSE_ENABLED", "false").lower() == "true"
+    LANGFUSE_HOST: str = os.getenv("LANGFUSE_HOST", "http://127.0.0.1:3000")
+    LANGFUSE_PUBLIC_KEY: str = os.getenv("LANGFUSE_PUBLIC_KEY", "")
+    LANGFUSE_SECRET_KEY: str = os.getenv("LANGFUSE_SECRET_KEY", "")
+    LANGFUSE_ENVIRONMENT: str = os.getenv("LANGFUSE_ENVIRONMENT", "dev")
 
     # 单一配置源：固定读取项目根目录 .env，避免受启动目录影响
     model_config = SettingsConfigDict(case_sensitive=True, env_file=ROOT_ENV_FILE, extra="ignore")
