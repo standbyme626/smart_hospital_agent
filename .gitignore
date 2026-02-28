@@ -1,31 +1,103 @@
-# env
+# Secrets and local environment
 .env
 *.env
+!.env.example
 backend/.env
 
-# python cache
+# Python caches and tooling
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyo
+*.pyd
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
 
-# local runtime artifacts
+# Virtual environments
+.venv/
+venv/
+backend/venv/
+frontend_new/.venv/
+rag_text_1/.venv/
+
+# Node / frontend build output
+frontend_new/node_modules/
+frontend_new/.next/
+frontend_new/test-results/
+frontend_new/.turbo/
+test-results/
+
+# IDE / editor state
+.vscode/
+.cursor/
+.trae/
+.DS_Store
+*.swp
+*~
+
+# Local tasking metadata
+.agent/
+.beads/
+.beads-planning/
+
+# Runtime artifacts
 logs/
 **/logs/
 *.log
+*.pid
+*.tmp
 .release_meta/
+cache/
+data_persist/
+backups_runtime/
+volumes/
 
-# models / weights
+# Databases and checkpoints
+*.db
+*.sqlite
+*.sqlite3
+checkpoints.sqlite
+
+# Models / weights / inference artifacts
 models/
 **/models/
-data/fine-tuning/weights/
 *.bin
-*.safetensors
 *.pt
+*.pth
+*.safetensors
+*.gguf
 *.onnx
+*.ckpt
+*.engine
 
-# virtual env
-venv/
-.venv/
+# Data archives and heavyweight caches
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
+data/**/*.arrow
+data/**/*.lock
+data/**/.cache/
+data/Huatuo26M-Lite/**
 
-# misc
-.DS_Store
+# Vendored/local cloned repositories (keep under explicit third_party when needed)
+GPTQModel/
+llama.cpp/
+local_llama_factory/
+langchain_v1_docs_proxy/
+antigravity-awesome-skills/
+kaggle_export_*/
+kaggle_upload_*/
+rag_text_1/
+
+# Generated reports (retain curated docs under docs/ instead)
+reports/current/
+reports/release_check/
+
+# Cleanup accidental shell output artifacts
+*Destination}}{{end}}*
