@@ -126,103 +126,103 @@
 ### 组件关系图 / Component Topology
 ```mermaid
 graph LR
-    U[用户 User] --> F[前端 Frontend Next.js]
-    F --> P[前端代理 Frontend Proxy api chat]
-    P --> B[后端流式接口 Backend Stream API v1 chat]
+    U[用户 / User] --> F[前端 / Frontend Next.js]
+    F --> P[前端代理 / Frontend Proxy API chat]
+    P --> B[后端流式接口 / Backend Stream API v1 chat]
 
-    B --> W[工作流编排 Workflow Orchestrator LangGraph]
-    W --> I[接入子图 Ingress Subgraph]
-    W --> D[诊断子图 Diagnosis Subgraph]
-    W --> S[服务子图 Service Subgraph]
-    W --> E[输出子图 Egress Subgraph]
-    W --> C[(缓存 Cache Redis)]
-    W --> R[(关系数据库 Relational DB PostgreSQL)]
+    B --> W[工作流编排 / Workflow Orchestrator LangGraph]
+    W --> I[接入子图 / Ingress Subgraph]
+    W --> D[诊断子图 / Diagnosis Subgraph]
+    W --> S[服务子图 / Service Subgraph]
+    W --> E[输出子图 / Egress Subgraph]
+    W --> C[(缓存 / Cache Redis)]
+    W --> R[(关系数据库 / Relational Database PostgreSQL)]
 
-    D --> VS[(向量检索 Vector Retrieval Milvus)]
-    D --> BM[(词法检索 Lexical Retrieval BM25 medical_chunks)]
-    D --> RR[(重排器 Reranker)]
-    D --> G[(图检索 Graph Retrieval Neo4j GraphRAG)]
-    D --> L[(模型路由 Model Router SmartRotatingLLM)]
+    D --> VS[(向量检索 / Vector Retrieval Milvus)]
+    D --> BM[(词法检索 / Lexical Retrieval BM25 medical_chunks)]
+    D --> RR[(重排器 / Reranker)]
+    D --> G[(图检索 / Graph Retrieval Neo4j GraphRAG)]
+    D --> L[(模型路由 / Model Router SmartRotatingLLM)]
 
-    S --> HIS[HIS 模拟桥 Legacy HIS MCP Simulator]
+    S --> HIS[HIS 模拟桥 / Legacy HIS MCP Simulator]
 
-    B --> M[指标端点 Metrics Endpoint]
-    M --> PR[Prometheus 采集 Prometheus Scrape]
-    PR --> GF[Grafana]
+    B --> M[指标端点 / Metrics Endpoint]
+    M --> PR[Prometheus 采集 / Prometheus Scrape]
+    PR --> GF[可视化看板 / Grafana Dashboard]
 
-    B --> LF[链路追踪 Tracing Langfuse Bridge Optional]
+    B --> LF[链路追踪 / Tracing Langfuse Bridge Optional]
 ```
 
 ### 一次分析请求数据流图 / Request Data Flow
 ```mermaid
 sequenceDiagram
-    participant U as 用户 User
-    participant FE as 前端 Frontend ChatShell
-    participant PX as 代理层 Proxy API chat Route
-    participant BE as 后端 Backend API v1 chat Stream
-    participant G as 主图 Main Workflow Graph
-    participant DG as 诊断子图 Diagnosis Subgraph
-    participant RAG as 检索器 Retriever
+    participant U as 用户 / User
+    participant FE as 前端 / Frontend ChatShell
+    participant PX as 代理层 / Proxy API chat Route
+    participant BE as 后端 / Backend API v1 chat Stream
+    participant G as 主图 / Main Workflow Graph
+    participant DG as 诊断子图 / Diagnosis Subgraph
+    participant RAG as 检索器 / Retriever
 
-    U->>FE: 输入症状 Enter symptom text
-    FE->>PX: 发起请求 Send POST api chat
-    PX->>BE: 转发流式请求 Forward SSE request
-    BE->>G: 执行事件流 Run event stream event_generator and astream_events
-    G->>DG: 分流到诊断 Route to diagnosis via triage_router
-    DG->>RAG: 检索调用 Call search_rag30 with top_k
-    RAG-->>DG: 返回证据 Return docs scores debug payload
-    DG-->>G: 输出报告或追问 Return Diagnosis_Report or Clarify_Question
-    G-->>BE: 回传流事件 Return token thought status final events
-    BE-->>PX: 返回 SSE 流 Return SSE stream
-    PX-->>FE: 标准化事件 Return normalized events
-    FE-->>U: 实时反馈 Return live status and slot information
+    U->>FE: 输入症状 / Enter symptom text
+    FE->>PX: 发起请求 / Send POST api chat
+    PX->>BE: 转发流式请求 / Forward SSE request
+    BE->>G: 执行事件流 / Run event stream event_generator and astream_events
+    G->>DG: 分流到诊断 / Route to diagnosis via triage_router
+    DG->>RAG: 检索调用 / Call search_rag30 with top_k
+    RAG-->>DG: 返回证据 / Return docs scores debug payload
+    DG-->>G: 输出报告或追问 / Return Diagnosis_Report or Clarify_Question
+    G-->>BE: 回传流事件 / Return token thought status final events
+    BE-->>PX: 返回 SSE 流 / Return SSE stream
+    PX-->>FE: 标准化事件 / Return normalized events
+    FE-->>U: 实时反馈 / Return live status and slot information
 ```
 
 ### 详细流程图（含降级治理）/ Detailed Flow (with Degradation & Governance)
 ```mermaid
 flowchart TD
-    A[用户请求 User Request] --> B[前端会话 Frontend ChatShell]
-    B --> C[前端代理 Frontend Proxy Next API chat]
-    C --> D[后端流式入口 Backend API v1 chat Stream]
-    D --> E[工作流入口 Workflow Entry cache_lookup]
+    A[用户请求 / User Request] --> B[前端会话 / Frontend ChatShell]
+    B --> C[前端代理 / Frontend Proxy Next API chat]
+    C --> D[后端流式入口 / Backend API v1 chat Stream]
+    D --> E[工作流入口 / Workflow Entry cache_lookup]
 
-    E -->|命中缓存 Cache Hit| P[异步持久化 Async Persistence Write]
-    E -->|未命中缓存 Cache Miss| F[接入链路 Ingress pii_filter to guard to intent_classifier]
+    E -->|命中缓存 / Cache Hit| P[异步持久化 / Async Persistence Write]
+    E -->|未命中缓存 / Cache Miss| F[接入链路 / Ingress pii_filter to guard to intent_classifier]
 
-    F -->|问候 GREETING| G1[快速回复 Fast Reply]
-    F -->|挂号 REGISTRATION| G2[服务子图 Service Subgraph]
-    F -->|医疗或危机 MEDICAL or CRISIS| G3[诊断子图 Diagnosis Subgraph]
-    F -->|拦截 BLOCKED| P
+    F -->|问候意图 GREETING / Greeting intent| G1[快速回复 / Fast Reply]
+    F -->|挂号意图 REGISTRATION / Registration intent| G2[服务子图 / Service Subgraph]
+    F -->|医疗或危机 MEDICAL or CRISIS / Medical or crisis| G3[诊断子图 / Diagnosis Subgraph]
+    F -->|拦截 BLOCKED / Blocked| P
 
-    G3 --> H1[查询改写 Query Rewrite]
-    H1 -->|超时或异常 Timeout or Error| H1F[改写回退 Rewrite Fallback]
-    H1 --> H2[快速分诊 Quick Triage]
-    H2 -->|快速路径就绪 Fast Path Ready| H6[诊断报告 Diagnosis Report]
-    H2 -->|需要深度路径 Need Deep Path| H3[混合检索 Hybrid Retriever]
+    G3 --> H1[查询改写 / Query Rewrite]
+    H1 -->|超时或异常 / Timeout or Error| H1F[改写回退 / Rewrite Fallback]
+    H1 --> H2[快速分诊 / Quick Triage]
+    H2 -->|快速路径就绪 / Fast Path Ready| H6[诊断报告 / Diagnosis Report]
+    H2 -->|需要深度路径 / Need Deep Path| H3[混合检索 / Hybrid Retriever]
 
-    H3 --> H31[向量词法SQL图检索 Vector Lexical SQL Graph Retrieval]
-    H31 -->|向量不可用 Vector Unavailable| H31F[降级到非向量路径 Degrade Without Vector]
-    H31 --> H4[推理节点 Reasoning Node DSPy Reasoner]
-    H4 --> H5[决策裁决 Decision Judge]
-    H5 -->|结束诊断 End Diagnosis| H6
-    H5 -->|继续追问 Clarify| H7[追问节点 Clarify Question]
+    H3 --> H31[向量词法SQL图检索 / Vector Lexical SQL Graph Retrieval]
+    H31 -->|向量不可用 / Vector Unavailable| H31F[降级到非向量路径 / Degrade Without Vector]
+    H31 --> H4[推理节点 / Reasoning Node DSPy Reasoner]
+    H4 --> H5[决策裁决 / Decision Judge]
+    H5 -->|结束诊断 / End Diagnosis| H6
+    H5 -->|继续追问 / Clarify| H7[追问节点 / Clarify Question]
 
-    G2 --> S1[查号源 Query Department Slots]
-    S1 --> S2[锁号 Lock Slot]
-    S2 --> S3[确认预约 Confirm Appointment]
+    G2 --> S1[查号源 / Query Department Slots]
+    S1 --> S2[锁号 / Lock Slot]
+    S2 --> S3[确认预约 / Confirm Appointment]
 
-    G1 --> O[输出门控 Egress Quality Gate]
+    G1 --> O[输出门控 / Egress Quality Gate]
     H6 --> O
     H7 --> O
     S3 --> O
     O --> P
 
-    P --> M1[(结构化记录 Structured Record PostgreSQL consultation)]
-    P --> M2[(患者记忆 Patient Memory Milvus)]
-    P --> M3[(语义缓存 Semantic and Exact Cache Redis)]
+    P --> M1[(结构化记录 / Structured Record PostgreSQL consultation)]
+    P --> M2[(患者记忆 / Patient Memory Milvus)]
+    P --> M3[(语义缓存 / Semantic and Exact Cache Redis)]
 
-    D --> X1[指标与日志 Metrics and Structured Logs]
-    D --> X2[可选追踪 Optional Langfuse Trace]
+    D --> X1[指标与日志 / Metrics and Structured Logs]
+    D --> X2[可选追踪 / Optional Langfuse Trace]
     D --> C
 ```
 
