@@ -285,6 +285,29 @@ class Settings(BaseSettings):
     LANGFUSE_SECRET_KEY: str = os.getenv("LANGFUSE_SECRET_KEY", "")
     LANGFUSE_ENVIRONMENT: str = os.getenv("LANGFUSE_ENVIRONMENT", "dev")
 
+    # Upgrade2 P2-1: minimal RBAC + audit + SSO mapping
+    AUTH_RBAC_ENABLED: bool = os.getenv("AUTH_RBAC_ENABLED", "false").lower() == "true"
+    AUTH_RBAC_ALLOW_HEADER_ROLE: bool = os.getenv("AUTH_RBAC_ALLOW_HEADER_ROLE", "false").lower() == "true"
+    AUTH_RBAC_STATIC_TOKENS: str = os.getenv(
+        "AUTH_RBAC_STATIC_TOKENS",
+        "dev-admin-token:admin,dev-ops-token:operator,dev-auditor-token:auditor",
+    )
+    AUTH_RBAC_AUDIT_LOG_PATH: str = os.getenv(
+        "AUTH_RBAC_AUDIT_LOG_PATH",
+        os.path.join(PROJECT_ROOT, "logs", "security", "rbac_audit.jsonl"),
+    )
+    AUTH_SSO_ENABLED: bool = os.getenv("AUTH_SSO_ENABLED", "false").lower() == "true"
+    AUTH_SSO_ISSUER: str = os.getenv("AUTH_SSO_ISSUER", "https://sso.example.internal")
+    AUTH_SSO_FRONTEND_AUDIENCE: str = os.getenv("AUTH_SSO_FRONTEND_AUDIENCE", "frontend_new")
+    AUTH_SSO_OPENWEBUI_AUDIENCE: str = os.getenv("AUTH_SSO_OPENWEBUI_AUDIENCE", "open_webui")
+    AUTH_SSO_CLAIM_SUB: str = os.getenv("AUTH_SSO_CLAIM_SUB", "sub")
+    AUTH_SSO_CLAIM_EMAIL: str = os.getenv("AUTH_SSO_CLAIM_EMAIL", "email")
+    AUTH_SSO_CLAIM_GROUPS: str = os.getenv("AUTH_SSO_CLAIM_GROUPS", "groups")
+    AUTH_SSO_ROLE_MAP_JSON: str = os.getenv(
+        "AUTH_SSO_ROLE_MAP_JSON",
+        '{"admin":["admin","platform-admin"],"operator":["ops","doctor","triage"],"auditor":["audit","security"]}',
+    )
+
     # 单一配置源：固定读取项目根目录 .env，避免受启动目录影响
     model_config = SettingsConfigDict(case_sensitive=True, env_file=ROOT_ENV_FILE, extra="ignore")
 

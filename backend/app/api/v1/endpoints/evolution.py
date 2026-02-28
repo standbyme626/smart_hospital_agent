@@ -1,12 +1,13 @@
 import asyncio
 import json
 from typing import List, Dict, Any, AsyncGenerator
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from app.services.evolution_runner import EvolutionRunner
 from pathlib import Path
 from app.core.config import settings
+from app.core.security.rbac import require_roles
 
 router = APIRouter()
 
@@ -91,7 +92,11 @@ async def run_evolution_background(department: str, speed_multiplier: float):
         await manager.broadcast({"sender": "SYSTEM", "content": "Evolution Cycle Finished.", "type": "status"})
 
 @router.post("/start")
-async def start_evolution(req: EvolutionStartRequest, background_tasks: BackgroundTasks):
+async def start_evolution(
+    req: EvolutionStartRequest,
+    background_tasks: BackgroundTasks,
+    actor: Dict[str, str] = Depends(require_roles("admin")),
+):
     """
     Start the evolution loop in the background.
     """
@@ -106,22 +111,27 @@ async def start_evolution(req: EvolutionStartRequest, background_tasks: Backgrou
     manager.should_stop = False
         
     background_tasks.add_task(run_evolution_background, req.department, req.speed_multiplier)
-    return {"status": "started", "department": req.department, "mode": "evolution"}
+    return {
+        "status": "started",
+        "department": req.department,
+        "mode": "evolution",
+        "actor": {"user_id": actor.get("user_id", ""), "role": actor.get("role", "")},
+    }
 
 @router.post("/stop")
-async def stop_evolution():
+async def stop_evolution(actor: Dict[str, str] = Depends(require_roles("admin"))):
     """
     Force stop the running evolution cycle.
     """
     _ensure_evolution_enabled()
     if not manager.is_running:
-        return {"status": "ignored", "message": "No evolution running."}
+        return {"status": "ignored", "message": "No evolution running.", "actor": actor}
     
     manager.stop_evolution()
-    return {"status": "stopping", "message": "Stop signal sent to background task."}
+    return {"status": "stopping", "message": "Stop signal sent to background task.", "actor": actor}
 
 @router.get("/stream")
-async def stream_evolution():
+async def stream_evolution(actor: Dict[str, str] = Depends(require_roles("operator"))):
     """
     SSE Stream for evolution events.
     """
@@ -129,7 +139,10 @@ async def stream_evolution():
     return StreamingResponse(manager.subscribe(), media_type="text/event-stream")
 
 @router.post("/human_judge")
-async def human_judge(req: HumanJudgeRequest):
+async def human_judge(
+    req: HumanJudgeRequest,
+    actor: Dict[str, str] = Depends(require_roles("admin")),
+):
     """
     Record human feedback for Audit Agent fine-tuning.
     """
@@ -153,4 +166,4 @@ async def human_judge(req: HumanJudgeRequest):
     
     file_path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding='utf-8')
     
-    return {"status": "recorded", "count": len(data)}
+    return {"status": "recorded", "count": len(data), "actor": actor}
