@@ -19,8 +19,8 @@
 - 面向管理层的落地价值：把“AI 医疗能力”从演示功能，升级为可上线、可审计、可迭代的业务控制面。
 
 ### 技术版（给开发看）/ Technical View
-- What: 一个以 `backend/app/core/graph/workflow.py::create_agent_graph` 为核心的多子图医疗 Agent 系统，后端 FastAPI + LangGraph，前端 Next.js + SSE。
-- Why: 把“策略配置、执行编排、质量治理、故障降级、观测追踪、评测迭代”统一成同一个技术控制面，减少散点逻辑和线上不可控行为。
+- What（是什么）: 一个以 `backend/app/core/graph/workflow.py::create_agent_graph` 为核心的多子图医疗 Agent 系统，后端 FastAPI + LangGraph，前端 Next.js + SSE。
+- Why（为什么）: 把“策略配置、执行编排、质量治理、故障降级、观测追踪、评测迭代”统一成同一个技术控制面，减少散点逻辑和线上不可控行为。
 - 工程定位（Research Ops Control Plane）在本项目中的技术拆解：
 - 策略平面（Policy Plane）：`backend/app/core/config.py` 统一托管模型路由、RAG 参数、RBAC、超时和回退开关；`frontend_new/app/settings/page.tsx` 支持运行时参数注入。
 - 执行平面（Execution Plane）：`workflow` 主图调度 `ingress/diagnosis/service/egress`，把医疗问答和挂号流程放进同一执行图。
@@ -109,13 +109,19 @@
 - 数据层：PostgreSQL、Redis、Milvus、Neo4j（`backend/app/db/*`、`backend/app/rag/*`）。
 - 可观测层：`/metrics`、Langfuse bridge、结构化日志（`backend/app/core/middleware/instrumentation.py`、`backend/app/core/monitoring/langfuse_bridge.py`、`backend/app/core/logging/setup.py`）。
 
-### Module Layers (English)
-- Ingress/API Layer: `frontend_new` and `backend/app/api/v1/endpoints/*` for request intake, SSE contracts, runtime knobs.
-- Orchestration Layer: `backend/app/core/graph/workflow.py` for master routing and subgraph coordination.
-- Reasoning Layer: `backend/app/core/graph/sub_graphs/diagnosis.py` for rewrite, retrieval, reasoning, and decision governance.
-- Service Layer: `backend/app/core/graph/sub_graphs/service.py` + `backend/app/services/mcp/his_server.py` for appointment workflow execution.
-- Data Layer: PostgreSQL, Redis, Milvus, Neo4j adapters under `backend/app/db/*` and `backend/app/rag/*`.
-- Observability Layer: Prometheus `/metrics`, Langfuse bridge, structured logging.
+### Module Layers (English with Chinese Translation)
+- Ingress/API Layer（接入层）: `frontend_new` and `backend/app/api/v1/endpoints/*` for request intake, SSE contracts, runtime knobs.
+  中文：负责请求接入、流式协议对接和运行时参数透传。
+- Orchestration Layer（编排层）: `backend/app/core/graph/workflow.py` for master routing and subgraph coordination.
+  中文：负责主图路由和子图协同执行。
+- Reasoning Layer（推理层）: `backend/app/core/graph/sub_graphs/diagnosis.py` for rewrite, retrieval, reasoning, and decision governance.
+  中文：负责重写、检索、推理与诊断裁决。
+- Service Layer（服务层）: `backend/app/core/graph/sub_graphs/service.py` + `backend/app/services/mcp/his_server.py` for appointment workflow execution.
+  中文：负责挂号查询、锁号、支付确认等服务闭环。
+- Data Layer（数据层）: PostgreSQL, Redis, Milvus, Neo4j adapters under `backend/app/db/*` and `backend/app/rag/*`.
+  中文：负责结构化数据、缓存、向量检索和图谱检索的数据访问。
+- Observability Layer（可观测层）: Prometheus `/metrics`, Langfuse bridge, structured logging.
+  中文：负责指标监控、链路追踪和日志诊断。
 
 ### 组件关系图 / Component Topology
 ```mermaid
