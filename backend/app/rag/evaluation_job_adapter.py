@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import inspect
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping
+from typing import Any, Awaitable, Callable, Dict, Iterable, List, Mapping
 import json
 
 _REQUIRED_JOB_FIELDS = ("request_id", "dataset_version", "model_version", "task_type")
+MetricEvaluator = Callable[[Dict[str, Any]], Mapping[str, Any] | Awaitable[Mapping[str, Any]]]
 
 
 def _utc_now() -> str:
@@ -64,6 +66,70 @@ def build_metric_result(
         "failure_stats": failures,
         "generated_at": _utc_now(),
     }
+
+
+async def run_metric_jobs(
+    *,
+    metric_jobs: Iterable[Mapping[str, Any]],
+    evaluator: MetricEvaluator,
+) -> List[Dict[str, Any]]:
+    """
+    Stage E metricjobs -> metricresults adapter:
+    - Invalid job or evaluator failure does not block the batch.
+    - Every input job attempts to produce one metric_result row.
+    """
+    metric_results: List[Dict[str, Any]] = []
+
+    for raw_job in metric_jobs:
+        raw_job_map = dict(raw_job or {})
+        request_id = str(raw_job_map.get("request_id") or "").strip() or "unknown"
+        dataset_version = str(raw_job_map.get("dataset_version") or "").strip() or "unknown"
+        model_version = str(raw_job_map.get("model_version") or "").strip() or "unknown"
+        task_type = str(raw_job_map.get("task_type") or "").strip() or "unknown"
+        safe_job = {
+            "request_id": request_id,
+            "dataset_version": dataset_version,
+            "model_version": model_version,
+            "task_type": task_type,
+        }
+
+        try:
+            normalized_job = _validate_metric_job(raw_job_map)
+        except Exception as exc:
+            metric_results.append(
+                build_metric_result(
+                    metric_job=safe_job,
+                    status="failed",
+                    failure_stats={"total": 1, "failed": 1, "error": str(exc)},
+                )
+            )
+            continue
+
+        try:
+            payload = evaluator(dict(normalized_job))
+            if inspect.isawaitable(payload):
+                payload = await payload
+            payload_map = dict(payload or {}) if isinstance(payload, Mapping) else {}
+
+            metric_results.append(
+                build_metric_result(
+                    metric_job=normalized_job,
+                    instance_metrics=payload_map.get("instance_metrics"),
+                    summary_metrics=payload_map.get("summary_metrics"),
+                    failure_stats=payload_map.get("failure_stats"),
+                    status=str(payload_map.get("status") or "ok"),
+                )
+            )
+        except Exception as exc:
+            metric_results.append(
+                build_metric_result(
+                    metric_job=normalized_job,
+                    status="failed",
+                    failure_stats={"total": 1, "failed": 1, "error": str(exc)},
+                )
+            )
+
+    return metric_results
 
 
 def write_weekly_baseline(

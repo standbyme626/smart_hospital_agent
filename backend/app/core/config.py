@@ -241,6 +241,10 @@ class Settings(BaseSettings):
         "紧急,急性,胸痛,呼吸困难,抽搐,昏迷,休克,high risk,emergency",
     )
     ENABLE_DECISION_GOVERNANCE: bool = os.getenv("ENABLE_DECISION_GOVERNANCE", "false").lower() == "true"
+    ENABLE_EVAL_GATE: bool = os.getenv("ENABLE_EVAL_GATE", "false").lower() == "true"
+    EVAL_GATE_ENFORCE: bool = os.getenv("EVAL_GATE_ENFORCE", "false").lower() == "true"
+    ENABLE_DYNAMIC_REGRESSION: bool = os.getenv("ENABLE_DYNAMIC_REGRESSION", "false").lower() == "true"
+    DYNAMIC_REGRESSION_ENFORCE: bool = os.getenv("DYNAMIC_REGRESSION_ENFORCE", "false").lower() == "true"
 
     ENABLE_ADAPTIVE_RETRIEVAL_K: bool = os.getenv("ENABLE_ADAPTIVE_RETRIEVAL_K", "false").lower() == "true"
     ADAPTIVE_RETRIEVAL_K_MIN: int = int(os.getenv("ADAPTIVE_RETRIEVAL_K_MIN", "2"))
