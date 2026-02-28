@@ -240,6 +240,7 @@ class Settings(BaseSettings):
         "DIAGNOSIS_DECISION_HIGH_RISK_KEYWORDS",
         "紧急,急性,胸痛,呼吸困难,抽搐,昏迷,休克,high risk,emergency",
     )
+    ENABLE_DECISION_GOVERNANCE: bool = os.getenv("ENABLE_DECISION_GOVERNANCE", "false").lower() == "true"
 
     ENABLE_ADAPTIVE_RETRIEVAL_K: bool = os.getenv("ENABLE_ADAPTIVE_RETRIEVAL_K", "false").lower() == "true"
     ADAPTIVE_RETRIEVAL_K_MIN: int = int(os.getenv("ADAPTIVE_RETRIEVAL_K_MIN", "2"))

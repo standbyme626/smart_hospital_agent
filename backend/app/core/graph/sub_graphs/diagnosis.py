@@ -1618,7 +1618,9 @@ def build_diagnosis_graph():
     workflow.add_node("Quick_Triage", quick_triage_node)
     workflow.add_node("Hybrid_Retriever", hybrid_retriever_node)
     workflow.add_node("DSPy_Reasoner", dspy_reasoner_node)
-    workflow.add_node("Decision_Judge", decision_judge_node)
+    decision_governance_enabled = bool(getattr(settings, "ENABLE_DECISION_GOVERNANCE", False))
+    if decision_governance_enabled:
+        workflow.add_node("Decision_Judge", decision_judge_node)
     
     # 动作节点
     workflow.add_node("Diagnosis_Report", generate_report_node)
@@ -1646,15 +1648,25 @@ def build_diagnosis_graph():
     )
     
     # 条件边
-    workflow.add_edge("DSPy_Reasoner", "Decision_Judge")
-    workflow.add_conditional_edges(
-        "Decision_Judge",
-        confidence_evaluator_node,
-        {
-            "end_diagnosis": "Diagnosis_Report",
-            "clarify_question": "Clarify_Question"
-        }
-    )
+    if decision_governance_enabled:
+        workflow.add_edge("DSPy_Reasoner", "Decision_Judge")
+        workflow.add_conditional_edges(
+            "Decision_Judge",
+            confidence_evaluator_node,
+            {
+                "end_diagnosis": "Diagnosis_Report",
+                "clarify_question": "Clarify_Question"
+            }
+        )
+    else:
+        workflow.add_conditional_edges(
+            "DSPy_Reasoner",
+            confidence_evaluator_node,
+            {
+                "end_diagnosis": "Diagnosis_Report",
+                "clarify_question": "Clarify_Question"
+            }
+        )
     
     workflow.add_edge("Diagnosis_Report", END)
     workflow.add_edge("Clarify_Question", END) # 返回给用户等待输入
