@@ -238,53 +238,54 @@ class SmartRotatingLLM(BaseChatModel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-    def _is_quota_error(self, error: Exception) -> bool:
-        """
-        判断是否为额度耗尽/欠费错误 (403, 429)
-        注意：区分“整个账号没钱/Key无效”和“特定模型Free Tier用完”。
-        """
+    def _is_auth_error(self, error: Exception) -> bool:
+        """仅识别明确认证错误（401/无效 key）。"""
         error_str = str(error).lower()
         status_code = getattr(error, "status_code", None)
-        
-        # [Special Case] Aliyun "Free Tier of the model exhausted" -> 这是模型层面的错误，不是Key层面的（Key可能还能调其他模型）
-        if "free tier of the model has been exhausted" in error_str:
-            return False
+        if status_code == 401:
+            return True
+        auth_markers = [
+            "invalid_api_key",
+            "invalid api key",
+            "incorrect api key",
+            "unauthorized",
+            "authentication failed",
+            "error code: 401",
+        ]
+        return any(marker in error_str for marker in auth_markers)
 
-        # 1. 明确的状态码检查
-        if status_code in [429, 402]:
-            return True
-            
-        # 2. 关键词匹配 (更严格)
-        # 阿里云/DashScope 特有错误
-        if "datainspectionfailed" in error_str:
-             # 内容安全拦截，不应轮询 Key，但为了不崩溃先视为 True? 
-             # 不，内容拦截换 Key 没用。应该直接抛出。
-             # 这里只处理 Key 相关的
-             return False
-             
-        if "out of capacity" in error_str: # Azure/OpenAI
-            return True
-            
-        if "insufficient_quota" in error_str:
-            return True
-            
-        if "billing" in error_str and "account" in error_str:
-            return True
-            
-        # 避免 "404" 误判为 "403" (如果字符串里恰好有 403)
-        # 使用正则匹配 "error code: 403" 
-        import re
-        if re.search(r"error.*code.*403", error_str):
-            return True
-            
-        # [Fix] 之前的逻辑导致 404 被误判，如果 status_code 明确是 404，直接 False
-        if status_code == 404:
-            return False
+    def _is_model_free_tier_error(self, error: Exception) -> bool:
+        """模型免费额度耗尽（模型级），不得拉黑 key。"""
+        error_str = str(error).lower()
+        markers = [
+            "allocationquota.freetieronly",
+            "free tier of the model has been exhausted",
+            "free tier exhausted",
+            "freetieronly",
+        ]
+        return any(marker in error_str for marker in markers)
 
-        if status_code == 403:
+    def _is_model_error(self, error: Exception) -> bool:
+        """模型级/请求级错误，应该继续尝试同 key 下的下一个模型。"""
+        if self._is_model_free_tier_error(error):
             return True
-            
+        error_str = str(error).lower()
+        status_code = getattr(error, "status_code", None)
+        if status_code in [400, 403, 404, 429, 500, 502, 503]:
+            return True
+        if any(x in error_str for x in ["model", "not found", "permission", "access denied"]):
+            return True
+        if any(code in error_str for code in ["error code: 400", "error code: 403", "error code: 404", "error code: 429"]):
+            return True
         return False
+
+    def _should_blacklist_key(self, error: Exception) -> bool:
+        if not bool(getattr(settings, "LLM_KEY_BLACKLIST_ENABLED", False)):
+            return False
+        on_auth_only = bool(getattr(settings, "LLM_KEY_BLACKLIST_ON_AUTH_ONLY", True))
+        if on_auth_only:
+            return self._is_auth_error(error)
+        return self._is_auth_error(error)
 
     def _convert_dict_to_message(self, m: Any) -> BaseMessage:
         """内部辅助：将字典安全转换为 LangChain 消息对象"""
@@ -682,8 +683,9 @@ class SmartRotatingLLM(BaseChatModel):
 
         cloud_primary_enabled = _env_flag("CLOUD_PRIMARY_ENABLED", True)
         if cloud_primary_enabled:
+            blacklist_enabled = bool(getattr(settings, "LLM_KEY_BLACKLIST_ENABLED", False))
             for k_idx, api_key in enumerate(api_keys):
-                if not api_key or api_key in self._BLACKLISTED_KEYS:
+                if not api_key or (blacklist_enabled and api_key in self._BLACKLISTED_KEYS):
                     continue
                 for model_name in models:  # Inner loop: Try all models with this key
                     try:
@@ -705,46 +707,29 @@ class SmartRotatingLLM(BaseChatModel):
                         logger.info(f"✅ [LLM-Sync] Generated: {res.generations[0].message.content[:100]}...")
                         return res
                     except Exception as e:
-                        err_str = str(e).lower()
-
-                        # [Fallback Strategy]
-                        # Check status code first
-                        status_code = getattr(e, "status_code", None)
-                        is_key_error = False
-
-                        if status_code in [401, 403]:
-                            is_key_error = True
-                        elif any(x in err_str for x in ["authentication", "quota", "exhausted", "limitexceeded"]):
-                            is_key_error = True
-                        elif "error code: 403" in err_str or "error code: 401" in err_str:
-                            is_key_error = True
-
-                        # 1. 401/403/Quota -> Key Issue -> Break inner loop to switch Key
-                        if is_key_error:
+                        if self._is_auth_error(e):
                             friendly_error = _translate_openai_error(e)
-                            logger.error(f"❌ [LLM-Sync] Key ...{api_key[-4:]} 额度耗尽/失效: {friendly_error}. 拉黑该 Key.")
-                            self._BLACKLISTED_KEYS.add(api_key)
+                            if self._should_blacklist_key(e):
+                                logger.error(
+                                    f"❌ [LLM-Sync] Key ...{api_key[-4:]} 认证失败: {friendly_error}. 已按配置拉黑该 Key."
+                                )
+                                self._BLACKLISTED_KEYS.add(api_key)
+                            else:
+                                logger.error(
+                                    f"❌ [LLM-Sync] Key ...{api_key[-4:]} 认证失败: {friendly_error}. 黑名单开关关闭，跳过该 Key."
+                                )
+                            # 认证错误是明确 key 问题，直接切换下一个 key。
                             break
 
-                        # 2. 400/404/429/5xx -> Model Issue or Rate Limit -> Continue to next Model
-                        is_model_error = False
-                        if status_code in [400, 404, 429, 500, 502, 503]:
-                            is_model_error = True
-                        elif any(x in err_str for x in ["model", "found", "access", "permission"]):
-                            is_model_error = True
-                        elif "error code: 400" in err_str or "error code: 404" in err_str or "error code: 429" in err_str:
-                            is_model_error = True
-                        # [Special Case] Free Tier Exhausted is a model error (try next model), not a key error
-                        elif "free tier of the model has been exhausted" in err_str:
-                            is_model_error = True
-
-                        if is_model_error:
+                        if self._is_model_error(e):
                             friendly_error = _translate_openai_error(e)
-                            logger.warning(f"⚠️ [LLM-Sync] 模型 {model_name} 调用失败: {friendly_error}. 正在尝试下一个模型...")
+                            logger.warning(
+                                f"⚠️ [LLM-Sync] 模型 {model_name} 调用失败: {friendly_error}. 继续同 Key 尝试下一个模型..."
+                            )
                             continue
 
-                        # 3. Other errors -> Log and continue (Aggressive Fallback)
-                        logger.error(f"❌ [LLM-Sync] 未知错误 {model_name}: {e}. 正在尝试下一个模型...")
+                        # Unknown error: keep model-rotation behavior to fully exhaust model candidates first.
+                        logger.error(f"❌ [LLM-Sync] 未知错误 {model_name}: {e}. 继续同 Key 尝试下一个模型...")
                         continue
         else:
             logger.warning("⏭️ [LLM-Sync] CLOUD_PRIMARY_ENABLED=false, skipping cloud provider.")
@@ -791,8 +776,9 @@ class SmartRotatingLLM(BaseChatModel):
 
         cloud_primary_enabled = _env_flag("CLOUD_PRIMARY_ENABLED", True)
         if cloud_primary_enabled:
+            blacklist_enabled = bool(getattr(settings, "LLM_KEY_BLACKLIST_ENABLED", False))
             for k_idx, api_key in enumerate(api_keys):
-                if not api_key or api_key in self._BLACKLISTED_KEYS:
+                if not api_key or (blacklist_enabled and api_key in self._BLACKLISTED_KEYS):
                     continue
                 for model_name in models:
                     try:
@@ -822,46 +808,29 @@ class SmartRotatingLLM(BaseChatModel):
                             except Exception:
                                 pass  # If fix fails, proceed to fallback logic below
 
-                        # [Fallback Strategy]
-                        # Check status code first
-                        status_code = getattr(e, "status_code", None)
-
-                        # 1. 401/403/Quota -> Key Issue -> Break inner loop to switch Key
-                        # [Refactored] Use _is_quota_error method for consistent checking
-                        is_key_error = False
-                        if status_code in [401]:
-                            is_key_error = True
-                        elif self._is_quota_error(e):
-                            is_key_error = True
-                        elif "error code: 401" in err_str:
-                            is_key_error = True
-
-                        if is_key_error:
+                        if self._is_auth_error(e):
                             friendly_error = _translate_openai_error(e)
-                            logger.error(f"❌ [LLM-Async] Key ...{api_key[-4:]} 额度耗尽/失效: {friendly_error}. 拉黑该 Key.")
-                            self._BLACKLISTED_KEYS.add(api_key)
+                            if self._should_blacklist_key(e):
+                                logger.error(
+                                    f"❌ [LLM-Async] Key ...{api_key[-4:]} 认证失败: {friendly_error}. 已按配置拉黑该 Key."
+                                )
+                                self._BLACKLISTED_KEYS.add(api_key)
+                            else:
+                                logger.error(
+                                    f"❌ [LLM-Async] Key ...{api_key[-4:]} 认证失败: {friendly_error}. 黑名单开关关闭，跳过该 Key."
+                                )
+                            # 认证错误是明确 key 问题，直接切换下一个 key。
                             break
 
-                        # 2. 400/404/429/5xx -> Model Issue or Rate Limit -> Continue to next Model
-                        # Also fallback for 404/5xx or specific keywords
-                        is_model_error = False
-                        if status_code in [400, 404, 429, 500, 502, 503]:
-                            is_model_error = True
-                        elif any(x in err_str for x in ["model", "found", "access", "permission"]):
-                            is_model_error = True
-                        elif "error code: 400" in err_str or "error code: 404" in err_str or "error code: 429" in err_str:
-                            is_model_error = True
-                        # [Special Case] Free Tier Exhausted is a model error (try next model), not a key error
-                        elif "free tier of the model has been exhausted" in err_str:
-                            is_model_error = True
-
-                        if is_model_error:
+                        if self._is_model_error(e):
                             friendly_error = _translate_openai_error(e)
-                            logger.warning(f"⚠️ [LLM-Async] 模型 {model_name} 调用失败: {friendly_error}. 正在尝试下一个模型...")
+                            logger.warning(
+                                f"⚠️ [LLM-Async] 模型 {model_name} 调用失败: {friendly_error}. 继续同 Key 尝试下一个模型..."
+                            )
                             continue
 
-                        # 3. Other errors -> Log and continue
-                        logger.error(f"❌ [LLM-Async] 未知错误 {model_name}: {e}. 正在尝试下一个模型...")
+                        # Unknown error: keep model-rotation behavior to fully exhaust model candidates first.
+                        logger.error(f"❌ [LLM-Async] 未知错误 {model_name}: {e}. 继续同 Key 尝试下一个模型...")
                         continue
         else:
             logger.warning("⏭️ [LLM-Async] CLOUD_PRIMARY_ENABLED=false, skipping cloud provider.")

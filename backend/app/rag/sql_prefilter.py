@@ -1,6 +1,7 @@
 import re
 import structlog
 from typing import List, Optional
+from collections import defaultdict
 from app.db.session import AsyncSessionLocal
 from sqlalchemy import text
 import asyncio
@@ -21,38 +22,80 @@ class SQLPreFilter:
         提取过滤条件，返回 Milvus/SQL 兼容的 filter expression
         """
         filters = {}
+        norm_query = str(query or "").strip()
+        if not norm_query:
+            return filters
         
         # 1. 提取科室 (Department) - 增强映射逻辑
-        departments = DEPARTMENT_LIST
+        departments = sorted(DEPARTMENT_LIST, key=len, reverse=True)
         
         # 语义关键词映射 (补齐隐含科室的词汇)
         keyword_map = SYMPTOM_KEYWORD_MAP
 
         # 1. 优先匹配明确科室名
         for dept in departments:
-            if dept in query:
+            if dept in norm_query:
                 filters["department"] = dept
                 break
         
-        # 2. 其次匹配语义关键词 (采用最长匹配优先策略)
+        # 2. 其次匹配语义关键词（仅在高置信度下启用）
+        # 目标：降低单个通用词触发误过滤，避免 pure 检索被错误科室缩窄召回范围。
         if "department" not in filters:
-            matches = []
+            dept_scores = defaultdict(float)
+            dept_hit_keywords = defaultdict(set)
+
+            ambiguous_keywords = {
+                "感冒", "发烧", "发热", "咳嗽", "肺炎", "头晕", "鼻涕",
+            }
+
             for kw, dept in keyword_map.items():
-                if kw in query:
-                    matches.append((kw, dept))
-            
-            if matches:
-                # 按关键词长度降序排列，取最长的一个
-                matches.sort(key=lambda x: len(x[0]), reverse=True)
-                filters["department"] = matches[0][1]
+                kw = str(kw or "").strip()
+                if not kw or kw not in norm_query:
+                    continue
+                # 单字关键词误触发率高，禁用其科室预过滤用途
+                if len(kw) <= 1:
+                    continue
+
+                # 关键词加权：越长越可信；常见泛词降权
+                weight = 1.0 if len(kw) == 2 else 2.0
+                if kw in ambiguous_keywords:
+                    weight *= 0.5
+
+                dept_scores[dept] += weight
+                dept_hit_keywords[dept].add(kw)
+
+            if dept_scores:
+                ranked = sorted(
+                    dept_scores.items(),
+                    key=lambda item: (
+                        item[1],
+                        len(dept_hit_keywords[item[0]]),
+                        max((len(k) for k in dept_hit_keywords[item[0]]), default=0),
+                    ),
+                    reverse=True,
+                )
+                best_dept, best_score = ranked[0]
+                second_score = ranked[1][1] if len(ranked) > 1 else 0.0
+                best_hit_count = len(dept_hit_keywords[best_dept])
+                best_max_kw_len = max((len(k) for k in dept_hit_keywords[best_dept]), default=0)
+
+                # 高置信度启用规则：
+                # - 分数足够高，且领先次优；或
+                # - 至少两个独立关键词共同指向同一科室。
+                high_confidence = (
+                    (best_score >= 2.0 and (best_score - second_score) >= 0.5)
+                    or (best_hit_count >= 2 and best_max_kw_len >= 2)
+                )
+                if high_confidence:
+                    filters["department"] = best_dept
 
                 
         # 2. 提取文档类型 (Type)
-        if "指南" in query:
+        if "指南" in norm_query:
             filters["doc_type"] = "guideline"
-        elif "药品" in query or "说明书" in query:
+        elif "药品" in norm_query or "说明书" in norm_query:
             filters["doc_type"] = "drug_manual"
-        elif "病历" in query:
+        elif "病历" in norm_query:
             filters["doc_type"] = "medical_record"
             
         return filters

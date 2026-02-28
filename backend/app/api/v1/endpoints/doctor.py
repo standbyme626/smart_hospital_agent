@@ -1,5 +1,6 @@
 import json
 import logging
+from typing import Any
 
 from fastapi import APIRouter, Query
 from langchain_core.messages import HumanMessage
@@ -7,11 +8,25 @@ from sse_starlette.sse import EventSourceResponse
 
 from app.agents.doctor_graph import doctor_graph
 from app.core.config import settings
+from app.core.department_normalization import (
+    build_department_result,
+    extract_department_mentions,
+)
+from app.core.stream_compat import extract_doctor_slots
 from app.core.stream_schema import build_stream_payload
 from app.models.requests import ChatRequest
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _extract_department_result_from_text(content: str, confidence: Any = None) -> dict | None:
+    _, canonical_top = extract_department_mentions(content or "", top_k=3)
+    return build_department_result(
+        top3=canonical_top,
+        confidence=confidence,
+        source="doctor_workflow",
+    )
 
 
 @router.post("/workflow")
@@ -43,6 +58,8 @@ async def doctor_workflow(
         )
 
     async def event_generator():
+        emitted_slots_keys = set()
+        emitted_department_keys = set()
         try:
             input_message = HumanMessage(content=request.message)
             config = {"configurable": {"thread_id": request.session_id}}
@@ -57,6 +74,34 @@ async def doctor_workflow(
                             "event": "message",
                             "data": _payload("token", content, node="diagnosis_node"),
                         }
+                        dept_result = _extract_department_result_from_text(content)
+                        if dept_result:
+                            dept_key = json.dumps(dept_result, ensure_ascii=False, sort_keys=True)
+                            if dept_key not in emitted_department_keys:
+                                emitted_department_keys.add(dept_key)
+                                yield {
+                                    "event": "department_result",
+                                    "data": _payload(
+                                        "department_result",
+                                        "department_result",
+                                        node="diagnosis_node",
+                                        meta={"department_result": dept_result, "data": dept_result},
+                                    ),
+                                }
+                        for slots_payload in extract_doctor_slots(content):
+                            slots_key = json.dumps(slots_payload, ensure_ascii=False, sort_keys=True, default=str)
+                            if slots_key in emitted_slots_keys:
+                                continue
+                            emitted_slots_keys.add(slots_key)
+                            yield {
+                                "event": "doctor_slots",
+                                "data": _payload(
+                                    "doctor_slots",
+                                    "doctor_slots",
+                                    node="diagnosis_node",
+                                    meta={"data": slots_payload, "slots": slots_payload},
+                                ),
+                            }
 
                     if getattr(msg, "tool_calls", None):
                         for tc in msg.tool_calls:
@@ -108,5 +153,8 @@ async def doctor_workflow(
                 "event": "error",
                 "data": _payload("error", error_msg, node="doctor_workflow"),
             }
+        finally:
+            # Align with /chat/stream terminator for legacy SSE clients.
+            yield {"data": "[DONE]"}
 
     return EventSourceResponse(event_generator())

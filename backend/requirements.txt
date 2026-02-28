@@ -34,5 +34,8 @@ accelerate
 chromadb==0.5.0
 torch
 sentencepiece
+<<<<<<< HEAD
 dspy-ai
 neo4j
+=======
+>>>>>>> 8352ce39 (Initial commit: Add project files, ignore models and venv)

@@ -231,6 +231,17 @@ def load_env_file(path: Path) -> Dict[str, str]:
     return env
 
 
+def resolve_single_source_env_file(project_root: Path, requested_env_file: str) -> Path:
+    root_env = (project_root / ".env").resolve()
+    requested = Path(requested_env_file)
+    resolved = requested.resolve() if requested.is_absolute() else (project_root / requested).resolve()
+    if resolved != root_env:
+        raise ValueError(
+            f"invalid_env_file: only project root .env is allowed ({root_env}), got {resolved}"
+        )
+    return resolved
+
+
 def python_has_backend_deps(python_bin: str) -> bool:
     try:
         proc = subprocess.run(
@@ -1037,7 +1048,22 @@ async def run(args: argparse.Namespace) -> int:
     if not args.start_backend and backend_log_path and args.backend_log_from_end and backend_log_path.exists():
         backend_offset = backend_log_path.stat().st_size
     if args.start_backend:
-        env_file = (project_root / args.env_file).resolve()
+        try:
+            env_file = resolve_single_source_env_file(project_root, args.env_file)
+        except ValueError as exc:
+            summary = {
+                "ok": False,
+                "error": "invalid_env_file",
+                "error_detail": str(exc),
+                "started_at": meta["started_at"],
+                "finished_at": now_iso(),
+                "results": [],
+                "total_cases": 0,
+                "passed_cases": 0,
+            }
+            summary_json.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+            report_md.write_text(build_report_md(run_id, summary), encoding="utf-8")
+            return 1
         backend_proc = start_backend_process(
             project_root=project_root,
             env_file=env_file,
@@ -1194,7 +1220,11 @@ def build_parser() -> argparse.ArgumentParser:
         default="auto",
         help="Backend python executable path. default=auto (auto-detect usable runtime)",
     )
-    p.add_argument("--env-file", default=".env", help="Env file used when --start-backend (default: project root .env)")
+    p.add_argument(
+        "--env-file",
+        default=".env",
+        help="Env file used when --start-backend (must resolve to project root .env)",
+    )
     p.add_argument("--backend-host", default="127.0.0.1", help="Backend host when --start-backend")
     p.add_argument("--backend-port", type=int, default=8001, help="Backend port when --start-backend")
     p.add_argument("--backend-ready-timeout", type=int, default=120, help="Backend ready timeout seconds")

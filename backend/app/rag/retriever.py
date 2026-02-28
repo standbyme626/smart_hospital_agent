@@ -22,6 +22,7 @@ from app.rag.sql_prefilter import SQLPreFilter
 from app.rag.ddinter_checker import DDInterChecker
 from app.core.models.local_slm import local_slm
 from app.db.session import AsyncSessionLocal
+from app.core.constants import DEPARTMENT_LIST, SYMPTOM_KEYWORD_MAP
 from sqlalchemy import text
 from langsmith import traceable, get_current_run_tree
 
@@ -59,6 +60,8 @@ class MedicalRetriever:
             
         self.sql_filter = SQLPreFilter()
         self.ddinter_checker = DDInterChecker()
+        self._department_alias_patterns = self._build_department_alias_patterns()
+        self._department_keyword_index = self._build_department_keyword_index()
         
         # 3. 缓存设施 (Redis) - [V6.5.0] 切换为二进制客户端以支持 ZSTD 压缩
         try:
@@ -111,6 +114,716 @@ class MedicalRetriever:
         query = re.sub(r'[^\w\s\u4e00-\u9fa5]', '', query) # 保留中文字符、数字和字母
         return query
 
+    def _build_overlap_terms(self, text: str) -> set[str]:
+        """构建轻量词项集合，用于语义缓存命中后的相关性校验。"""
+        normalized = self._normalize_query(text)
+        if not normalized:
+            return set()
+
+        terms: set[str] = set()
+        for token in re.findall(r"[a-z0-9]+|[\u4e00-\u9fa5]+", normalized):
+            if not token:
+                continue
+            # 中文采用 2-gram，减少单字误判（如“头疼”与“脚趾头痛”）
+            if re.fullmatch(r"[\u4e00-\u9fa5]+", token):
+                if len(token) == 1:
+                    terms.add(token)
+                else:
+                    for i in range(len(token) - 1):
+                        terms.add(token[i : i + 2])
+                continue
+
+            # 英文/数字词按原词保留
+            if len(token) >= 2:
+                terms.add(token)
+
+        return terms
+
+    def _default_dept_post_debug(self) -> Dict[str, Any]:
+        return {
+            "dept_normalize_enabled": bool(getattr(settings, "RAG_DEPT_NORMALIZE_ON_RESULT", True)),
+            "dept_normalize_changed_count": 0,
+            "dept_normalize_unknown_count": 0,
+            "dept_normalize_reason": "not_checked",
+            "dept_gate_enabled": bool(getattr(settings, "RAG_DEPT_CONSISTENCY_GATE_ON", True)),
+            "dept_gate_applied": False,
+            "dept_gate_reordered": False,
+            "dept_gate_reason": "not_checked",
+            "dept_gate_top1_support": 0,
+            "dept_gate_max_support": 0,
+            "dept_gate_support_candidate_idx": None,
+            "dept_gate_support_candidate_gap": None,
+            "dept_gate_support_hits": [],
+            "dept_gate_effective_max_gap": None,
+            "dept_top1_before": None,
+            "dept_top1_after": None,
+        }
+
+    def _build_department_alias_patterns(self) -> List[tuple[int, str, str]]:
+        """构建科室别名模式，priority 越小优先级越高。"""
+        patterns: List[tuple[int, str, str]] = []
+
+        def add_alias(alias: str, canonical: str, priority: int) -> None:
+            alias_clean = str(alias or "").strip().lower()
+            canonical_clean = str(canonical or "").strip()
+            if alias_clean and canonical_clean:
+                patterns.append((priority, alias_clean, canonical_clean))
+
+        manual_aliases = {
+            "心血管内科": "心内科",
+            "cardiology": "心内科",
+            "精神科": "精神内科",
+            "心理科": "精神内科",
+            "心理内科": "精神内科",
+            "psychiatry": "精神内科",
+            "mental health": "精神内科",
+            "普通外科": "普外科",
+            "general surgery": "普外科",
+            "泌尿外科": "泌尿科",
+            "urology": "泌尿科",
+            "中医科": "中医",
+            "tcm": "中医",
+            "耳鼻咽喉科": "耳鼻喉科",
+            "ent": "耳鼻喉科",
+            "全科": "内科",
+            "通用": "内科",
+            "general": "内科",
+            "unknown": "Unknown",
+            "none": "Unknown",
+            "null": "Unknown",
+            "指标解读": "Unknown",
+            "植物科": "Unknown",
+        }
+        for alias, canonical in manual_aliases.items():
+            add_alias(alias, canonical, priority=0)
+
+        for dept in DEPARTMENT_LIST:
+            priority = 2 if dept in {"内科", "外科"} else 1
+            add_alias(dept, dept, priority=priority)
+
+        patterns.sort(key=lambda item: (item[0], -len(item[1])))
+        return patterns
+
+    def _normalize_department_name(self, raw_department: Any) -> tuple[str, str]:
+        raw = str(raw_department or "").strip()
+        if not raw:
+            return "Unknown", "empty"
+
+        normalized = raw.lower().replace("（", "(").replace("）", ")")
+        for _, alias, canonical in self._department_alias_patterns:
+            if alias and alias in normalized:
+                return canonical, f"alias:{alias}"
+
+        for dept in DEPARTMENT_LIST:
+            if dept in raw:
+                return dept, f"token:{dept}"
+
+        if len(raw) > 18 or "归类" in raw:
+            return "Unknown", "long_unmapped_text"
+
+        return raw, "passthrough"
+
+    def _build_department_keyword_index(self) -> Dict[str, set[str]]:
+        """由症状关键词反推科室关键词，用于轻量一致性重排。"""
+        index: Dict[str, set[str]] = {}
+        for keyword, dept in SYMPTOM_KEYWORD_MAP.items():
+            canonical, _ = self._normalize_department_name(dept)
+            if canonical != "Unknown":
+                index.setdefault(canonical, set()).add(str(keyword).strip().lower())
+
+        extra_keywords = {
+            "耳鼻喉科": {"耳鸣", "耳聋", "耳痛", "耳朵", "嗡嗡响", "鼻塞", "鼻出血", "流鼻血", "鼻窦炎", "擤鼻涕", "咽痛", "喉咙"},
+            "心内科": {"胸痛", "胸闷", "心悸", "心慌", "心率", "血压"},
+            "神经内科": {"头痛", "头疼", "头晕", "眩晕", "抽搐", "抽筋", "癫痫", "口吐白沫", "麻木", "晕倒", "偏头痛"},
+            "消化内科": {"胃痛", "胃疼", "腹痛", "腹泻", "恶心", "呕吐", "便秘", "腹胀", "反酸", "肝病", "肝炎", "肝硬化", "喝酒", "饮酒", "酒后", "食欲不振", "胃口不好", "吃不下"},
+            "呼吸内科": {"气短", "咳痰", "咽炎", "呼吸", "哮喘"},
+            "妇科": {"白带", "阴道", "经期", "月经", "宫颈"},
+            "妇产科": {"孕", "妊娠", "产检", "分娩"},
+            "泌尿科": {"尿频", "尿急", "尿痛", "血尿"},
+            "骨科": {"关节", "腰痛", "腿痛", "骨折"},
+            "皮肤科": {"皮疹", "红斑", "湿疹", "皮炎"},
+            "儿科": {"小儿", "儿童", "婴儿", "宝宝", "孩子", "小孩", "儿子", "女儿", "周岁", "个月", "多动症", "不吃饭"},
+            "精神内科": {"焦虑", "抑郁", "强迫", "强迫症", "失眠", "情绪", "烦躁", "惊恐", "恐惧", "精神", "心理"},
+            "外科": {"肛瘘", "肛门", "脓水", "血管损伤", "损伤", "创伤"},
+            "内科": {"内分泌失调", "乏力", "无力"},
+        }
+        for dept, keywords in extra_keywords.items():
+            canonical, _ = self._normalize_department_name(dept)
+            if canonical == "Unknown":
+                continue
+            index.setdefault(canonical, set()).update({k.strip().lower() for k in keywords if k})
+
+        return index
+
+    def _department_keyword_support(self, query: str, canonical_dept: str) -> tuple[int, List[str]]:
+        keywords = self._department_keyword_index.get(canonical_dept, set())
+        if not query or not keywords:
+            return 0, []
+        hits = sorted({kw for kw in keywords if kw and kw in query}, key=len, reverse=True)
+        return len(hits), hits[:5]
+
+    def _extract_query_department_mentions(self, norm_query: str) -> List[str]:
+        hits: List[tuple[int, int, str]] = []
+        seen = set()
+        for _, alias, canonical in self._department_alias_patterns:
+            if not alias or canonical == "Unknown" or canonical in seen:
+                continue
+            pos = norm_query.find(alias)
+            if pos < 0:
+                continue
+            hits.append((pos, -len(alias), canonical))
+            seen.add(canonical)
+        hits.sort(key=lambda x: (x[0], x[1]))
+        ordered = [x[2] for x in hits]
+
+        # 纯检索中很多 query 不直接说科室名，补充高置信症状词反推科室。
+        keyword_candidates: List[tuple[int, int, str]] = []
+        for dept, keywords in self._department_keyword_index.items():
+            if dept in seen:
+                continue
+            kw_hits = [kw for kw in keywords if kw and kw in norm_query]
+            if not kw_hits:
+                continue
+            hit_count = len(set(kw_hits))
+            max_kw_len = max((len(kw) for kw in kw_hits), default=0)
+            # 高置信规则：>=2 个词命中，或命中 >=3 字关键词（如“内分泌失调”“口吐白沫”）。
+            if hit_count >= 2 or max_kw_len >= 3:
+                keyword_candidates.append((-(hit_count + max_kw_len), -max_kw_len, dept))
+                seen.add(dept)
+
+        keyword_candidates.sort()
+        ordered.extend([x[2] for x in keyword_candidates])
+        return ordered
+
+    def _default_pure_dept_penalty_debug(self, execution_path: str = "not_executed") -> Dict[str, Any]:
+        return {
+            "pure_dept_penalty_applied": False,
+            "pure_dept_penalty_reordered": False,
+            "pure_dept_penalty_reason": "not_checked",
+            "pure_dept_penalty_query_mentions": [],
+            "pure_dept_penalty_top1_before": None,
+            "pure_dept_penalty_top1_after": None,
+            "pure_dept_penalty_exec_path": execution_path,
+        }
+
+    def _default_pure_candidate_comp_debug(self) -> Dict[str, Any]:
+        return {
+            "pure_dept_candidate_comp_applied": False,
+            "pure_dept_candidate_comp_reason": "not_checked",
+            "pure_dept_candidate_comp_mentions": [],
+            "pure_dept_candidate_comp_mention_source": "none",
+            "pure_dept_candidate_comp_reserved_count": 0,
+            "pure_dept_candidate_comp_injected_count": 0,
+        }
+
+    def _extract_support_department_mentions(self, norm_query: str, top_k: int = 3) -> List[str]:
+        if not norm_query:
+            return []
+
+        scored: List[tuple[int, int, int, str]] = []
+        for dept in self._department_keyword_index.keys():
+            support, hits = self._department_keyword_support(norm_query, dept)
+            if support <= 0:
+                continue
+            max_kw_len = max((len(hit) for hit in hits), default=0)
+            # 保守信号阈值：优先多命中；单命中仅接受较长症状词，且避免泛科室误触发。
+            if support >= 2:
+                pass
+            elif support == 1 and max_kw_len >= 3 and dept not in {"内科", "外科"}:
+                pass
+            elif max_kw_len >= 4:
+                pass
+            else:
+                continue
+            generic_bias = 0 if dept in {"内科", "外科"} else 1
+            scored.append((support, max_kw_len, generic_bias, dept))
+
+        scored.sort(reverse=True)
+        ordered: List[str] = []
+        seen = set()
+        for _, _, _, dept in scored:
+            if dept in seen:
+                continue
+            seen.add(dept)
+            ordered.append(dept)
+            if len(ordered) >= max(1, int(top_k)):
+                break
+        return ordered
+
+    def _select_pure_rerank_candidates(
+        self,
+        query: str,
+        fused_results: List[Dict[str, Any]],
+        rerank_candidate_k: int,
+    ) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        debug = self._default_pure_candidate_comp_debug()
+        if not isinstance(fused_results, list) or not fused_results:
+            debug["pure_dept_candidate_comp_reason"] = "empty_fused_results"
+            return fused_results, debug
+
+        safe_k = max(1, int(rerank_candidate_k))
+        if len(fused_results) <= safe_k:
+            debug["pure_dept_candidate_comp_reason"] = "insufficient_pool"
+            return fused_results[:safe_k], debug
+
+        norm_query = self._normalize_query(query)
+        if not norm_query:
+            debug["pure_dept_candidate_comp_reason"] = "empty_query"
+            return fused_results[:safe_k], debug
+
+        mentions = self._extract_query_department_mentions(norm_query)
+        if not mentions:
+            fallback_mentions = self._extract_support_department_mentions(norm_query, top_k=3)
+            if fallback_mentions:
+                mentions = fallback_mentions
+                debug["pure_dept_candidate_comp_mention_source"] = "support_fallback"
+            else:
+                debug["pure_dept_candidate_comp_reason"] = "no_query_department_mention"
+                return fused_results[:safe_k], debug
+        else:
+            debug["pure_dept_candidate_comp_mention_source"] = "query_direct"
+        debug["pure_dept_candidate_comp_mentions"] = mentions[:5]
+
+        max_reserved = max(1, safe_k // 2)
+        max_reserved = min(max_reserved, len(mentions), 3)
+        reserved_indices: List[int] = []
+        for dept in mentions:
+            best_idx = None
+            for idx, doc in enumerate(fused_results):
+                if idx in reserved_indices:
+                    continue
+                canonical_dept, _ = self._normalize_department_name(doc.get("department"))
+                if canonical_dept == dept:
+                    best_idx = idx
+                    break
+            if best_idx is not None:
+                reserved_indices.append(best_idx)
+            if len(reserved_indices) >= max_reserved:
+                break
+
+        if not reserved_indices:
+            debug["pure_dept_candidate_comp_reason"] = "no_matching_dept_docs"
+            return fused_results[:safe_k], debug
+
+        reserved_set = set(reserved_indices)
+        ranked = sorted(
+            enumerate(fused_results),
+            key=lambda item: (
+                1 if item[0] in reserved_set else 0,
+                float(item[1].get("score", 0.0)),
+            ),
+            reverse=True,
+        )
+        selected_indices = [int(idx) for idx, _ in ranked[:safe_k]]
+        selected = [fused_results[idx] for idx in selected_indices]
+
+        injected = sum(1 for idx in selected_indices if idx >= safe_k)
+        debug["pure_dept_candidate_comp_reserved_count"] = len(reserved_indices)
+        debug["pure_dept_candidate_comp_injected_count"] = injected
+        if injected > 0:
+            debug["pure_dept_candidate_comp_applied"] = True
+            debug["pure_dept_candidate_comp_reason"] = "applied"
+        else:
+            debug["pure_dept_candidate_comp_reason"] = "reserved_already_in_topk"
+
+        return selected, debug
+
+    def _apply_pure_department_mismatch_penalty(
+        self,
+        query: str,
+        results: List[Dict[str, Any]],
+        execution_path: str = "retrieval",
+    ) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        debug = self._default_pure_dept_penalty_debug(execution_path=execution_path)
+        if not isinstance(results, list) or len(results) < 2:
+            debug["pure_dept_penalty_reason"] = "insufficient_candidates"
+            return results, debug
+
+        norm_query = self._normalize_query(query)
+        if not norm_query:
+            debug["pure_dept_penalty_reason"] = "empty_query"
+            return results, debug
+
+        query_mentions = self._extract_query_department_mentions(norm_query)
+        mention_set = set(query_mentions)
+        debug["pure_dept_penalty_query_mentions"] = query_mentions[:5]
+        if not mention_set:
+            debug["pure_dept_penalty_reason"] = "no_query_department_mention"
+            return results, debug
+        if mention_set.issubset({"内科", "外科"}):
+            debug["pure_dept_penalty_reason"] = "generic_query_department_only"
+            return results, debug
+
+        debug["pure_dept_penalty_top1_before"] = str(results[0].get("department", "") or "")
+
+        hard_penalty = 0.08
+        soft_penalty = 0.03
+        scored: List[Dict[str, Any]] = []
+        penalty_count = 0
+        for idx, doc in enumerate(results):
+            canonical_dept, _ = self._normalize_department_name(doc.get("department"))
+            doc["department"] = canonical_dept
+            base_score = float(doc.get("score", 0.0))
+            support, _ = self._department_keyword_support(norm_query, canonical_dept)
+            penalty = 0.0
+            if canonical_dept not in mention_set:
+                penalty = hard_penalty if support <= 0 else soft_penalty
+            adjusted_score = max(0.0, base_score - penalty)
+            if penalty > 0:
+                penalty_count += 1
+                doc["score_raw"] = base_score
+                doc["score"] = round(adjusted_score, 6)
+            scored.append(
+                {
+                    "idx": idx,
+                    "base_score": base_score,
+                    "adjusted_score": adjusted_score,
+                    "penalty": penalty,
+                }
+            )
+
+        if penalty_count == 0:
+            debug["pure_dept_penalty_reason"] = "no_mismatch_to_penalize"
+            return results, debug
+
+        debug["pure_dept_penalty_applied"] = True
+        reordered = sorted(
+            scored,
+            key=lambda item: (float(item["adjusted_score"]), float(item["base_score"])),
+            reverse=True,
+        )
+        new_order = [int(item["idx"]) for item in reordered]
+        if new_order != list(range(len(results))):
+            results = [results[i] for i in new_order]
+            debug["pure_dept_penalty_reordered"] = True
+            debug["pure_dept_penalty_reason"] = "applied"
+        else:
+            debug["pure_dept_penalty_reason"] = "applied_no_order_change"
+
+        debug["pure_dept_penalty_top1_after"] = str(results[0].get("department", "") or "")
+        return results, debug
+
+    def _apply_department_normalization(
+        self,
+        results: List[Dict[str, Any]],
+    ) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        enabled = bool(getattr(settings, "RAG_DEPT_NORMALIZE_ON_RESULT", True))
+        debug: Dict[str, Any] = {
+            "dept_normalize_enabled": enabled,
+            "dept_normalize_changed_count": 0,
+            "dept_normalize_unknown_count": 0,
+            "dept_normalize_reason": "not_checked",
+        }
+        if not enabled:
+            debug["dept_normalize_reason"] = "disabled"
+            return results, debug
+
+        changed = 0
+        unknown_count = 0
+        for doc in results:
+            raw_dept = str(doc.get("department", "") or "").strip()
+            canonical_dept, _ = self._normalize_department_name(raw_dept)
+            if raw_dept and raw_dept != canonical_dept:
+                doc["department_raw"] = raw_dept
+                changed += 1
+            doc["department"] = canonical_dept
+            if canonical_dept == "Unknown":
+                unknown_count += 1
+
+        debug["dept_normalize_reason"] = "applied"
+        debug["dept_normalize_changed_count"] = changed
+        debug["dept_normalize_unknown_count"] = unknown_count
+        return results, debug
+
+    def _apply_department_consistency_gate(
+        self,
+        query: str,
+        results: List[Dict[str, Any]],
+        pure_mode: bool = False,
+    ) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        enabled = bool(getattr(settings, "RAG_DEPT_CONSISTENCY_GATE_ON", True))
+        debug: Dict[str, Any] = {
+            "dept_gate_enabled": enabled,
+            "dept_gate_applied": False,
+            "dept_gate_reordered": False,
+            "dept_gate_reason": "not_checked",
+            "dept_gate_top1_support": 0,
+            "dept_gate_max_support": 0,
+            "dept_gate_support_candidate_idx": None,
+            "dept_gate_support_candidate_gap": None,
+            "dept_gate_support_hits": [],
+            "dept_gate_effective_max_gap": None,
+        }
+        if not enabled:
+            debug["dept_gate_reason"] = "disabled"
+            return results, debug
+        if len(results) < 2:
+            debug["dept_gate_reason"] = "insufficient_candidates"
+            return results, debug
+
+        norm_query = self._normalize_query(query)
+        if not norm_query:
+            debug["dept_gate_reason"] = "empty_query"
+            return results, debug
+
+        bonus = max(0.0, float(getattr(settings, "RAG_DEPT_CONSISTENCY_BONUS", 0.05)))
+        if pure_mode:
+            # pure 检索无改写/回退，门控需更积极地修正“top3中有正确科室但 top1 错配”。
+            bonus = max(bonus, 0.12)
+        max_gap = max(0.0, float(getattr(settings, "RAG_DEPT_CONSISTENCY_MAX_SCORE_GAP", 0.12)))
+        min_hits = max(1, int(getattr(settings, "RAG_DEPT_CONSISTENCY_MIN_KEYWORD_HITS", 1)))
+        require_top1_unsupported = bool(getattr(settings, "RAG_DEPT_CONSISTENCY_REQUIRE_TOP1_UNSUPPORTED", True))
+
+        scored: List[Dict[str, Any]] = []
+        query_mentioned_departments = set()
+        for _, alias, canonical in self._department_alias_patterns:
+            if alias and canonical != "Unknown" and alias in norm_query:
+                query_mentioned_departments.add(canonical)
+        for idx, doc in enumerate(results):
+            canonical_dept = str(doc.get("department") or "Unknown")
+            support, hits = self._department_keyword_support(norm_query, canonical_dept)
+            base_score = float(doc.get("score", 0.0))
+            adjusted_score = base_score + min(3, support) * bonus
+            if canonical_dept == "Unknown":
+                adjusted_score -= bonus
+            mentioned_in_query = canonical_dept in query_mentioned_departments
+            if pure_mode and mentioned_in_query:
+                adjusted_score += bonus * 0.8
+            scored.append(
+                {
+                    "idx": idx,
+                    "dept": canonical_dept,
+                    "base_score": base_score,
+                    "adjusted_score": adjusted_score,
+                    "support": support,
+                    "hits": hits,
+                    "mentioned_in_query": mentioned_in_query,
+                }
+            )
+
+        if not scored:
+            debug["dept_gate_reason"] = "empty_scores"
+            return results, debug
+
+        top1 = scored[0]
+        debug["dept_gate_top1_support"] = int(top1["support"])
+        debug["dept_gate_max_support"] = int(max(item["support"] for item in scored))
+
+        if require_top1_unsupported and int(top1["support"]) >= min_hits:
+            debug["dept_gate_reason"] = "top1_supported"
+            return results, debug
+
+        supported_candidates = [item for item in scored[1:] if int(item["support"]) >= min_hits]
+        if pure_mode and not supported_candidates:
+            mentioned_candidates = [item for item in scored[1:] if bool(item.get("mentioned_in_query"))]
+            if mentioned_candidates:
+                supported_candidates = mentioned_candidates
+                debug["dept_gate_reason"] = "pure_query_mention_support"
+        if not supported_candidates:
+            debug["dept_gate_reason"] = "no_supported_candidate"
+            return results, debug
+
+        best_supported = max(
+            supported_candidates,
+            key=lambda item: (int(item["support"]), float(item["base_score"])),
+        )
+        score_gap = float(top1["base_score"]) - float(best_supported["base_score"])
+        support_delta = int(best_supported["support"]) - int(top1["support"])
+        strong_supported_signal = int(best_supported["support"]) >= max(min_hits + 1, 2) and support_delta >= 1
+        effective_max_gap = max_gap
+        if strong_supported_signal:
+            # 对“候选科室关键词信号明显更强”的场景放宽分差，修复 top3 命中但 top1 错配。
+            effective_max_gap = max(effective_max_gap, 0.6 if pure_mode else 0.35)
+        if pure_mode and support_delta >= 1 and int(best_supported["support"]) >= min_hits:
+            # pure 模式下，候选信号只要明显优于 top1，则允许更宽分差以减少误阻断。
+            effective_max_gap = max(effective_max_gap, 0.85)
+        if pure_mode and int(top1["support"]) == 0 and int(best_supported["support"]) >= 3:
+            # pure 模式下，当 top1 无任何症状支撑且候选支撑很强，允许更大分差触发重排。
+            effective_max_gap = max(effective_max_gap, 1.0)
+        if pure_mode and int(top1["support"]) == 0 and bool(best_supported.get("mentioned_in_query")):
+            # 如果候选科室被 query 明确点名，也放宽阈值，降低 score_gap_too_large 误阻断。
+            effective_max_gap = max(effective_max_gap, 1.1)
+        debug["dept_gate_support_candidate_idx"] = int(best_supported["idx"])
+        debug["dept_gate_support_candidate_gap"] = round(score_gap, 6)
+        debug["dept_gate_support_hits"] = best_supported["hits"]
+        debug["dept_gate_effective_max_gap"] = round(effective_max_gap, 6)
+
+        if score_gap > effective_max_gap:
+            debug["dept_gate_reason"] = "score_gap_too_large"
+            return results, debug
+
+        reordered = sorted(
+            scored,
+            key=lambda item: (float(item["adjusted_score"]), float(item["base_score"])),
+            reverse=True,
+        )
+        new_order = [int(item["idx"]) for item in reordered]
+        if new_order == list(range(len(results))):
+            debug["dept_gate_reason"] = "no_order_change"
+            return results, debug
+
+        new_results = [results[i] for i in new_order]
+        debug["dept_gate_applied"] = True
+        debug["dept_gate_reordered"] = True
+        debug["dept_gate_reason"] = "applied"
+        return new_results, debug
+
+    def _postprocess_department_results(
+        self,
+        query: str,
+        results: List[Dict[str, Any]],
+        pure_mode: bool = False,
+    ) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        debug = self._default_dept_post_debug()
+        if not isinstance(results, list) or not results:
+            debug["dept_normalize_reason"] = "empty_results"
+            debug["dept_gate_reason"] = "empty_results"
+            return results, debug
+
+        debug["dept_top1_before"] = str(results[0].get("department", "") or "")
+
+        results, norm_debug = self._apply_department_normalization(results)
+        debug.update(norm_debug)
+
+        results, gate_debug = self._apply_department_consistency_gate(query, results, pure_mode=pure_mode)
+        debug.update(gate_debug)
+
+        debug["dept_top1_after"] = str(results[0].get("department", "") or "") if results else None
+        return results, debug
+
+    def _build_cache_namespace(self) -> str:
+        """构建缓存命名空间标签（版本化隔离）。"""
+        raw = str(getattr(settings, "RAG_CACHE_NAMESPACE_VERSION", "v1") or "v1").strip()
+        ns = re.sub(r"[^a-zA-Z0-9_.:-]", "_", raw)[:48]
+        return ns or "v1"
+
+    def _build_reject_memory_key(
+        self,
+        cache_namespace: str,
+        query_hash: str,
+        semantic_hit_hash: str,
+        cache_profile_hash: str,
+    ) -> str:
+        return f"rag_cache_reject:{cache_namespace}:{query_hash}:{semantic_hit_hash}:{cache_profile_hash}"
+
+    def _evaluate_cache_write_gate(self, final_results: List[Dict[str, Any]]) -> tuple[bool, Dict[str, Any]]:
+        """缓存写入门：阻止低质量结果污染语义缓存。"""
+        gate_on = bool(getattr(settings, "RAG_CACHE_WRITE_GATE_ON", True))
+        min_top = float(getattr(settings, "RAG_CACHE_WRITE_MIN_TOP_SCORE", 0.35))
+        min_gap = float(getattr(settings, "RAG_CACHE_WRITE_MIN_SCORE_GAP", 0.03))
+        require_known_dept = bool(getattr(settings, "RAG_CACHE_WRITE_REQUIRE_NON_UNKNOWN_DEPT", False))
+        debug = {
+            "cache_write_gate_enabled": gate_on,
+            "cache_write_allowed": False,
+            "cache_write_reason": "init",
+            "cache_write_min_top_score": min_top,
+            "cache_write_min_score_gap": min_gap,
+            "cache_write_top_score": 0.0,
+            "cache_write_score_gap": 0.0,
+        }
+
+        if not final_results:
+            debug["cache_write_reason"] = "empty_results"
+            return False, debug
+
+        if not gate_on:
+            debug["cache_write_allowed"] = True
+            debug["cache_write_reason"] = "write_gate_disabled"
+            return True, debug
+
+        top_score = float(final_results[0].get("score", 0.0))
+        second_score = float(final_results[1].get("score", 0.0)) if len(final_results) > 1 else 0.0
+        score_gap = top_score - second_score if len(final_results) > 1 else top_score
+        debug["cache_write_top_score"] = top_score
+        debug["cache_write_score_gap"] = score_gap
+
+        if top_score < min_top:
+            debug["cache_write_reason"] = "top_score_below_threshold"
+            return False, debug
+
+        if score_gap < min_gap:
+            debug["cache_write_reason"] = "top_score_gap_below_threshold"
+            return False, debug
+
+        if require_known_dept:
+            dept = str(final_results[0].get("department", "") or "").strip().lower()
+            if not dept or dept in {"unknown", "none", "null"}:
+                debug["cache_write_reason"] = "unknown_department"
+                return False, debug
+
+        debug["cache_write_allowed"] = True
+        debug["cache_write_reason"] = "passed"
+        return True, debug
+
+    async def _verify_semantic_cache_hit(
+        self,
+        query: str,
+        cached_results: Any,
+    ) -> tuple[bool, Dict[str, Any]]:
+        """
+        语义缓存命中后二次校验。
+        失败则应降级为 cache miss，继续走正常召回/重排链路。
+        """
+        min_term_overlap = max(0, int(getattr(settings, "RAG_CACHE_VERIFY_MIN_TERM_OVERLAP", 1)))
+        min_rerank_score = max(0.0, float(getattr(settings, "RAG_CACHE_VERIFY_MIN_RERANK_SCORE", 0.25)))
+        max_doc_chars = max(100, int(getattr(settings, "RAG_CACHE_VERIFY_MAX_DOC_CHARS", 600)))
+
+        verify_debug: Dict[str, Any] = {
+            "cache_verify_min_term_overlap": min_term_overlap,
+            "cache_verify_term_overlap": 0,
+            "cache_verify_min_rerank_score": min_rerank_score,
+            "cache_verify_rerank_score": None,
+            "cache_verify_reason": "init",
+        }
+
+        if not isinstance(cached_results, list) or not cached_results:
+            verify_debug["cache_verify_reason"] = "empty_cache_payload"
+            return False, verify_debug
+
+        top_item = cached_results[0] if isinstance(cached_results[0], dict) else {}
+        top_content = str(top_item.get("content", "")) if isinstance(top_item, dict) else str(cached_results[0])
+        if not top_content.strip():
+            verify_debug["cache_verify_reason"] = "empty_top_content"
+            return False, verify_debug
+
+        clipped_content = top_content[:max_doc_chars]
+        query_terms = self._build_overlap_terms(query)
+        doc_terms = self._build_overlap_terms(clipped_content)
+        term_overlap = len(query_terms.intersection(doc_terms))
+        verify_debug["cache_verify_term_overlap"] = term_overlap
+
+        if term_overlap < min_term_overlap:
+            verify_debug["cache_verify_reason"] = "term_overlap_below_threshold"
+            return False, verify_debug
+
+        if self.reranker:
+            try:
+                rerank_input = [
+                    {
+                        "id": top_item.get("id"),
+                        "score": float(top_item.get("score", 0.0)),
+                        "source": top_item.get("source", "cache_verify"),
+                        "department": top_item.get("department"),
+                        "content": clipped_content,
+                    }
+                ]
+                rerank_results = await asyncio.to_thread(self.reranker.rerank, query, rerank_input)
+                rerank_score = float(rerank_results[0].get("score", 0.0)) if rerank_results else 0.0
+                verify_debug["cache_verify_rerank_score"] = rerank_score
+                if rerank_score < min_rerank_score:
+                    verify_debug["cache_verify_reason"] = "rerank_score_below_threshold"
+                    return False, verify_debug
+            except Exception as rerank_verify_err:
+                verify_debug["cache_verify_reason"] = "rerank_verify_error"
+                logger.warning(
+                    "rag_semantic_cache_verify_rerank_failed",
+                    error=str(rerank_verify_err),
+                )
+                return False, verify_debug
+
+        verify_debug["cache_verify_reason"] = "passed"
+        return True, verify_debug
+
     async def analyze_intent(self, query: str) -> Dict[str, Any]:
         """
         [New] Intent Analysis using 0.6B Model.
@@ -155,18 +868,87 @@ class MedicalRetriever:
             return {"category": "MEDICAL"}
 
     @traceable(run_type="retriever", name="RAG30_Pipeline")
-    async def search_rag30(self, query: str, top_k: int = 3, intent: str = None, return_debug: bool = False, skip_summarize: bool = False) -> Any:
+    async def search_rag30(
+        self,
+        query: str,
+        top_k: int = 3,
+        intent: str = None,
+        return_debug: bool = False,
+        skip_summarize: bool = False,
+        use_rerank: Optional[bool] = None,
+        rerank_threshold: Optional[float] = None,
+        skip_intent_router: bool = False,
+        skip_hyde: bool = False,
+        pure_mode: Optional[bool] = None,
+    ) -> Any:
         """
         [ASYNC] RAG 3.0 四层检索流水线 (支持 Semantic Cache 2.0)
         """
         try:
-            logger.info("rag_search_start", query=query[:30])
+            logger.info(
+                "rag_search_start",
+                query=query[:30],
+                top_k=top_k,
+                use_rerank=use_rerank,
+                rerank_threshold=rerank_threshold,
+                skip_intent_router=skip_intent_router,
+                skip_hyde=skip_hyde,
+                pure_mode=pure_mode,
+            )
+            pure_retrieval_mode = bool(getattr(settings, "RAG_PURE_RETRIEVAL_MODE", False))
+            if pure_mode is True:
+                pure_retrieval_mode = True
+
+            if pure_retrieval_mode and bool(getattr(settings, "RAG_DISABLE_INTENT_ROUTER_WHEN_PURE", True)):
+                skip_intent_router = True
+            if pure_retrieval_mode and bool(getattr(settings, "RAG_DISABLE_HYDE_WHEN_PURE", True)):
+                skip_hyde = True
+            if pure_retrieval_mode and bool(getattr(settings, "RAG_DISABLE_SUMMARIZE_WHEN_PURE", True)):
+                skip_summarize = True
+
+            disable_query_rewrite_when_pure = bool(
+                pure_retrieval_mode and getattr(settings, "RAG_DISABLE_QUERY_REWRITE_WHEN_PURE", True)
+            )
+            disable_low_score_fallback_rewrite_when_pure = bool(
+                pure_retrieval_mode and getattr(settings, "RAG_DISABLE_LOW_SCORE_FALLBACK_REWRITE_WHEN_PURE", True)
+            )
+
             start_time = time.time()
+            cache_namespace = self._build_cache_namespace()
+            cache_verify_debug: Dict[str, Any] = {
+                "cache_namespace": cache_namespace,
+                "semantic_cache_enabled": bool(getattr(settings, "RAG_SEMANTIC_CACHE_ENABLED", True)),
+                "cache_verify_enabled": False,
+                "cache_verify_passed": None,
+                "cache_verify_reason": "not_checked",
+                "cache_verify_min_term_overlap": int(getattr(settings, "RAG_CACHE_VERIFY_MIN_TERM_OVERLAP", 1)),
+                "cache_verify_term_overlap": 0,
+                "cache_verify_min_rerank_score": float(getattr(settings, "RAG_CACHE_VERIFY_MIN_RERANK_SCORE", 0.25)),
+                "cache_verify_rerank_score": None,
+                "cache_reject_memory_hit": False,
+                "cache_reject_memory_key": None,
+            }
+            dept_post_debug = self._default_dept_post_debug()
 
             # [Task 1.4] 语义缓存检查 (Semantic Cache Check)
             cache_key = None
             norm_query = self._normalize_query(query)
-            query_hash = hashlib.md5(norm_query.encode()).hexdigest()
+            raw_query_hash = hashlib.md5(norm_query.encode()).hexdigest()
+            query_hash = hashlib.md5(f"{cache_namespace}|{raw_query_hash}".encode()).hexdigest()
+            # Cache profile must include retrieval knobs, otherwise different presets share stale cache.
+            cache_profile = json.dumps(
+                {
+                    "top_k": int(top_k),
+                    "use_rerank": use_rerank,
+                    "rerank_threshold": rerank_threshold,
+                    "skip_intent_router": skip_intent_router,
+                    "skip_hyde": skip_hyde,
+                    "pure_retrieval_mode": pure_retrieval_mode,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+            cache_profile_hash = hashlib.md5(cache_profile.encode()).hexdigest()
             
             # 首先计算 embedding，语义缓存和后续检索都需要它
             emb_start = time.time()
@@ -178,24 +960,197 @@ class MedicalRetriever:
 
             if self.redis_client:
                 # 尝试语义命中
-                semantic_hit_hash = await self.semantic_cache.get_cache(query, query_vector=query_vector)
+                semantic_enabled = bool(getattr(settings, "RAG_SEMANTIC_CACHE_ENABLED", True))
+                if semantic_enabled:
+                    try:
+                        semantic_hit_hash = await asyncio.wait_for(
+                            self.semantic_cache.get_cache(query, query_vector=query_vector),
+                            timeout=1.5,
+                        )
+                    except asyncio.TimeoutError:
+                        logger.warning("semantic_cache_lookup_timeout_degrade_to_retrieval", timeout_s=1.5)
+                        semantic_hit_hash = None
+                    except Exception as semantic_err:
+                        logger.warning("semantic_cache_lookup_failed_degrade_to_retrieval", error=str(semantic_err))
+                        semantic_hit_hash = None
+                else:
+                    semantic_hit_hash = None
+                    cache_verify_debug["cache_verify_reason"] = "semantic_cache_disabled"
+
+                if semantic_hit_hash and semantic_hit_hash != query_hash:
+                    reject_memory_key = self._build_reject_memory_key(
+                        cache_namespace=cache_namespace,
+                        query_hash=query_hash,
+                        semantic_hit_hash=semantic_hit_hash,
+                        cache_profile_hash=cache_profile_hash,
+                    )
+                    cache_verify_debug["cache_reject_memory_key"] = reject_memory_key
+                    try:
+                        reject_memory_hit = bool(
+                            await asyncio.wait_for(self.redis_client.exists(reject_memory_key), timeout=0.5)
+                        )
+                    except Exception as reject_memory_err:
+                        logger.warning("rag_reject_memory_check_failed", error=str(reject_memory_err))
+                        reject_memory_hit = False
+
+                    if reject_memory_hit:
+                        cache_verify_debug["cache_reject_memory_hit"] = True
+                        cache_verify_debug["cache_verify_reason"] = "semantic_reject_memory_blocked"
+                        logger.info(
+                            "rag_semantic_cache_hit_blocked_by_reject_memory",
+                            query=query[:30],
+                            reject_key=reject_memory_key,
+                        )
+                        semantic_hit_hash = None
+
                 # 如果语义命中，使用命中的 hash；否则使用当前的 hash
                 effective_hash = semantic_hit_hash if semantic_hit_hash else query_hash
-                cache_key = f"rag_cache:{effective_hash}"
-                
-                cached_data = await self.redis_client.get(cache_key)
-                if cached_data:
-                    logger.info("rag_cache_hit", query=query[:30], type="semantic" if semantic_hit_hash else "exact")
-                    
-                    # [Metrics] Cache Hit
-                    RAG_CACHE_HIT.labels(cache_type="semantic" if semantic_hit_hash else "exact").inc()
+                read_cache_key = f"rag_cache:{cache_namespace}:{effective_hash}:{cache_profile_hash}"
 
-                    # [Phase 6.5] ZSTD Decompress
-                    decompressed = self.semantic_cache.decompress(cached_data)
-                    results = json.loads(decompressed)
-                    if return_debug:
-                        return (results, {"cache_hit": True, "cache_type": "semantic" if semantic_hit_hash else "exact"})
-                    return results
+                try:
+                    cached_data = await asyncio.wait_for(self.redis_client.get(read_cache_key), timeout=1.0)
+                except Exception as cache_read_err:
+                    logger.warning("rag_cache_read_failed_degrade_to_retrieval", error=str(cache_read_err))
+                    cached_data = None
+
+                if not cached_data and semantic_hit_hash and semantic_hit_hash != query_hash:
+                    exact_cache_key = f"rag_cache:{cache_namespace}:{query_hash}:{cache_profile_hash}"
+                    try:
+                        exact_cached_data = await asyncio.wait_for(
+                            self.redis_client.get(exact_cache_key),
+                            timeout=0.8,
+                        )
+                    except Exception as exact_cache_err:
+                        logger.warning("rag_exact_cache_fallback_read_failed", error=str(exact_cache_err))
+                        exact_cached_data = None
+                    if exact_cached_data:
+                        cached_data = exact_cached_data
+                        cache_verify_debug["cache_verify_reason"] = "semantic_key_miss_exact_fallback_hit"
+                        logger.info("rag_exact_cache_fallback_hit", query=query[:30], stage="semantic_key_miss")
+
+                if cached_data:
+                    cache_type = "semantic" if semantic_hit_hash else "exact"
+                    try:
+                        # [Phase 6.5] ZSTD Decompress
+                        decompressed = self.semantic_cache.decompress(cached_data)
+                        results = json.loads(decompressed)
+                    except Exception as cache_decode_err:
+                        logger.warning("rag_cache_payload_decode_failed_degrade_to_retrieval", error=str(cache_decode_err))
+                        results = []
+                        cached_data = None
+
+                    if cached_data and semantic_hit_hash:
+                        if getattr(settings, "RAG_CACHE_VERIFY_ON_HIT", True):
+                            cache_verify_debug["cache_verify_enabled"] = True
+                            verified, verify_fields = await self._verify_semantic_cache_hit(query, results)
+                            cache_verify_debug.update(verify_fields)
+                            cache_verify_debug["cache_verify_passed"] = bool(verified)
+                            if verified:
+                                logger.info(
+                                    "rag_semantic_cache_hit_verified",
+                                    query=query[:30],
+                                    reason=cache_verify_debug.get("cache_verify_reason"),
+                                    term_overlap=cache_verify_debug.get("cache_verify_term_overlap"),
+                                    rerank_score=cache_verify_debug.get("cache_verify_rerank_score"),
+                                )
+                            else:
+                                logger.warning(
+                                    "rag_semantic_cache_hit_rejected",
+                                    query=query[:30],
+                                    reason=cache_verify_debug.get("cache_verify_reason"),
+                                    term_overlap=cache_verify_debug.get("cache_verify_term_overlap"),
+                                    min_term_overlap=cache_verify_debug.get("cache_verify_min_term_overlap"),
+                                    rerank_score=cache_verify_debug.get("cache_verify_rerank_score"),
+                                    min_rerank_score=cache_verify_debug.get("cache_verify_min_rerank_score"),
+                                )
+                                reject_memory_key = self._build_reject_memory_key(
+                                    cache_namespace=cache_namespace,
+                                    query_hash=query_hash,
+                                    semantic_hit_hash=semantic_hit_hash,
+                                    cache_profile_hash=cache_profile_hash,
+                                )
+                                cache_verify_debug["cache_reject_memory_key"] = reject_memory_key
+                                try:
+                                    reject_reason = str(cache_verify_debug.get("cache_verify_reason", "semantic_rejected"))
+                                    reject_ttl = max(60, int(getattr(settings, "RAG_CACHE_REJECT_TTL_SECONDS", 21600)))
+                                    await asyncio.wait_for(
+                                        self.redis_client.setex(reject_memory_key, reject_ttl, reject_reason),
+                                        timeout=0.8,
+                                    )
+                                except Exception as reject_write_err:
+                                    logger.warning("rag_reject_memory_write_failed", error=str(reject_write_err))
+                                cached_data = None
+                                # 语义命中被拒后，尝试同配置 exact cache 兜底，减少高频 query 性能回退。
+                                if semantic_hit_hash != query_hash:
+                                    exact_cache_key = f"rag_cache:{cache_namespace}:{query_hash}:{cache_profile_hash}"
+                                    try:
+                                        exact_cached_data = await asyncio.wait_for(
+                                            self.redis_client.get(exact_cache_key),
+                                            timeout=0.8,
+                                        )
+                                    except Exception as exact_cache_err:
+                                        logger.warning(
+                                            "rag_exact_cache_fallback_read_failed",
+                                            error=str(exact_cache_err),
+                                        )
+                                        exact_cached_data = None
+
+                                    if exact_cached_data:
+                                        try:
+                                            exact_results = json.loads(self.semantic_cache.decompress(exact_cached_data))
+                                            cached_data = exact_cached_data
+                                            results = exact_results
+                                            cache_type = "exact"
+                                            cache_verify_debug["cache_verify_reason"] = "semantic_rejected_exact_fallback_hit"
+                                            logger.info("rag_exact_cache_fallback_hit", query=query[:30])
+                                        except Exception as exact_decode_err:
+                                            logger.warning(
+                                                "rag_exact_cache_fallback_decode_failed",
+                                                error=str(exact_decode_err),
+                                            )
+                                            cached_data = None
+                        else:
+                            cache_verify_debug["cache_verify_reason"] = "verify_disabled"
+                    elif cached_data:
+                        cache_verify_debug["cache_verify_reason"] = "exact_cache_hit_skip_verify"
+
+                    if cached_data:
+                        pure_penalty_debug = self._default_pure_dept_penalty_debug()
+                        if pure_retrieval_mode and results:
+                            results, pure_penalty_debug = self._apply_pure_department_mismatch_penalty(
+                                query,
+                                results,
+                                execution_path="cache_hit",
+                            )
+                        elif not pure_retrieval_mode:
+                            pure_penalty_debug["pure_dept_penalty_reason"] = "pure_mode_disabled"
+
+                        results, dept_post_debug = self._postprocess_department_results(
+                            query,
+                            results,
+                            pure_mode=pure_retrieval_mode,
+                        )
+                        dept_post_debug.update(pure_penalty_debug)
+                        logger.info("rag_cache_hit", query=query[:30], type=cache_type)
+
+                        # [Metrics] Cache Hit
+                        RAG_CACHE_HIT.labels(cache_type=cache_type).inc()
+
+                        if return_debug:
+                            return (
+                                results,
+                                {
+                                    "cache_hit": True,
+                                    "cache_type": cache_type,
+                                    "cache_profile_hash": cache_profile_hash,
+                                    **cache_verify_debug,
+                                    **dept_post_debug,
+                                },
+                            )
+                        return results
+
+                # 写入一律写到当前 query 的 namespaced hash，避免跨版本语义索引串键。
+                cache_key = f"rag_cache:{cache_namespace}:{query_hash}:{cache_profile_hash}"
             
             # [Metrics] Cache Miss
             RAG_CACHE_MISS.labels(cache_type="semantic").inc()
@@ -211,8 +1166,18 @@ class MedicalRetriever:
                 "vector_score": 0.0,
                 "rerank_score": 0.0,
                 "context_length": 0,      # 新增: 追踪上下文长度
-                "raw_results": [] 
+                "raw_results": [],
+                "cache_hit": False,
+                "cache_type": "miss",
+                "pure_retrieval_mode": pure_retrieval_mode,
+                "pure_disable_query_rewrite": disable_query_rewrite_when_pure,
+                "pure_disable_low_score_fallback_rewrite": disable_low_score_fallback_rewrite_when_pure,
+                "pure_skip_summarize": skip_summarize,
+                **self._default_pure_dept_penalty_debug(),
+                **self._default_pure_candidate_comp_debug(),
             }
+            metrics.update(cache_verify_debug)
+            metrics.update(dept_post_debug)
             
             # L1: 安全拦截 (Guardrail)
             if self.ddinter_checker and not self.ddinter_checker.check_query_safety(query):
@@ -221,20 +1186,23 @@ class MedicalRetriever:
                 return (res, metrics) if return_debug else res
 
             # [Task 1] Intent Analysis (0.6B Router)
-            # Analyze intent before heavy retrieval
-            intent_start = time.time()
-            intent_result = await self.analyze_intent(query)
-            metrics["intent_latency"] = time.time() - intent_start
-            
-            category = intent_result.get("category", "MEDICAL")
-            if category == "GREETING":
-                logger.info("intent_router_hit_greeting", query=query)
-                res = [{"content": "您好！我是您的智能医疗助手。请问有什么可以帮您？", "score": 1.0, "source": "greeting"}]
-                return (res, metrics) if return_debug else res
-            elif category == "OTHER":
-                 # Fallback to medical search anyway but with lower priority? Or just search.
-                 # For now, treat as Medical to be safe, but maybe log it.
-                 pass
+            # Allow API callers to bypass this stage for pure retrieval latency.
+            if not skip_intent_router:
+                intent_start = time.time()
+                intent_result = await self.analyze_intent(query)
+                metrics["intent_latency"] = time.time() - intent_start
+
+                category = intent_result.get("category", "MEDICAL")
+                if category == "GREETING":
+                    logger.info("intent_router_hit_greeting", query=query)
+                    res = [{"content": "您好！我是您的智能医疗助手。请问有什么可以帮您？", "score": 1.0, "source": "greeting"}]
+                    return (res, metrics) if return_debug else res
+                elif category == "OTHER":
+                     # Fallback to medical search anyway but with lower priority? Or just search.
+                     # For now, treat as Medical to be safe, but maybe log it.
+                     pass
+            else:
+                metrics["intent_latency"] = 0.0
 
             # Smart Pre-filtering: 提取科室 (异步优化)
             dept_ids, target_dept = await self._extract_department_filter_async(query)
@@ -249,7 +1217,7 @@ class MedicalRetriever:
             # HyDE Generation (0.6B)
             # Generate a hypothetical answer to boost recall for short queries
             hyde_doc = None
-            if len(query) < 20: # Only apply HyDE for short/ambiguous queries
+            if not skip_hyde and len(query) < 20: # Only apply HyDE for short/ambiguous queries
                 try:
                     hyde_doc = await self._generate_hyde_doc(query)
                 except Exception as e:
@@ -268,8 +1236,8 @@ class MedicalRetriever:
                     logger.warning("hyde_vectorization_failed", error=str(e))
             
             # [Optimization] 2. 并行执行 Milvus 向量搜索和 BM25 关键词搜索
-            # Tiered Reranking L1: Broad Recall (Top 100)
-            recall_window = 100 
+            # Tiered Reranking L1: Broad Recall
+            recall_window = max(int(getattr(settings, "RAG_RECALL_WINDOW", 100)), int(top_k))
             
             # Use final_vector for search
             # [Refactor Phase 2] Parallel Execution Flow Optimization
@@ -291,11 +1259,25 @@ class MedicalRetriever:
             # [Metrics] Latency Tracking
             RAG_RETRIEVAL_LATENCY.labels(stage="milvus_parallel").observe(milvus_duration)
             
-            # RRF Fusion -> Tiered Reranking L2: Coarse Rank (Top 30)
-            # Use RRF scores to filter down to 30 candidates for the heavy Cross-Encoder
-            rerank_candidate_k = 30
-            results = self._rrf_fusion(v_results, b_results, top_k=rerank_candidate_k, target_dept=target_dept)
+            # RRF Fusion -> Tiered Reranking L2: Coarse Rank
+            # Cap rerank candidates to reduce cold-query latency on 8GB GPUs.
+            rerank_candidate_k = max(int(top_k), int(getattr(settings, "RAG_RERANK_CANDIDATE_K", 12)))
+            rerank_candidate_k = min(rerank_candidate_k, recall_window)
+            fusion_pool_k = recall_window if pure_retrieval_mode else rerank_candidate_k
+            fused_pool = self._rrf_fusion(v_results, b_results, top_k=fusion_pool_k, target_dept=target_dept)
+            pure_candidate_comp_debug = self._default_pure_candidate_comp_debug()
+            if pure_retrieval_mode and fused_pool:
+                results, pure_candidate_comp_debug = self._select_pure_rerank_candidates(
+                    query=query,
+                    fused_results=fused_pool,
+                    rerank_candidate_k=rerank_candidate_k,
+                )
+            else:
+                results = fused_pool[:rerank_candidate_k]
             metrics["retrieval_latency"] = time.time() - retrieval_start
+            metrics["recall_window"] = recall_window
+            metrics["rerank_candidate_k"] = rerank_candidate_k
+            metrics.update(pure_candidate_comp_debug)
             
             if results:
                 metrics["vector_score"] = results[0].get("score", 0.0)
@@ -348,7 +1330,7 @@ class MedicalRetriever:
 
             # L3: 语义精排 (Adaptive Reranking)
             MAX_FINAL_K = top_k
-            if self.reranker and len(results) > 0:
+            if self.reranker and len(results) > 0 and use_rerank is not False:
                 # [Optimization] Adaptive Reranking
                 skip_rerank = False
                 if len(results) == 1:
@@ -435,31 +1417,64 @@ class MedicalRetriever:
                                 r['department'] = db_metas[m_id]
                     except Exception as e:
                         logger.error("sql_meta_backfill_failed", error=str(e))
+
+                if pure_retrieval_mode and results:
+                    results, pure_penalty_debug = self._apply_pure_department_mismatch_penalty(
+                        query,
+                        results,
+                        execution_path="retrieval",
+                    )
+                    metrics.update(pure_penalty_debug)
                 
                 if results:
                     metrics["rerank_score"] = results[0].get("score", 0.0)
 
                 # [Task 2.1] 动态阈值与阻断策略 (Dynamic Thresholding)
                 BASE_REL_THRESHOLD = 0.15  # [Optimization] 进一步降低阈值以减少不必要的重试延迟
+                if rerank_threshold is not None:
+                    try:
+                        BASE_REL_THRESHOLD = max(0.0, min(1.0, float(rerank_threshold)))
+                    except (TypeError, ValueError):
+                        logger.warning("invalid_rerank_threshold_fallback_default", rerank_threshold=rerank_threshold)
+                effective_rel_threshold = BASE_REL_THRESHOLD
+                if pure_retrieval_mode:
+                    pure_factor = float(getattr(settings, "RAG_PURE_RERANK_THRESHOLD_FACTOR", 0.75))
+                    pure_factor = max(0.0, min(1.0, pure_factor))
+                    effective_rel_threshold = BASE_REL_THRESHOLD * pure_factor
+                    metrics["pure_rerank_threshold_factor"] = pure_factor
+                    metrics["pure_effective_rerank_threshold"] = effective_rel_threshold
                 GAP_THRESHOLD = 0.05
                 
-                if not results or results[0]['score'] < BASE_REL_THRESHOLD:
+                if not results or results[0]['score'] < effective_rel_threshold:
                     logger.warning("rerank_blocked_by_threshold_triggering_fallback", top_score=results[0]['score'] if results else 0)
                     
                     # [Task 2.2] 失败回退机制: Query Rewriting
                     # 仅在非调试模式且第一次检索失败时尝试一次重写
-                    if not intent == "fallback_retry":
+                    if not intent == "fallback_retry" and not disable_low_score_fallback_rewrite_when_pure:
                         rewritten_query = await self._rewrite_query_async(query)
                         if rewritten_query and rewritten_query != query:
                             logger.info("rag_fallback_retry_start", rewritten_query=rewritten_query)
-                            return await self.search_rag30(rewritten_query, top_k=top_k, intent="fallback_retry", return_debug=return_debug, skip_summarize=skip_summarize)
+                            return await self.search_rag30(
+                                rewritten_query,
+                                top_k=top_k,
+                                intent="fallback_retry",
+                                return_debug=return_debug,
+                                skip_summarize=skip_summarize,
+                                use_rerank=use_rerank,
+                                rerank_threshold=rerank_threshold,
+                                skip_intent_router=skip_intent_router,
+                                skip_hyde=skip_hyde,
+                                pure_mode=pure_retrieval_mode,
+                            )
+                    elif disable_low_score_fallback_rewrite_when_pure:
+                        logger.info("rag_fallback_retry_skipped_pure_mode", query=query[:60])
                     
                     return ([], metrics) if return_debug else []
 
                 # 动态确定保留数量：如果后续结果与前一个分差很小，则保留
                 final_count = 1
                 for j in range(1, min(len(results), MAX_FINAL_K)):
-                    if results[j]['score'] >= BASE_REL_THRESHOLD and \
+                    if results[j]['score'] >= effective_rel_threshold and \
                        (results[j-1]['score'] - results[j]['score']) < GAP_THRESHOLD:
                         final_count += 1
                     else:
@@ -527,6 +1542,13 @@ class MedicalRetriever:
                     if final_results and "以上信息仅供参考" not in final_results[0]['content']:
                          final_results[0]['content'] += "\n\n以上信息仅供参考，具体诊疗请咨询线下医生。"
 
+            final_results, dept_post_debug = self._postprocess_department_results(
+                query,
+                final_results,
+                pure_mode=pure_retrieval_mode,
+            )
+            metrics.update(dept_post_debug)
+
             duration = time.time() - start_time
             logger.info("rag_search_end", duration=f"{duration:.2f}s", result_count=len(final_results))
             
@@ -539,16 +1561,31 @@ class MedicalRetriever:
             # track_rag_query(duration * 1000, True)
             
             # [Task 1.4] 写入缓存 (Cache Write) with ZSTD
-            if self.redis_client and cache_key and final_results:
+            cache_write_allowed, cache_write_debug = self._evaluate_cache_write_gate(final_results)
+            metrics.update(cache_write_debug)
+            if self.redis_client and cache_key and final_results and cache_write_allowed:
                 try:
                     # [Phase 6.5] ZSTD Compress
                     compressed = self.semantic_cache.compress(json.dumps(final_results, ensure_ascii=False))
-                    await self.redis_client.setex(cache_key, 86400, compressed)
-                    # 更新语义缓存索引 (Milvus)
-                    await asyncio.to_thread(self.semantic_cache.update_cache, query, effective_hash, query_vector=query_vector)
+                    cache_ttl = max(60, int(getattr(settings, "RAG_CACHE_TTL_SECONDS", 86400)))
+                    await asyncio.wait_for(self.redis_client.setex(cache_key, cache_ttl, compressed), timeout=1.0)
+                    semantic_enabled = bool(getattr(settings, "RAG_SEMANTIC_CACHE_ENABLED", True))
+                    if semantic_enabled:
+                        # 更新语义缓存索引 (Milvus)
+                        await asyncio.wait_for(
+                            asyncio.to_thread(self.semantic_cache.update_cache, query, query_hash, query_vector=query_vector),
+                            timeout=1.5,
+                        )
                     logger.info("rag_cache_write_success", key=cache_key)
                 except Exception as cache_err:
                     logger.error("rag_cache_write_failed", error=str(cache_err))
+            elif self.redis_client and cache_key and final_results:
+                logger.info(
+                    "rag_cache_write_skipped_by_gate",
+                    reason=cache_write_debug.get("cache_write_reason"),
+                    top_score=cache_write_debug.get("cache_write_top_score"),
+                    score_gap=cache_write_debug.get("cache_write_score_gap"),
+                )
 
             # Record total latency
             RAG_RETRIEVAL_LATENCY.labels(stage="total").observe(time.time() - start_time)
@@ -576,6 +1613,10 @@ class MedicalRetriever:
 
     async def _rewrite_query_async(self, query: str) -> str:
         """[ASYNC] 使用本地轻量级模型进行查询重写"""
+        if bool(getattr(settings, "RAG_PURE_RETRIEVAL_MODE", False)) and bool(
+            getattr(settings, "RAG_DISABLE_QUERY_REWRITE_WHEN_PURE", True)
+        ):
+            return query
         try:
             prompt = f"你是一个医学助手。请将用户的口语化咨询转化为3个核心检索关键词，用空格隔开。只需回答关键词。\n用户提问：{query}\n关键词："
             # [Optimization] Use generate_batch for consistency with 1.7B API

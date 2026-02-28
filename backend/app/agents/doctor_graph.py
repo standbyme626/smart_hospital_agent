@@ -9,14 +9,11 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.checkpoint.memory import MemorySaver
 
 from app.core.config import settings
-from app.core.tools import (
-    lookup_guideline, 
-    check_drug_interaction, 
-    submit_diagnosis, 
-    submit_prescription,
-    query_ehr,
-    query_lab_results
-)
+from app.core.tools.diagnosis import submit_diagnosis
+from app.core.tools.ehr import query_ehr, query_lab_results
+from app.core.tools.guidelines import lookup_guideline
+from app.core.tools.medical_tools import check_drug_interaction
+from app.core.tools.prescription import submit_prescription
 from app.rag.ddinter_checker import DDInterChecker
 from app.domain.states.doctor_state import DoctorState
 import json
@@ -62,8 +59,7 @@ async def tool_query_ehr(patient_id: str):
     Args:
         patient_id (str): 患者 ID。
     """
-    from app.core.tools.ehr import query_ehr as _query_ehr
-    return str(await _query_ehr(patient_id))
+    return str(await query_ehr(patient_id))
 
 @tool
 async def tool_query_lab(patient_id: str):
@@ -75,8 +71,7 @@ async def tool_query_lab(patient_id: str):
     Args:
         patient_id (str): 患者 ID。
     """
-    from app.core.tools.ehr import query_lab_results as _query_lab
-    return str(await _query_lab(patient_id))
+    return str(await query_lab_results(patient_id))
 
 @tool
 async def tool_submit_diagnosis(diagnosis: str, confidence: str, reasoning: str):
@@ -104,7 +99,7 @@ async def tool_submit_prescription(patient_id: str, diagnosis: str, prescription
         diagnosis (str): 诊断结论。
         prescription_list (list): 药品清单。
     """
-    return submit_prescription(patient_id, diagnosis, prescription_list)
+    return await submit_prescription(patient_id, diagnosis, prescription_list)
 
 # ==================== Prompts ====================
 

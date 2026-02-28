@@ -19,9 +19,20 @@ class VectorStoreManager:
         self.collection_name = collection_name
         self.collection: Optional[Collection] = None
         self.embedding_service = EmbeddingService()
+        self._next_connect_retry_ts: float = 0.0
+        self._connect_retry_interval_s: float = 30.0
 
     def connect(self):
         """获取 Milvus 集合 (依赖全局 Infrastructure)"""
+        now = time.time()
+        if now < self._next_connect_retry_ts and self.collection is None:
+            logger.warning(
+                "milvus_connect_backoff_active",
+                retry_after_s=round(self._next_connect_retry_ts - now, 2),
+                collection=self.collection_name,
+            )
+            return
+
         try:
             # [Phase 5.5] 依赖全局连接，不再重复 connect
             if not connections.has_connection("default"):
@@ -29,17 +40,20 @@ class VectorStoreManager:
                 connections.connect(
                     alias="default",
                     host=settings.MILVUS_HOST,
-                    port=settings.MILVUS_PORT
+                    port=settings.MILVUS_PORT,
+                    timeout=1.5,
                 )
             
-            if utility.has_collection(self.collection_name):
+            if utility.has_collection(self.collection_name, timeout=1.5):
                 self.collection = Collection(self.collection_name)
-                self.collection.load()
+                self.collection.load(timeout=1.5)
+                self._next_connect_retry_ts = 0.0
                 logger.info("milvus_collection_loaded", collection=self.collection_name)
             else:
                  logger.warning("milvus_collection_missing", collection=self.collection_name)
             
         except Exception as e:
+            self._next_connect_retry_ts = time.time() + self._connect_retry_interval_s
             logger.error("milvus_collection_load_failed_continuing_without_vector_store", error=str(e))
             self.collection = None
             # raise # [Fix] Do not raise, allow degradation

@@ -89,10 +89,16 @@ class AgentState(TypedDict, total=False):
     # 输入上下文 (保留兼容，但在逻辑中优先使用 event)
     current_turn_input: Optional[str]
     retrieval_query: Optional[str]
-    retrieval_query_variants: Optional[List[str]]
+    retrieval_query_variants: Optional[List[Dict[str, Any]]]
     retrieval_top_k: Optional[int]
     retrieval_plan: Optional[Dict[str, Any]]
     retrieval_index_scope: Optional[str]
+    variant_hits_map: Optional[Dict[str, List[Dict[str, Any]]]]
+    topk_source_ratio: Optional[Dict[str, Any]]
+    fusion_method: Optional[str]
+    request_id: Optional[str]
+    debug_include_nodes: Optional[List[str]]
+    debug_snapshots: Optional[Dict[str, Any]]
     user_input: str
     
     # 核心元数据
@@ -126,6 +132,10 @@ class AgentState(TypedDict, total=False):
     # [Critical] Expert Outputs
     diagnostician_output: Optional[str]
     pharmacist_output: Optional[str]
+    decision_action: Optional[str]
+    decision_reason: Optional[str]
+    confidence_score: Optional[float]
+    grounded_flag: Optional[bool]
 
     # [Refactor V12] Subgraph Shared State
     patient_id: Optional[str]

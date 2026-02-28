@@ -11,6 +11,12 @@ from app.core.config import settings
 StreamEventType = Literal[
     "thought",
     "token",
+    "department_result",
+    "doctor_slots",
+    "booking_preview",
+    "payment_required",
+    "booking_confirmed",
+    "booking_error",
     "tool_call",
     "tool_output",
     "phase",

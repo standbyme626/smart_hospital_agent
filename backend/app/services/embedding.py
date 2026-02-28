@@ -60,6 +60,7 @@ class EmbeddingService:
         self.use_onnx = False
         self.use_onnx_runtime = False
         self.onnx_input_names = set()
+        self.onnx_providers = []
         self._lock = threading.Lock() # Add thread safety for loading
         self.degraded_mode = False
         self.dim = 1024
@@ -134,6 +135,13 @@ class EmbeddingService:
         if os.path.exists(onnx_model_file):
             print(f"[EmbeddingService] Loading ONNX model from {self.onnx_path} on {self.device}...")
             try:
+                available_providers = ort.get_available_providers() if ort is not None else []
+                if self.device == "cuda" and "CUDAExecutionProvider" not in available_providers:
+                    raise RuntimeError(
+                        f"onnxruntime CUDAExecutionProvider unavailable (available={available_providers}); "
+                        "refuse CPU ONNX fallback in CUDA mode"
+                    )
+
                 if self.tokenizer is None:
                     tok_path = self.onnx_path if os.path.exists(os.path.join(self.onnx_path, "tokenizer_config.json")) else self.model_path
                     self.tokenizer = AutoTokenizer.from_pretrained(tok_path, trust_remote_code=True)
@@ -146,19 +154,24 @@ class EmbeddingService:
                     )
                     self.use_onnx_runtime = False
                 elif ort is not None:
-                    available = ort.get_available_providers()
                     providers = ["CPUExecutionProvider"]
-                    if self.device == "cuda" and "CUDAExecutionProvider" in available:
+                    if self.device == "cuda":
                         providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
                     self.model = ort.InferenceSession(onnx_model_file, providers=providers)
                     self.onnx_input_names = {i.name for i in self.model.get_inputs()}
+                    self.onnx_providers = list(self.model.get_providers())
+                    if self.device == "cuda" and "CUDAExecutionProvider" not in self.onnx_providers:
+                        raise RuntimeError(
+                            f"onnxruntime session is not on CUDA (providers={self.onnx_providers}); "
+                            "fallback to PyTorch CUDA"
+                        )
                     self.use_onnx_runtime = True
                 else:
                     raise RuntimeError("Neither optimum.onnxruntime nor onnxruntime is available")
 
                 self.use_onnx = True
                 if self.use_onnx_runtime:
-                    self.is_on_gpu = "CUDAExecutionProvider" in self.model.get_providers()
+                    self.is_on_gpu = "CUDAExecutionProvider" in self.onnx_providers
                 else:
                     self.is_on_gpu = (self.device == "cuda")
                 print("[EmbeddingService] ONNX Model loaded successfully.")

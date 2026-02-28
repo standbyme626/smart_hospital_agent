@@ -21,6 +21,8 @@ class SemanticCacheManager:
         self.threshold = threshold
         self.collection: Optional[Collection] = None
         self.embedding_service = EmbeddingService()
+        self._next_connect_retry_ts: float = 0.0
+        self._connect_retry_interval_s: float = 30.0
         # [Phase 5.5] 动态获取维度
         self.dim = self.embedding_service.dim if hasattr(self.embedding_service, 'dim') else 1024
         # [Phase 6.5] 初始化压缩器
@@ -37,22 +39,34 @@ class SemanticCacheManager:
 
     def connect(self):
         """获取 Milvus 集合 (依赖全局 Infrastructure)"""
+        now = time.time()
+        if now < self._next_connect_retry_ts and self.collection is None:
+            logger.warning(
+                "semantic_cache_connect_backoff_active",
+                retry_after_s=round(self._next_connect_retry_ts - now, 2),
+                collection=self.collection_name,
+            )
+            return
+
         try:
             # [Phase 5.5] 依赖全局连接
             if not connections.has_connection("default"):
                 connections.connect(
                     alias="default",
                     host=settings.MILVUS_HOST,
-                    port=settings.MILVUS_PORT
+                    port=settings.MILVUS_PORT,
+                    timeout=1.5,
                 )
             
-            if not utility.has_collection(self.collection_name):
+            if not utility.has_collection(self.collection_name, timeout=1.5):
                 self._create_collection()
             
             self.collection = Collection(self.collection_name)
-            self.collection.load()
+            self.collection.load(timeout=1.5)
+            self._next_connect_retry_ts = 0.0
             logger.info("semantic_cache_collection_loaded", collection=self.collection_name)
         except Exception as e:
+            self._next_connect_retry_ts = time.time() + self._connect_retry_interval_s
             logger.error("semantic_cache_load_failed", error=str(e))
 
     def _create_collection(self):

@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import admin_rules, auth, chat, doctor, evolution
+from app.api.v1.endpoints import admin_rules, auth, chat, doctor, evolution, rag
 
 """
 API 路由汇总 (API Router Aggregator)
@@ -13,3 +13,4 @@ api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
 api_router.include_router(doctor.router, prefix="/doctor", tags=["doctor"])
 api_router.include_router(admin_rules.router, prefix="/admin/rules", tags=["admin-rules"])
 api_router.include_router(evolution.router, prefix="/evolution", tags=["evolution"])
+api_router.include_router(rag.router, prefix="/rag", tags=["rag"])

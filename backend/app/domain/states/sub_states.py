@@ -27,10 +27,25 @@ class DiagnosisState(TypedDict):
     dialogue_history: List[BaseMessage] 
     current_turn_input: Optional[str]
     retrieval_query: Optional[str]
-    retrieval_query_variants: Optional[List[str]]
+    retrieval_query_variants: Optional[List[Dict[str, Any]]]
     retrieval_top_k: Optional[int]
+    retrieval_top_k_override: Optional[int]
+    retrieval_use_rerank: Optional[bool]
+    retrieval_rerank_threshold: Optional[float]
     retrieval_plan: Optional[Dict[str, Any]]
     retrieval_index_scope: Optional[str]
+    variant_hits_map: Optional[Dict[str, List[Dict[str, Any]]]]
+    topk_source_ratio: Optional[Dict[str, Any]]
+    fusion_method: Optional[str]
+    context_pack: Optional[Dict[str, Any]]
+    diagnosis_output: Optional[Dict[str, Any]]
+    validated: Optional[bool]
+    validation_error: Optional[str]
+    repair_attempted: Optional[bool]
+    request_id: Optional[str]
+    session_id: Optional[str]
+    debug_include_nodes: Optional[List[str]]
+    debug_snapshots: Optional[Dict[str, Any]]
     user_input: Optional[str]
     event: Optional[EventContext]
     
@@ -46,6 +61,10 @@ class DiagnosisState(TypedDict):
     loop_count: int = 0  # 诊断循环次数
     is_diagnosis_confirmed: bool = False  # 是否已提交诊断
     last_tool_result: Optional[Dict[str, Any]] = None  # 最后一次工具调用结果
+    decision_action: Optional[str]
+    decision_reason: Optional[str]
+    confidence_score: Optional[float]
+    grounded_flag: Optional[bool]
     
     # 状态控制
     step: str
