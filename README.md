@@ -206,8 +206,8 @@ DeepSeek 节点池 (DEEPSEEK_NODE_URLS, Round-Robin)
 ```mermaid
 graph LR
     U[用户] --> F[前端 Next.js]
-    F --> P[前端代理 /api/chat]
-    P --> B[后端流式 /api/v1/chat/stream]
+    F --> P["前端代理 /api/chat"]
+    P --> B["后端流式 /api/v1/chat/stream"]
 
     B --> W[Workflow LangGraph]
     W --> I[Ingress 接入子图]
@@ -231,11 +231,11 @@ graph LR
 
     LLM --> CLOUD[阿里云 DashScope]
     LLM --> DS[DeepSeek 节点池]
-    LLM --> LOCAL[Qwen3-0.6B-DPO 本地 SLM]
+    LLM --> LOCAL["Qwen3-0.6B-DPO 本地 SLM"]
 
     S --> HIS[HIS 模拟桥]
 
-    B --> M[/metrics Prometheus]
+    B --> M["/metrics Prometheus"]
     M --> GF[Grafana 看板]
     B --> LF[Langfuse Trace 可选]
     B --> CT[cost_tracker]
