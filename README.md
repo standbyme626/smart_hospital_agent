@@ -35,6 +35,25 @@
 - 输出治理：`Egress`（`backend/app/core/graph/sub_graphs/egress.py`）
 - 降级治理：LLM 回退/重写回退/检索降级（`backend/app/core/llm/llm_factory.py`、`backend/app/core/graph/sub_graphs/diagnosis.py`、`backend/app/rag/modules/vector.py`）
 
+### 为什么采用混合型（Workflow-first + Local Loops）
+- 结论：对医疗场景，当前这类“主流程强约束 + 局部循环自治”的混合型架构更稳妥。
+- 原因 1（安全与合规）：医疗属于高风险域，关键路径必须可控、可审计、可回放。主图固定收敛更容易做风控与追责。
+- 原因 2（稳定与体验）：用户需要实时反馈和可预测时延；主流程负责稳态，局部循环负责智能补全，避免全链路自由探索导致长尾超时。
+- 原因 3（工程可治理）：把“可变部分”限制在子图内，便于隔离问题、设置熔断和灰度。
+
+当前代码中的“混合型”落点（不是概念，都是已实现路径）：
+
+| 维度 | 当前实现 | 代码证据 | 停止条件 |
+|---|---|---|---|
+| 主聊天链路（workflow-first） | 以主图路由为主，最终统一落到持久化 | `backend/app/core/graph/workflow.py::create_agent_graph` | `persistence -> END` |
+| 诊断单轮执行 | 本轮内走重写/检索/推理/裁决，然后输出报告或追问 | `backend/app/core/graph/sub_graphs/diagnosis.py::build_diagnosis_graph` | `Diagnosis_Report -> END` 或 `Clarify_Question -> END` |
+| 服务子图局部循环（agentic loop） | 模型决定是否继续工具调用 | `backend/app/core/graph/sub_graphs/service.py::ServiceGraph.build` | `service_agent` 无 `tool_calls` 后结束 |
+| 医生工作流局部循环（agentic loop） | `diagnosis -> tools -> updater -> diagnosis`，并带审计重试 | `backend/app/agents/doctor_graph.py` | 审计通过结束；高风险最多重试 2 次 |
+
+一句话定义本项目架构：
+- `workflow-first` 保证医疗安全边界与可治理性。
+- `local loops` 保留必要的 Agent 自主性（工具调用、补充信息、服务闭环）。
+
 ## Repo Discovery（代码库发现）
 
 ### 目录与关键入口
