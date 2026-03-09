@@ -22,10 +22,10 @@
 - **What**：以 `workflow.py::create_agent_graph` 为核心的多子图医疗 Agent，后端 FastAPI + LangGraph，前端 Next.js + SSE。
 - **Why**：把策略配置、执行编排、质量治理、故障降级、观测追踪、评测迭代统一成同一个技术控制面。
 - 技术拆解：
-  - 策略平面（Policy Plane）：`config.py` 统一托管 70+ 配置项，模型路由/RAG 参数/RBAC/超时/回退开关全部运行时注入。
+  - 策略平面（Policy Plane）：`core/settings/*` 分域承载配置快照，`core/config.py` 保持单例 façade 与运行时副作用装配（含 key 轮转与 env 导出）。
   - 执行平面（Execution Plane）：`workflow.py` 主图调度 `ingress/diagnosis/service/egress` 四子图。
   - 治理平面（Governance Plane）：`guard` 高风险拦截、`Decision_Judge` 诊断裁决、`quality_gate` 输出门禁。
-  - 数据平面（Data Plane）：`retriever.py` 聚合 Milvus、BM25、SQL 预过滤、GraphRAG；`persistence_node` 异步写入 PostgreSQL/Milvus/Redis。
+  - 数据平面（Data Plane）：`rag/pipeline.py` + `retriever.py` 维持外部稳定入口，内部聚合 Milvus、BM25、SQL 预过滤、GraphRAG 与语义缓存；`persistence_node` 异步写入 PostgreSQL/Milvus/Redis。
   - 观测平面（Observability Plane）：Prometheus `/metrics` + Langfuse bridge + cost_tracker + token_tracker。
   - 演进平面（Evolution Plane）：`/api/v1/evolution/*` + `EvolutionRunner` 提供离线对抗、评分与改进闭环。
 
@@ -123,9 +123,13 @@ DeepSeek 节点池 (DEEPSEEK_NODE_URLS, Round-Robin)
 ### 目录与关键入口
 - 后端入口：`backend/app/main.py`
 - API 汇总：`backend/app/api/v1/api.py`
+- 配置 façade：`backend/app/core/config.py`（兼容入口）
+- 配置分层：`backend/app/core/settings/*`（`base/storage/model/rag/observability/feature_flags/runtime_side_effects`）
 - 主工作流：`backend/app/core/graph/workflow.py`
 - 诊断子图：`backend/app/core/graph/sub_graphs/diagnosis.py`
-- 检索编排：`backend/app/rag/retriever.py`
+- 检索 façade：`backend/app/rag/retriever.py`（兼容入口）
+- 检索编排：`backend/app/rag/pipeline.py`
+- 检索兼容桥：`backend/app/rag/query_normalizer.py`、`backend/app/rag/cache.py`、`backend/app/rag/rerank.py`
 - 前端入口：`frontend_new/app/page.tsx`
 - 前端流式代理：`frontend_new/app/api/chat/route.ts`
 
@@ -137,6 +141,10 @@ DeepSeek 节点池 (DEEPSEEK_NODE_URLS, Round-Robin)
 - 专家组层：`MedicalExpertCrew`（CrewAI，diagnostician/pharmacist/auditor 三角色）
 - 本地模型层：Qwen3-Embedding-0.6B / Qwen3-Reranker-0.6B / Qwen3-0.6B-DPO-v11_2
 - 基础设施层：Postgres、Redis、Milvus、Neo4j、Prometheus、Grafana
+
+### Upgrade3 兼容路径说明
+- 对外入口保持不变：`from app.core.config import settings`、`MedicalRetriever.search_rag30/search/search_sync`、`POST /api/v1/chat/stream`。
+- 升级后的新目录以 bridge/compat 方式接入；源文件路径继续保留，便于逐步迁移与回退。
 
 ### 数据流与依赖
 - LLM 外部依赖：`OPENAI_API_BASE`（阿里云 DashScope）/ `OPENAI_MODEL_NAME`（如 `qwen-max,qwen-plus,qwen-turbo`）

@@ -4,6 +4,12 @@ import os
 import itertools
 import logging
 from dotenv import load_dotenv
+from app.core.settings.runtime_side_effects import (
+    build_key_candidates,
+    export_runtime_env,
+    is_valid_key,
+    mask_key,
+)
 
 # 项目根目录绝对路径（统一路径管理）
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -316,63 +322,22 @@ class Settings(BaseSettings):
 
     @staticmethod
     def _is_valid_key(key: str) -> bool:
-        if not key or len(key) < 20:
-            return False
-        placeholders = ["sk-placeholder", "sk-example"]
-        return not any(p in key for p in placeholders)
+        return is_valid_key(key)
 
     @staticmethod
     def _mask_key(key: str) -> str:
-        if not key:
-            return "empty"
-        if len(key) <= 12:
-            return "****"
-        return f"{key[:8]}...{key[-4:]}"
+        return mask_key(key)
 
     def _build_key_candidates(self) -> List[str]:
-        candidates = set()
-
-        if self.OPENAI_API_KEY and self._is_valid_key(self.OPENAI_API_KEY):
-            candidates.add(self.OPENAI_API_KEY)
-
-        if self.DASHSCOPE_API_KEY and self._is_valid_key(self.DASHSCOPE_API_KEY):
-            candidates.add(self.DASHSCOPE_API_KEY)
-
-        if self.DASHSCOPE_API_KEY_POOL:
-            pool_keys = [
-                k.strip()
-                for k in self.DASHSCOPE_API_KEY_POOL.split(",")
-                if self._is_valid_key(k.strip())
-            ]
-            candidates.update(pool_keys)
-
-        if self.API_KEY_ROTATION_LIST:
-            rotation_keys = [
-                k.strip()
-                for k in self.API_KEY_ROTATION_LIST.split(",")
-                if self._is_valid_key(k.strip())
-            ]
-            candidates.update(rotation_keys)
-
-        if self.OPENAI_API_KEY and len(self.OPENAI_API_KEY) > 10:
-            candidates.add(self.OPENAI_API_KEY)
-
-        if not candidates:
-            env_key = os.getenv("OPENAI_API_KEY")
-            if env_key and len(env_key) > 10:
-                candidates.add(env_key)
-
-        return list(candidates)
+        return build_key_candidates(
+            openai_api_key=self.OPENAI_API_KEY,
+            dashscope_api_key=self.DASHSCOPE_API_KEY,
+            dashscope_api_key_pool=self.DASHSCOPE_API_KEY_POOL,
+            api_key_rotation_list=self.API_KEY_ROTATION_LIST,
+        )
 
     def _export_runtime_env(self) -> None:
-        os.environ["LANGCHAIN_TRACING_V2"] = self.LANGCHAIN_TRACING_V2
-        os.environ["LANGCHAIN_ENDPOINT"] = self.LANGCHAIN_ENDPOINT
-        os.environ["LANGCHAIN_API_KEY"] = self.LANGCHAIN_API_KEY
-        os.environ["LANGCHAIN_PROJECT"] = self.LANGCHAIN_PROJECT
-        os.environ["OPENAI_API_BASE"] = self.OPENAI_API_BASE
-        os.environ["OPENAI_BASE_URL"] = self.OPENAI_API_BASE
-        os.environ["OPENAI_API_KEY"] = self.OPENAI_API_KEY
-        os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+        export_runtime_env(self)
 
     def __init__(self, **kwargs):
         """

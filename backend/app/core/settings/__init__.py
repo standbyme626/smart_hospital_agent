@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from . import base, feature_flags, model, observability, rag, storage
+from . import base, feature_flags, model, observability, rag, runtime_side_effects, storage
 
 
 @dataclass(slots=True)
