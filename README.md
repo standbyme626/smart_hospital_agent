@@ -146,6 +146,20 @@ DeepSeek 节点池 (DEEPSEEK_NODE_URLS, Round-Robin)
 - 对外入口保持不变：`from app.core.config import settings`、`MedicalRetriever.search_rag30/search/search_sync`、`POST /api/v1/chat/stream`。
 - 升级后的新目录以 bridge/compat 方式接入；源文件路径继续保留，便于逐步迁移与回退。
 
+### Upgrade3 当前状态与收益（2026-03-10）
+- **状态结论**：Upgrade3 主线已完成并落地到 `main`；当前“主线回归门”通过。该结论针对 Upgrade3 范围，不等于全仓历史代码全部重构完成。
+- **已完成项（主线）**：
+  - 三条主链（`chat / diagnosis / retriever`）已接入回退开关，支持灰度与回滚。
+  - bridge/compat 缺失模块已补齐（含 `core/settings/runtime_side_effects.py`、`rag/query_normalizer.py`、`rag/cache.py`、`rag/rerank.py`），保留旧入口兼容路径。
+  - 契约测试已扩展并纳入主线验证：`test_chat_stream_contract.py`、`test_retriever_contract.py`、`test_diagnosis_state_contract.py`。
+  - 全量回归脚本已调整为项目适配版：`scripts/run_project_regression.py`（分阶段 `unit/api`、`unit/rag`、`unit/graph_mainline`、`contract_gate`、`frontend_typecheck`）。
+- **效果（完成 Upgrade3 后）**：
+  - **上线风险降低**：具备开关化回退，不需要通过紧急改代码回滚。
+  - **迁移更平滑**：新旧路径并存，外部调用协议保持稳定，支持渐进迁移。
+  - **质量门更稳**：以契约测试锁定行为边界，降低“重构后协议漂移”风险。
+  - **回归可执行**：主线回归拆分为可诊断阶段，失败时更快定位责任模块。
+  - **后续迭代更快**：兼容层隔离历史债务，便于后续分批清理 legacy。
+
 ### 数据流与依赖
 - LLM 外部依赖：`OPENAI_API_BASE`（阿里云 DashScope）/ `OPENAI_MODEL_NAME`（如 `qwen-max,qwen-plus,qwen-turbo`）
 - 向量数据源：Milvus collection（默认 `huatuo_knowledge`，HNSW 索引，1024 维 COSINE）
