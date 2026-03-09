@@ -1707,14 +1707,46 @@ class MedicalRetriever:
         # 格式化输出
         return sorted_docs
 
+    def _legacy_search_sync_wrapper(self, query: str, top_k: int = 3, intent: str = None) -> List[Dict[str, Any]]:
+        """Legacy synchronous wrapper kept for rollback safety."""
+        try:
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    return loop.run_until_complete(self.search_rag30(query, top_k, intent))
+                return loop.run_until_complete(self.search_rag30(query, top_k, intent))
+            except RuntimeError:
+                return asyncio.run(self.search_rag30(query, top_k, intent))
+        except Exception as exc:
+            logger.error("legacy_search_sync_failed", error=str(exc))
+            return []
+
     @traceable(run_type="retriever", name="RAG30_Sync_Wrapper")
     def search_sync(self, query: str, top_k: int = 3, intent: str = None) -> List[Dict[str, Any]]:
         """专供同步环境使用的 Wrapper"""
-        return retrieval_pipeline.search_sync(self, query=query, top_k=top_k, intent=intent)
+        pipeline_enabled = bool(getattr(settings, "UPGRADE3_RETRIEVER_PIPELINE_ENABLED", True))
+        logger.info(
+            "retriever_search_sync_entry",
+            upgrade3_retriever_pipeline_enabled=pipeline_enabled,
+            top_k=top_k,
+            has_intent=bool(intent),
+        )
+        if pipeline_enabled:
+            return retrieval_pipeline.search_sync(self, query=query, top_k=top_k, intent=intent)
+        return self._legacy_search_sync_wrapper(query=query, top_k=top_k, intent=intent)
 
     def search(self, query: str, top_k: int = 3, intent: str = None) -> List[Dict[str, Any]]:
         """Legacy 兼容接口"""
-        return retrieval_pipeline.search(self, query=query, top_k=top_k, intent=intent)
+        pipeline_enabled = bool(getattr(settings, "UPGRADE3_RETRIEVER_PIPELINE_ENABLED", True))
+        logger.info(
+            "retriever_search_entry",
+            upgrade3_retriever_pipeline_enabled=pipeline_enabled,
+            top_k=top_k,
+            has_intent=bool(intent),
+        )
+        if pipeline_enabled:
+            return retrieval_pipeline.search(self, query=query, top_k=top_k, intent=intent)
+        return self._legacy_search_sync_wrapper(query=query, top_k=top_k, intent=intent)
 
     async def summarize_medical_text(self, text: str, query: str) -> str:
         """

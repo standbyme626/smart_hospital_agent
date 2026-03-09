@@ -132,8 +132,43 @@ EXCLUDED_STREAM_NODES = {
     "quality_gate",
 }
 
+
+def _upgrade3_chat_shell_enabled() -> bool:
+    return bool(getattr(settings, "UPGRADE3_CHAT_SHELL_ENABLED", True))
+
+
+def _upgrade3_trace_flags() -> dict[str, bool]:
+    return {
+        "chat_shell_enabled": bool(getattr(settings, "UPGRADE3_CHAT_SHELL_ENABLED", True)),
+        "diagnosis_shell_enabled": bool(getattr(settings, "UPGRADE3_DIAGNOSIS_SHELL_ENABLED", True)),
+        "retriever_pipeline_enabled": bool(getattr(settings, "UPGRADE3_RETRIEVER_PIPELINE_ENABLED", True)),
+    }
+
+
+def _resolve_stage_legacy(node: str, event_type: str) -> str:
+    if event_type in {"token", "final"}:
+        return "respond"
+    if event_type in {"thought", "status", "ping", "error"}:
+        return "route"
+    if node in {"Query_Rewrite", "Quick_Triage"}:
+        return "rewrite"
+    if node in {"Hybrid_Retriever", "retriever"}:
+        return "retrieve"
+    if node in {"DSPy_Reasoner", "Decision_Judge"}:
+        return "judge"
+    return ""
+
+
 def _resolve_stage(node: str, event_type: str) -> str:
-    return resolve_ux_stage(node, event_type)
+    if _upgrade3_chat_shell_enabled():
+        return resolve_ux_stage(node, event_type)
+    return _resolve_stage_legacy(node, event_type)
+
+
+def _resolve_status_text(node: str) -> str:
+    if _upgrade3_chat_shell_enabled():
+        return resolve_status(node)
+    return ""
 
 
 def _resolve_node_name(event: dict) -> str:
@@ -268,16 +303,35 @@ def _sse_payload(
     stage: str = "",
     meta: dict | None = None,
 ) -> str:
-    return render_sse_frame(
-        event_type=event_type,
-        content=content,
-        session_id=session_id,
-        request_id=request_id,
-        seq=seq,
-        stage=stage or _resolve_stage(node, event_type),
-        node=node,
-        meta=meta or {},
-    )
+    resolved_stage = stage or _resolve_stage(node, event_type)
+    if _upgrade3_chat_shell_enabled():
+        return render_sse_frame(
+            event_type=event_type,
+            content=content,
+            session_id=session_id,
+            request_id=request_id,
+            seq=seq,
+            stage=resolved_stage,
+            node=node,
+            meta=meta or {},
+        )
+
+    payload: dict[str, Any] = {
+        "type": event_type,
+        "content": content,
+        "ts": time.time(),
+    }
+    if request_id:
+        payload["request_id"] = request_id
+    if seq > 0:
+        payload["seq"] = seq
+    if resolved_stage:
+        payload["stage"] = resolved_stage
+    if node:
+        payload["node"] = node
+    if meta:
+        payload.update(meta)
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
 def _extract_command_payload(message: str, prefix: str) -> str:
@@ -520,6 +574,7 @@ async def event_generator(
     ping_interval = float(getattr(settings, "SSE_PING_INTERVAL_SECONDS", 8.0) or 8.0)
     ping_interval = min(max(ping_interval, 2.0), 30.0)
 
+    upgrade3_flags = _upgrade3_trace_flags()
     langfuse_bridge.ensure_trace(
         request_id=resolved_request_id,
         session_id=session_id,
@@ -530,6 +585,7 @@ async def event_generator(
             "message_len": len(str(message or "")),
             "runtime_config_requested": runtime_requested,
             "runtime_config_effective": runtime_effective,
+            "upgrade3_flags": upgrade3_flags,
         },
     )
 
@@ -542,6 +598,7 @@ async def event_generator(
             "metrics": {"t_connect_ms": 0},
             "runtime_config_requested": runtime_requested,
             "runtime_config_effective": runtime_effective,
+            "upgrade3_flags": upgrade3_flags,
         },
         stage="route",
     )
@@ -595,7 +652,7 @@ async def event_generator(
                 node_name = _resolve_node_name(event)
                 if not node_name:
                     continue
-                status_text = resolve_status(node_name)
+                status_text = _resolve_status_text(node_name)
                 if status_text and node_name not in emitted_nodes:
                     emitted_nodes.add(node_name)
                     yield emit("thought", status_text, node=node_name)
@@ -729,6 +786,7 @@ async def event_generator(
             metadata={
                 "sse_metrics": metrics,
                 "runtime_config_effective": runtime_config_final,
+                "upgrade3_flags": upgrade3_flags,
             },
         )
         langfuse_bridge.finish_trace(
@@ -740,6 +798,7 @@ async def event_generator(
             metadata={
                 "sse_metrics": metrics,
                 "runtime_config_effective": runtime_config_final,
+                "upgrade3_flags": upgrade3_flags,
             },
         )
 

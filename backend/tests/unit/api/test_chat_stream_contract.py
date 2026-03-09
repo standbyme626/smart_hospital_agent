@@ -12,14 +12,27 @@ sys.path.append(
 from app.api.v1.endpoints import chat as chat_endpoint
 
 
-async def _collect_stream_payloads(raw_events: list[dict], monkeypatch) -> tuple[list[dict], bool]:
+async def _collect_stream_payloads(
+    raw_events: list[dict],
+    monkeypatch,
+    *,
+    raise_exc: Exception | None = None,
+) -> tuple[list[dict], bool, list[dict]]:
     async def _fake_astream_events(_inputs, config=None, version="v2"):
         del config, version
         for event in raw_events:
             yield event
+        if raise_exc is not None:
+            raise raise_exc
 
     monkeypatch.setattr(chat_endpoint.graph_app, "astream_events", _fake_astream_events)
-    monkeypatch.setattr(chat_endpoint.langfuse_bridge, "ensure_trace", lambda *args, **kwargs: None)
+    ensure_calls: list[dict] = []
+    monkeypatch.setattr(
+        chat_endpoint.langfuse_bridge,
+        "ensure_trace",
+        lambda *args, **kwargs: ensure_calls.append(kwargs),
+    )
+    monkeypatch.setattr(chat_endpoint.logger, "error", lambda *args, **kwargs: None)
     monkeypatch.setattr(chat_endpoint.langfuse_bridge, "annotate_trace", lambda *args, **kwargs: None)
     monkeypatch.setattr(chat_endpoint.langfuse_bridge, "finish_trace", lambda *args, **kwargs: None)
 
@@ -39,11 +52,15 @@ async def _collect_stream_payloads(raw_events: list[dict], monkeypatch) -> tuple
             continue
         payloads.append(json.loads(body))
 
-    return payloads, done_seen
+    return payloads, done_seen, ensure_calls
 
 
 @pytest.mark.asyncio
 async def test_chat_stream_contract_required_order_and_done(monkeypatch):
+    monkeypatch.setattr(chat_endpoint.settings, "UPGRADE3_CHAT_SHELL_ENABLED", True, raising=False)
+    monkeypatch.setattr(chat_endpoint.settings, "UPGRADE3_DIAGNOSIS_SHELL_ENABLED", True, raising=False)
+    monkeypatch.setattr(chat_endpoint.settings, "UPGRADE3_RETRIEVER_PIPELINE_ENABLED", True, raising=False)
+
     raw_events = [
         {
             "event": "on_chain_start",
@@ -74,9 +91,16 @@ async def test_chat_stream_contract_required_order_and_done(monkeypatch):
         },
     ]
 
-    payloads, done_seen = await _collect_stream_payloads(raw_events, monkeypatch)
+    payloads, done_seen, ensure_calls = await _collect_stream_payloads(raw_events, monkeypatch)
 
     assert done_seen
+    assert ensure_calls
+    trace_meta = ensure_calls[0]["metadata"]
+    assert trace_meta["upgrade3_flags"] == {
+        "chat_shell_enabled": True,
+        "diagnosis_shell_enabled": True,
+        "retriever_pipeline_enabled": True,
+    }
     assert payloads[0]["type"] == "status"
     assert payloads[0]["content"] == "stream_opened"
 
@@ -120,7 +144,7 @@ async def test_chat_stream_contract_optional_rewrite_path(monkeypatch):
         },
     ]
 
-    payloads, done_seen = await _collect_stream_payloads(raw_events, monkeypatch)
+    payloads, done_seen, _ = await _collect_stream_payloads(raw_events, monkeypatch)
 
     assert done_seen
 
@@ -131,3 +155,23 @@ async def test_chat_stream_contract_optional_rewrite_path(monkeypatch):
     ]
     assert "runtime_config_applied" in status_contents
     assert "rewrite_path" not in status_contents
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_contract_error_event_and_done(monkeypatch):
+    raw_events = [
+        {
+            "event": "on_chat_model_stream",
+            "metadata": {"langgraph_node": "Diagnosis_Report"},
+            "data": {"chunk": SimpleNamespace(content="先进行基础检查。")},
+        },
+    ]
+
+    payloads, done_seen, _ = await _collect_stream_payloads(
+        raw_events,
+        monkeypatch,
+        raise_exc=RuntimeError("upstream_crash"),
+    )
+
+    assert done_seen
+    assert any(p.get("type") == "error" for p in payloads)

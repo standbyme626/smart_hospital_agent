@@ -6,7 +6,7 @@ import uuid
 from typing import Literal, Dict, Any, List, Optional, Sequence
 from app.core.llm.llm_factory import get_smart_llm
 from langchain_core.messages import SystemMessage, AIMessage, BaseMessage
-from langgraph.graph import StateGraph, END, START
+from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 
 from app.core.config import settings
@@ -2069,15 +2069,17 @@ def build_diagnosis_graph():
     Nodes: State_Sync -> Query_Rewrite -> Hybrid_Retriever -> DSPy_Reasoner -> Confidence_Evaluator
     """
     workflow = StateGraph(DiagnosisState)
-    
-    # 1. 初始化模型 (Legacy fallback)
-    llm = get_smart_llm(temperature=0.0)
+    shell_enabled = bool(getattr(settings, "UPGRADE3_DIAGNOSIS_SHELL_ENABLED", True))
+    state_sync_impl = shell_state_sync_node if shell_enabled else state_sync_node
+    query_rewrite_impl = shell_query_rewrite_node if shell_enabled else query_rewrite_node
+    quick_triage_router_impl = shell_quick_triage_router if shell_enabled else quick_triage_router
+    post_retrieval_router_impl = shell_post_retrieval_router if shell_enabled else post_retrieval_router
 
     # =================================================================
     # Graph Construction
     # =================================================================
-    workflow.add_node("State_Sync", shell_state_sync_node)
-    workflow.add_node("Query_Rewrite", shell_query_rewrite_node)
+    workflow.add_node("State_Sync", state_sync_impl)
+    workflow.add_node("Query_Rewrite", query_rewrite_impl)
     workflow.add_node("Quick_Triage", quick_triage_node)
     workflow.add_node("Hybrid_Retriever", hybrid_retriever_node)
     workflow.add_node("DSPy_Reasoner", dspy_reasoner_node)
@@ -2095,7 +2097,7 @@ def build_diagnosis_graph():
     workflow.add_edge("Query_Rewrite", "Quick_Triage")
     workflow.add_conditional_edges(
         "Quick_Triage",
-        shell_quick_triage_router,
+        quick_triage_router_impl,
         {
             "fast_exit": "Diagnosis_Report",
             "deep_diagnosis": "Hybrid_Retriever",
@@ -2103,7 +2105,7 @@ def build_diagnosis_graph():
     )
     workflow.add_conditional_edges(
         "Hybrid_Retriever",
-        shell_post_retrieval_router,
+        post_retrieval_router_impl,
         {
             "pure_report": "Diagnosis_Report",
             "dspy_reasoner": "DSPy_Reasoner",

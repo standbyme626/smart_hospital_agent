@@ -264,6 +264,9 @@ class Settings(BaseSettings):
     QUERY_REWRITE_CACHE_MAX_ENTRIES: int = int(os.getenv("QUERY_REWRITE_CACHE_MAX_ENTRIES", "512"))
     CRISIS_FASTLANE_ENABLED: bool = os.getenv("CRISIS_FASTLANE_ENABLED", "true").lower() == "true"
     SSE_PING_INTERVAL_SECONDS: float = float(os.getenv("SSE_PING_INTERVAL_SECONDS", "8.0"))
+    UPGRADE3_CHAT_SHELL_ENABLED: bool = os.getenv("UPGRADE3_CHAT_SHELL_ENABLED", "true").lower() == "true"
+    UPGRADE3_DIAGNOSIS_SHELL_ENABLED: bool = os.getenv("UPGRADE3_DIAGNOSIS_SHELL_ENABLED", "true").lower() == "true"
+    UPGRADE3_RETRIEVER_PIPELINE_ENABLED: bool = os.getenv("UPGRADE3_RETRIEVER_PIPELINE_ENABLED", "true").lower() == "true"
 
     # SSE protocol compatibility
     ENABLE_UNIFIED_STREAM_SCHEMA: bool = os.getenv("ENABLE_UNIFIED_STREAM_SCHEMA", "false").lower() == "true"
