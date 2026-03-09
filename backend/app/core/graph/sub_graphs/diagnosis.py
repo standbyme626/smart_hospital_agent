@@ -26,6 +26,12 @@ from app.rag.adapters.multi_query_retriever_adapter import MultiQueryRetrieverAd
 from app.rag.adapters.context_window_adapter import ContextWindowAdapter
 from app.rag.adapters.json_schema_guardrail import JsonSchemaGuardrail
 from app.rag.adapters.retrieval_router_adapter import RetrievalRouterAdapter
+from app.core.graph.diagnosis.rewrite import query_rewrite_node as shell_query_rewrite_node
+from app.core.graph.diagnosis.router import (
+    post_retrieval_router as shell_post_retrieval_router,
+    quick_triage_router as shell_quick_triage_router,
+)
+from app.core.graph.diagnosis.state_sync import state_sync_node as shell_state_sync_node
 from app.core.monitoring.langfuse_bridge import langfuse_bridge
 import structlog
 import dspy
@@ -2070,8 +2076,8 @@ def build_diagnosis_graph():
     # =================================================================
     # Graph Construction
     # =================================================================
-    workflow.add_node("State_Sync", state_sync_node)
-    workflow.add_node("Query_Rewrite", query_rewrite_node)
+    workflow.add_node("State_Sync", shell_state_sync_node)
+    workflow.add_node("Query_Rewrite", shell_query_rewrite_node)
     workflow.add_node("Quick_Triage", quick_triage_node)
     workflow.add_node("Hybrid_Retriever", hybrid_retriever_node)
     workflow.add_node("DSPy_Reasoner", dspy_reasoner_node)
@@ -2089,7 +2095,7 @@ def build_diagnosis_graph():
     workflow.add_edge("Query_Rewrite", "Quick_Triage")
     workflow.add_conditional_edges(
         "Quick_Triage",
-        quick_triage_router,
+        shell_quick_triage_router,
         {
             "fast_exit": "Diagnosis_Report",
             "deep_diagnosis": "Hybrid_Retriever",
@@ -2097,7 +2103,7 @@ def build_diagnosis_graph():
     )
     workflow.add_conditional_edges(
         "Hybrid_Retriever",
-        post_retrieval_router,
+        shell_post_retrieval_router,
         {
             "pure_report": "Diagnosis_Report",
             "dspy_reasoner": "DSPy_Reasoner",

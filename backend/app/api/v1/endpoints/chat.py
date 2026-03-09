@@ -18,7 +18,8 @@ from app.core.department_normalization import (
     extract_department_mentions,
 )
 from app.core.stream_compat import extract_doctor_slots, extract_ui_payment
-from app.core.stream_schema import build_stream_payload
+from app.services.chat_stream_renderer import render_sse_frame
+from app.services.chat_ux_policy import resolve_stage as resolve_ux_stage, resolve_status
 from app.services.mcp.his_server import HISService
 
 router = APIRouter()
@@ -131,50 +132,8 @@ EXCLUDED_STREAM_NODES = {
     "quality_gate",
 }
 
-STATUS_MAP = {
-    "unified_preprocessor": "正在分析病情...",
-    "fast_track": "正在生成回答...",
-    "fast_reply": "正在生成回答...",
-    "standard_consultant": "全科医生正在思考...",
-    "expert_crew": "专家组正在会诊...",
-    "expert_aggregation": "正在整合诊断结果...",
-    "service": "正在处理挂号服务...",
-    "service_agent": "正在处理挂号服务...",
-    "tools": "正在处理挂号工具调用...",
-    "intent_classifier": "正在识别意图...",
-    "diagnosis": "正在进行诊断分析...",
-    "Hybrid_Retriever": "正在检索医学知识...",
-    "State_Sync": "正在同步患者上下文...",
-    "triage_node": "正在分诊...",
-    "DSPy_Reasoner": "专家系统正在推理...",
-    "Diagnosis_Report": "正在生成诊断报告...",
-    "Clarify_Question": "正在生成追问..."
-}
-
-STAGE_NODE_MAP = {
-    "Query_Rewrite": "rewrite",
-    "Quick_Triage": "rewrite",
-    "Hybrid_Retriever": "retrieve",
-    "retriever": "retrieve",
-    "DSPy_Reasoner": "judge",
-    "Decision_Judge": "judge",
-    "Diagnosis_Report": "respond",
-    "Clarify_Question": "respond",
-    "service": "respond",
-    "fast_reply": "respond",
-    "booking_shortcut": "respond",
-}
-
-
 def _resolve_stage(node: str, event_type: str) -> str:
-    node_name = str(node or "").strip()
-    if node_name in STAGE_NODE_MAP:
-        return STAGE_NODE_MAP[node_name]
-    if event_type in {"token", "final"}:
-        return "respond"
-    if event_type in {"thought", "status", "ping"}:
-        return "route"
-    return ""
+    return resolve_ux_stage(node, event_type)
 
 
 def _resolve_node_name(event: dict) -> str:
@@ -309,20 +268,16 @@ def _sse_payload(
     stage: str = "",
     meta: dict | None = None,
 ) -> str:
-    payload = json.dumps(
-        build_stream_payload(
-            event_type=event_type,  # type: ignore[arg-type]
-            content=content,
-            session_id=session_id,
-            request_id=request_id,
-            seq=seq,
-            stage=stage or _resolve_stage(node, event_type),
-            node=node,
-            meta=meta or {},
-        ),
-        ensure_ascii=False,
+    return render_sse_frame(
+        event_type=event_type,
+        content=content,
+        session_id=session_id,
+        request_id=request_id,
+        seq=seq,
+        stage=stage or _resolve_stage(node, event_type),
+        node=node,
+        meta=meta or {},
     )
-    return f"data: {payload}\n\n"
 
 
 def _extract_command_payload(message: str, prefix: str) -> str:
@@ -640,9 +595,9 @@ async def event_generator(
                 node_name = _resolve_node_name(event)
                 if not node_name:
                     continue
-                if node_name in STATUS_MAP and node_name not in emitted_nodes:
+                status_text = resolve_status(node_name)
+                if status_text and node_name not in emitted_nodes:
                     emitted_nodes.add(node_name)
-                    status_text = STATUS_MAP[node_name]
                     yield emit("thought", status_text, node=node_name)
                 elif node_name not in emitted_nodes and node_name not in {"LangGraph"}:
                     emitted_nodes.add(node_name)

@@ -20,6 +20,7 @@ from app.rag.router import MedicalRouter
 from app.rag.reranker import QwenReranker
 from app.rag.sql_prefilter import SQLPreFilter
 from app.rag.ddinter_checker import DDInterChecker
+from app.rag import pipeline as retrieval_pipeline
 from app.core.models.local_slm import local_slm
 from app.db.session import AsyncSessionLocal
 from app.core.constants import DEPARTMENT_LIST, SYMPTOM_KEYWORD_MAP
@@ -1709,42 +1710,11 @@ class MedicalRetriever:
     @traceable(run_type="retriever", name="RAG30_Sync_Wrapper")
     def search_sync(self, query: str, top_k: int = 3, intent: str = None) -> List[Dict[str, Any]]:
         """专供同步环境使用的 Wrapper"""
-        try:
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    # 如果 loop 正在运行（例如在 async 任务中调用同步工具）
-                    # 这是一个危险的操作，通常应该使用 asyncio.run_coroutine_threadsafe
-                    # 但在单线程事件循环中，这会死锁。
-                    # 不过 CrewAI 的 Agent 通常在单独的线程池中运行同步工具。
-                    import threading
-                    from concurrent.futures import Future
-                    
-                    def _run_coroutine(coro, loop, future):
-                        asyncio.set_event_loop(loop)
-                        try:
-                            res = loop.run_until_complete(coro)
-                            future.set_result(res)
-                        except Exception as e:
-                            future.set_exception(e)
-
-                    # 检查是否已经在主线程/运行 loop 的线程中
-                    # 如果在，则只能尝试 run_in_executor 或直接运行（如果 loop 没启动）
-                    # 这里我们尝试最安全的方式：创建一个新的临时 loop (如果当前 loop 报错)
-                    return loop.run_until_complete(self.search_rag30(query, top_k, intent))
-                else:
-                    return loop.run_until_complete(self.search_rag30(query, top_k, intent))
-            except RuntimeError:
-                # 针对 "There is no current event loop in thread" 或 "Event loop is closed"
-                return asyncio.run(self.search_rag30(query, top_k, intent))
-        except Exception as e:
-            logger.error("search_sync_failed", error=str(e))
-            # 最后的兜底：如果异步环境实在搞不定，返回空
-            return []
+        return retrieval_pipeline.search_sync(self, query=query, top_k=top_k, intent=intent)
 
     def search(self, query: str, top_k: int = 3, intent: str = None) -> List[Dict[str, Any]]:
         """Legacy 兼容接口"""
-        return self.search_sync(query, top_k, intent)
+        return retrieval_pipeline.search(self, query=query, top_k=top_k, intent=intent)
 
     async def summarize_medical_text(self, text: str, query: str) -> str:
         """
