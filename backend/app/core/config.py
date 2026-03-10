@@ -165,6 +165,11 @@ class Settings(BaseSettings):
     RERANKER_MODEL_PATH: str = os.path.join(PROJECT_ROOT, "models", "Qwen3-Reranker-0.6B")
     # Device policy: auto | cuda | cpu
     EMBEDDING_DEVICE: str = os.getenv("EMBEDDING_DEVICE", "auto")
+    EMBEDDING_REMOTE_ENABLED: bool = os.getenv("EMBEDDING_REMOTE_ENABLED", "true").lower() == "true"
+    EMBEDDING_REMOTE_URL: str = os.getenv("EMBEDDING_REMOTE_URL", "http://100.90.236.32:11434")
+    EMBEDDING_REMOTE_MODEL: str = os.getenv("EMBEDDING_REMOTE_MODEL", "qwen3-embedding:0.6b")
+    EMBEDDING_REMOTE_TIMEOUT_S: float = float(os.getenv("EMBEDDING_REMOTE_TIMEOUT_S", "10"))
+    EMBEDDING_LOCAL_ENABLED: bool = os.getenv("EMBEDDING_LOCAL_ENABLED", "false").lower() == "true"
     RERANKER_DEVICE: str = os.getenv("RERANKER_DEVICE", "auto")
     # Retrieval performance knobs
     RAG_RECALL_WINDOW: int = int(os.getenv("RAG_RECALL_WINDOW", "100"))

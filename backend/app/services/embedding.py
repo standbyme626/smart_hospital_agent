@@ -4,6 +4,7 @@ import time
 import torch
 import threading
 import gc
+import requests
 import numpy as np
 import torch.nn.functional as F
 from app.core import torch_patch  # noqa: F401  # Ensure torch int1-int8 patch before transformers import
@@ -64,16 +65,19 @@ class EmbeddingService:
         self._lock = threading.Lock() # Add thread safety for loading
         self.degraded_mode = False
         self.dim = 1024
+        self.remote_enabled = bool(getattr(settings, "EMBEDDING_REMOTE_ENABLED", True))
+        self.remote_url = str(getattr(settings, "EMBEDDING_REMOTE_URL", "http://100.90.236.32:11434")).rstrip("/")
+        self.remote_model = str(getattr(settings, "EMBEDDING_REMOTE_MODEL", "qwen3-embedding:0.6b"))
+        self.remote_timeout_s = float(getattr(settings, "EMBEDDING_REMOTE_TIMEOUT_S", 10))
+        self.local_enabled = bool(getattr(settings, "EMBEDDING_LOCAL_ENABLED", False))
         
         # [VRAM] Register to VRAM Manager
         vram_manager.register_model("embedding", self)
         
-        # Auto-load on init? No, lazy load is better for startup speed.
-        # But for "Server Ready" status, we might want to load.
-        # Currently the code calls _reload() in __init__ if we follow the original logic? 
-        # No, the original code had `self._reload()` at the end of `_initialize`.
-        # I will keep it but fix the loading logic inside _reload.
-        self._reload()
+        if self.local_enabled:
+            self._reload()
+        else:
+            print("[EmbeddingService] Local embedding disabled by EMBEDDING_LOCAL_ENABLED=false")
 
     def unload(self):
         """Unload model from VRAM (Called by VRAMManager)."""
@@ -221,6 +225,46 @@ class EmbeddingService:
         norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
         return embeddings / np.clip(norms, 1e-12, None)
 
+    def _remote_embed(self, texts: list) -> list:
+        if not self.remote_enabled:
+            raise RuntimeError("remote embedding disabled")
+        if not texts:
+            return []
+
+        response = requests.post(
+            f"{self.remote_url}/api/embed",
+            json={
+                "model": self.remote_model,
+                "input": texts,
+            },
+            timeout=self.remote_timeout_s,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        embeddings = payload.get("embeddings")
+        if embeddings is None:
+            raise ValueError("missing embeddings in remote response")
+        if embeddings and isinstance(embeddings[0], (int, float)):
+            embeddings = [embeddings]
+        if len(embeddings) != len(texts):
+            raise ValueError(
+                f"remote embeddings size mismatch: expected={len(texts)} actual={len(embeddings)}"
+            )
+        if embeddings and isinstance(embeddings[0], list):
+            self.dim = len(embeddings[0])
+        return embeddings
+
+    def _enter_degraded_mode(self):
+        if not self.degraded_mode:
+            print("[Warning] Embedding entering DEGRADED MODE (Dummy Embeddings).")
+        self.degraded_mode = True
+
+    def _get_degraded_embedding(self) -> list:
+        return [0.001] * self.dim
+
+    def _get_degraded_embeddings(self, texts: list) -> list:
+        return [[0.001] * self.dim for _ in texts]
+
     def offload(self):
         """从 GPU 卸载模型以节省显存"""
         if not self.is_on_gpu or self.model is None:
@@ -240,20 +284,37 @@ class EmbeddingService:
     def get_embedding(self, text: str) -> list:
         start_time = time.time()
         EMBEDDING_REQUESTS.inc()
-        
-        # [VRAM] Mark used
         vram_manager.mark_used("embedding")
-            
+
+        if self.remote_enabled:
+            try:
+                remote_embeddings = self._remote_embed([text])
+                latency = time.time() - start_time
+                EMBEDDING_LATENCY.observe(latency)
+                self.degraded_mode = False
+                return remote_embeddings[0]
+            except Exception as exc:
+                print(f"[EmbeddingService] Remote embedding failed: {exc}")
+
+        if self.local_enabled:
+            return self._get_embedding_local(text)
+
+        self._enter_degraded_mode()
+        latency = time.time() - start_time
+        EMBEDDING_LATENCY.observe(latency)
+        return self._get_degraded_embedding()
+
+    def _get_embedding_local(self, text: str) -> list:
+        start_time = time.time()
         if not self.is_loaded() and not self.degraded_mode:
             self._reload()
-            
-        if self.degraded_mode:
-             return [0.001] * self.dim
 
-        # [GGUF] Handle GGUF inference
+        if self.degraded_mode:
+            return self._get_degraded_embedding()
+
         if self.use_gguf:
             response = self.model.create_embedding(text)
-            embedding = response['data'][0]['embedding']
+            embedding = response["data"][0]["embedding"]
             latency = time.time() - start_time
             EMBEDDING_LATENCY.observe(latency)
             return embedding
@@ -280,10 +341,7 @@ class EmbeddingService:
                 ort_inputs["position_ids"] = torch.arange(seq_len, device=self.device).unsqueeze(0)
             outputs = self.model(**ort_inputs)
 
-        if not self.use_onnx:
-            last_hidden_state = outputs.last_hidden_state
-        else:
-            last_hidden_state = outputs.last_hidden_state
+        last_hidden_state = outputs.last_hidden_state
         attention_mask = inputs["attention_mask"]
         mask = attention_mask.unsqueeze(-1).expand(last_hidden_state.size()).float()
         sum_embeddings = torch.sum(last_hidden_state * mask, dim=1)
@@ -293,33 +351,49 @@ class EmbeddingService:
 
         latency = time.time() - start_time
         EMBEDDING_LATENCY.observe(latency)
-        
         return embedding[0].cpu().tolist()
 
     def batch_get_embeddings(self, texts: list, batch_size: int = 16) -> list:
-        # [VRAM] Mark used
         vram_manager.mark_used("embedding")
 
-        if self.degraded_mode:
-            return [[0.001] * self.dim for _ in texts]
+        if self.remote_enabled:
+            try:
+                remote_embeddings = self._remote_embed(texts)
+                self.degraded_mode = False
+                return remote_embeddings
+            except Exception as exc:
+                print(f"[EmbeddingService] Remote batch embedding failed: {exc}")
 
-        # [GGUF] Handle GGUF inference
-        if hasattr(self, 'use_gguf') and self.use_gguf:
+        if self.local_enabled:
+            return self._batch_get_embeddings_local(texts, batch_size=batch_size)
+
+        self._enter_degraded_mode()
+        return self._get_degraded_embeddings(texts)
+
+    def _batch_get_embeddings_local(self, texts: list, batch_size: int = 16) -> list:
+        if self.degraded_mode:
+            return self._get_degraded_embeddings(texts)
+
+        if hasattr(self, "use_gguf") and self.use_gguf:
             if not self.is_loaded() and not self.degraded_mode:
                 self._reload()
-            
+
             if self.degraded_mode:
-                return [[0.001] * self.dim for _ in texts]
-            
+                return self._get_degraded_embeddings(texts)
+
             all_embeddings = []
             for i in range(0, len(texts), batch_size):
                 batch = texts[i:i + batch_size]
                 response = self.model.create_embedding(batch)
-                # Ensure results are sorted by index
-                sorted_data = sorted(response['data'], key=lambda x: x['index'])
-                batch_embeddings = [item['embedding'] for item in sorted_data]
+                sorted_data = sorted(response["data"], key=lambda x: x["index"])
+                batch_embeddings = [item["embedding"] for item in sorted_data]
                 all_embeddings.extend(batch_embeddings)
             return all_embeddings
+
+        if not self.is_loaded() and not self.degraded_mode:
+            self._reload()
+        if self.degraded_mode:
+            return self._get_degraded_embeddings(texts)
 
         all_embeddings = []
         for i in range(0, len(texts), batch_size):
@@ -337,7 +411,7 @@ class EmbeddingService:
                 padding=True,
                 truncation=True,
                 max_length=512,
-                return_tensors="pt"
+                return_tensors="pt",
             )
 
             if not self.use_onnx:
@@ -350,26 +424,17 @@ class EmbeddingService:
                 if "position_ids" in self.model.input_names and "position_ids" not in ort_inputs:
                     batch_size_actual = ort_inputs["input_ids"].shape[0]
                     seq_len = ort_inputs["input_ids"].shape[1]
-                    ort_inputs["position_ids"] = torch.arange(seq_len, device=self.device).expand(batch_size_actual, seq_len)
+                    ort_inputs["position_ids"] = torch.arange(seq_len, device=self.device).expand(
+                        batch_size_actual, seq_len
+                    )
                 outputs = self.model(**ort_inputs)
-            
-            # Mean Pooling
+
             last_hidden_state = outputs.last_hidden_state
             attention_mask = inputs["attention_mask"]
-            
-            # a. 将 attention_mask 扩展到与 last_hidden_state 相同的维度
             mask = attention_mask.unsqueeze(-1).expand(last_hidden_state.size()).float()
-            
-            # b. 计算所有有效 token 的向量总和
             sum_embeddings = torch.sum(last_hidden_state * mask, dim=1)
-            
-            # c. 计算有效 token 的总数
             sum_mask = torch.clamp(mask.sum(dim=1), min=1e-9)
-            
-            # d. 均值向量 = sum_embeddings / sum_mask
             embeddings = sum_embeddings / sum_mask
-            
-            # 保持现有的 F.normalize 逻辑
             embeddings = F.normalize(embeddings, p=2, dim=1)
             all_embeddings.extend(embeddings.cpu().tolist())
         return all_embeddings
