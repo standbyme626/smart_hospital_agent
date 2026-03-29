@@ -1,4 +1,3 @@
-
 import os
 import time
 import torch
@@ -13,8 +12,15 @@ import transformers.utils
 # import transformers.tokenization_utils_tokenizers  <-- Removed to fix Import Error with newer transformers
 
 if not hasattr(transformers.utils, "is_offline_mode"):
+
     def _is_offline_mode():
-        return os.environ.get("TRANSFORMERS_OFFLINE", "0").upper() in ("1", "ON", "YES", "TRUE")
+        return os.environ.get("TRANSFORMERS_OFFLINE", "0").upper() in (
+            "1",
+            "ON",
+            "YES",
+            "TRUE",
+        )
+
     transformers.utils.is_offline_mode = _is_offline_mode
 
 try:
@@ -29,18 +35,23 @@ except ImportError:
     ort = None
 
 from app.core.config import settings
-from app.core.monitoring.metrics import EMBEDDING_LATENCY, EMBEDDING_REQUESTS, MODEL_LOAD_EVENTS
+from app.core.monitoring.metrics import (
+    EMBEDDING_LATENCY,
+    EMBEDDING_REQUESTS,
+    MODEL_LOAD_EVENTS,
+)
 from app.core.models.vram_manager import vram_manager
+
 
 class EmbeddingService:
     _instance = None
-    
+
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(EmbeddingService, cls).__new__(cls)
             cls._instance._initialize()
         return cls._instance
-    
+
     def _initialize(self):
         # Device policy: auto | cuda | cpu
         requested_device = (settings.EMBEDDING_DEVICE or "auto").strip().lower()
@@ -51,7 +62,7 @@ class EmbeddingService:
         else:
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"[EmbeddingService] Initializing with device: {self.device}")
-        
+
         self.model_path = settings.EMBEDDING_MODEL_PATH
         self.onnx_path = os.path.join(self.model_path, "onnx")
         self.is_on_gpu = False
@@ -62,22 +73,42 @@ class EmbeddingService:
         self.use_onnx_runtime = False
         self.onnx_input_names = set()
         self.onnx_providers = []
-        self._lock = threading.Lock() # Add thread safety for loading
+        self._lock = threading.Lock()  # Add thread safety for loading
         self.degraded_mode = False
         self.dim = 1024
         self.remote_enabled = bool(getattr(settings, "EMBEDDING_REMOTE_ENABLED", True))
-        self.remote_url = str(getattr(settings, "EMBEDDING_REMOTE_URL", "http://100.90.236.32:11434")).rstrip("/")
-        self.remote_model = str(getattr(settings, "EMBEDDING_REMOTE_MODEL", "qwen3-embedding:0.6b"))
-        self.remote_timeout_s = float(getattr(settings, "EMBEDDING_REMOTE_TIMEOUT_S", 10))
+        self.remote_url = str(
+            getattr(settings, "EMBEDDING_REMOTE_URL", "http://100.90.236.32:11434")
+        ).rstrip("/")
+        self.remote_model = str(
+            getattr(settings, "EMBEDDING_REMOTE_MODEL", "qwen3-embedding:0.6b")
+        )
+        self.remote_timeout_s = float(
+            getattr(settings, "EMBEDDING_REMOTE_TIMEOUT_S", 10)
+        )
         self.local_enabled = bool(getattr(settings, "EMBEDDING_LOCAL_ENABLED", False))
-        
+
+        # SiliconFlow Cloud API Configuration
+        self.siliconflow_api_key = getattr(settings, "SILICONFLOW_API_KEY", "")
+        self.siliconflow_api_base = str(
+            getattr(settings, "SILICONFLOW_API_BASE", "https://api.siliconflow.cn/v1")
+        ).rstrip("/")
+        self.siliconflow_embedding_model = str(
+            getattr(
+                settings, "SILICONFLOW_EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-0.6B"
+            )
+        )
+        self.use_siliconflow = bool(self.siliconflow_api_key)
+
         # [VRAM] Register to VRAM Manager
         vram_manager.register_model("embedding", self)
-        
+
         if self.local_enabled:
             self._reload()
         else:
-            print("[EmbeddingService] Local embedding disabled by EMBEDDING_LOCAL_ENABLED=false")
+            print(
+                "[EmbeddingService] Local embedding disabled by EMBEDDING_LOCAL_ENABLED=false"
+            )
 
     def unload(self):
         """Unload model from VRAM (Called by VRAMManager)."""
@@ -89,7 +120,7 @@ class EmbeddingService:
             self.model = None
             self.tokenizer = None
             self.is_on_gpu = False
-            
+
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             gc.collect()
@@ -107,26 +138,27 @@ class EmbeddingService:
 
             # [VRAM] Orchestrate
             vram_manager.orchestrate_pre_inference(required_mb=600)
-            
+
             # Continue loading...
 
         MODEL_LOAD_EVENTS.labels(model_name="embedding").inc()
-        
+
         # 1. 优先检查是否为 GGUF 模型 (单文件)
         if self.model_path.endswith(".gguf"):
             print(f"[EmbeddingService] Loading GGUF model from {self.model_path}...")
             try:
                 from llama_cpp import Llama
+
                 # n_gpu_layers=-1 表示尽可能将所有层加载到 GPU
                 # embedding=True 开启嵌入模式
                 self.model = Llama(
                     model_path=self.model_path,
                     embedding=True,
                     n_gpu_layers=-1 if self.device == "cuda" else 0,
-                    verbose=False
+                    verbose=False,
                 )
                 self.use_gguf = True
-                self.is_on_gpu = (self.device == "cuda")
+                self.is_on_gpu = self.device == "cuda"
                 print("[EmbeddingService] GGUF Model loaded successfully.")
                 return
             except Exception as e:
@@ -137,68 +169,104 @@ class EmbeddingService:
         # 2. 尝试加载 ONNX 模型 (优先 optimum，缺失时直接使用 onnxruntime)
         onnx_model_file = os.path.join(self.onnx_path, "model.onnx")
         if os.path.exists(onnx_model_file):
-            print(f"[EmbeddingService] Loading ONNX model from {self.onnx_path} on {self.device}...")
+            print(
+                f"[EmbeddingService] Loading ONNX model from {self.onnx_path} on {self.device}..."
+            )
             try:
-                available_providers = ort.get_available_providers() if ort is not None else []
-                if self.device == "cuda" and "CUDAExecutionProvider" not in available_providers:
+                available_providers = (
+                    ort.get_available_providers() if ort is not None else []
+                )
+                if (
+                    self.device == "cuda"
+                    and "CUDAExecutionProvider" not in available_providers
+                ):
                     raise RuntimeError(
                         f"onnxruntime CUDAExecutionProvider unavailable (available={available_providers}); "
                         "refuse CPU ONNX fallback in CUDA mode"
                     )
 
                 if self.tokenizer is None:
-                    tok_path = self.onnx_path if os.path.exists(os.path.join(self.onnx_path, "tokenizer_config.json")) else self.model_path
-                    self.tokenizer = AutoTokenizer.from_pretrained(tok_path, trust_remote_code=True)
+                    tok_path = (
+                        self.onnx_path
+                        if os.path.exists(
+                            os.path.join(self.onnx_path, "tokenizer_config.json")
+                        )
+                        else self.model_path
+                    )
+                    self.tokenizer = AutoTokenizer.from_pretrained(
+                        tok_path, trust_remote_code=True
+                    )
 
                 if ORTModelForFeatureExtraction is not None:
                     self.model = ORTModelForFeatureExtraction.from_pretrained(
                         self.onnx_path,
-                        provider="CUDAExecutionProvider" if self.device == "cuda" else "CPUExecutionProvider",
-                        provider_options={"device_id": 0} if self.device == "cuda" else None
+                        provider="CUDAExecutionProvider"
+                        if self.device == "cuda"
+                        else "CPUExecutionProvider",
+                        provider_options={"device_id": 0}
+                        if self.device == "cuda"
+                        else None,
                     )
                     self.use_onnx_runtime = False
                 elif ort is not None:
                     providers = ["CPUExecutionProvider"]
                     if self.device == "cuda":
                         providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-                    self.model = ort.InferenceSession(onnx_model_file, providers=providers)
+                    self.model = ort.InferenceSession(
+                        onnx_model_file, providers=providers
+                    )
                     self.onnx_input_names = {i.name for i in self.model.get_inputs()}
                     self.onnx_providers = list(self.model.get_providers())
-                    if self.device == "cuda" and "CUDAExecutionProvider" not in self.onnx_providers:
+                    if (
+                        self.device == "cuda"
+                        and "CUDAExecutionProvider" not in self.onnx_providers
+                    ):
                         raise RuntimeError(
                             f"onnxruntime session is not on CUDA (providers={self.onnx_providers}); "
                             "fallback to PyTorch CUDA"
                         )
                     self.use_onnx_runtime = True
                 else:
-                    raise RuntimeError("Neither optimum.onnxruntime nor onnxruntime is available")
+                    raise RuntimeError(
+                        "Neither optimum.onnxruntime nor onnxruntime is available"
+                    )
 
                 self.use_onnx = True
                 if self.use_onnx_runtime:
                     self.is_on_gpu = "CUDAExecutionProvider" in self.onnx_providers
                 else:
-                    self.is_on_gpu = (self.device == "cuda")
+                    self.is_on_gpu = self.device == "cuda"
                 print("[EmbeddingService] ONNX Model loaded successfully.")
                 return
             except Exception as e:
-                print(f"[EmbeddingService] Failed to load ONNX model, falling back to PyTorch: {e}")
+                print(
+                    f"[EmbeddingService] Failed to load ONNX model, falling back to PyTorch: {e}"
+                )
 
         # Fallback to PyTorch
-        print(f"[EmbeddingService] Loading PyTorch model from {self.model_path} on {self.device}...")
+        print(
+            f"[EmbeddingService] Loading PyTorch model from {self.model_path} on {self.device}..."
+        )
         self.use_onnx = False
         self.use_onnx_runtime = False
         try:
             if self.tokenizer is None:
-                self.tokenizer = AutoTokenizer.from_pretrained(self.model_path, trust_remote_code=True)
+                self.tokenizer = AutoTokenizer.from_pretrained(
+                    self.model_path, trust_remote_code=True
+                )
             self.model = AutoModel.from_pretrained(
-                self.model_path, trust_remote_code=True, dtype=torch.float16 if self.device=="cuda" else torch.float32
+                self.model_path,
+                trust_remote_code=True,
+                dtype=torch.float16 if self.device == "cuda" else torch.float32,
             ).to(self.device)
             self.model.eval()
-            self.is_on_gpu = (self.device == "cuda")
+            self.is_on_gpu = self.device == "cuda"
             print("[EmbeddingService] PyTorch Model loaded successfully.")
         except Exception as e:
             print(f"[EmbeddingService] Failed to load model: {e}")
-            print("[Warning] Embedding Model failed to load. Entering DEGRADED MODE (Dummy Embeddings).")
+            print(
+                "[Warning] Embedding Model failed to load. Entering DEGRADED MODE (Dummy Embeddings)."
+            )
             self.degraded_mode = True
             # raise e  <-- Do not raise, allow degradation
 
@@ -210,14 +278,22 @@ class EmbeddingService:
             max_length=max_length,
             return_tensors="np",
         )
-        ort_inputs = {k: v.astype(np.int64) for k, v in inputs.items() if k in self.onnx_input_names}
+        ort_inputs = {
+            k: v.astype(np.int64)
+            for k, v in inputs.items()
+            if k in self.onnx_input_names
+        }
         if "position_ids" in self.onnx_input_names and "position_ids" not in ort_inputs:
             batch_size, seq_len = ort_inputs["input_ids"].shape
-            ort_inputs["position_ids"] = np.broadcast_to(np.arange(seq_len, dtype=np.int64), (batch_size, seq_len))
+            ort_inputs["position_ids"] = np.broadcast_to(
+                np.arange(seq_len, dtype=np.int64), (batch_size, seq_len)
+            )
         return ort_inputs, inputs["attention_mask"].astype(np.float32)
 
     @staticmethod
-    def _mean_pool_numpy(last_hidden_state: np.ndarray, attention_mask: np.ndarray) -> np.ndarray:
+    def _mean_pool_numpy(
+        last_hidden_state: np.ndarray, attention_mask: np.ndarray
+    ) -> np.ndarray:
         mask = np.expand_dims(attention_mask, axis=-1)
         sum_embeddings = np.sum(last_hidden_state * mask, axis=1)
         sum_mask = np.clip(np.sum(mask, axis=1), 1e-9, None)
@@ -231,6 +307,47 @@ class EmbeddingService:
         if not texts:
             return []
 
+        # 优先使用 SiliconFlow Cloud API
+        if self.use_siliconflow:
+            return self._remote_embed_siliconflow(texts)
+
+        # Fallback to legacy Ollama API
+        return self._remote_embed_ollama(texts)
+
+    def _remote_embed_siliconflow(self, texts: list) -> list:
+        """SiliconFlow Cloud API"""
+        headers = {
+            "Authorization": f"Bearer {self.siliconflow_api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": self.siliconflow_embedding_model,
+            "input": texts,
+            "encoding_format": "float",
+        }
+
+        response = requests.post(
+            f"{self.siliconflow_api_base}/embeddings",
+            json=payload,
+            headers=headers,
+            timeout=self.remote_timeout_s,
+        )
+        response.raise_for_status()
+        result = response.json()
+
+        embeddings = [item["embedding"] for item in result.get("data", [])]
+        if not embeddings:
+            raise ValueError("missing embeddings in SiliconFlow response")
+
+        if len(embeddings) != len(texts):
+            raise ValueError(
+                f"SiliconFlow embeddings size mismatch: expected={len(texts)} actual={len(embeddings)}"
+            )
+        self.dim = len(embeddings[0])
+        return embeddings
+
+    def _remote_embed_ollama(self, texts: list) -> list:
+        """Legacy Ollama API (deprecated)"""
         response = requests.post(
             f"{self.remote_url}/api/embed",
             json={
@@ -269,7 +386,7 @@ class EmbeddingService:
         """从 GPU 卸载模型以节省显存"""
         if not self.is_on_gpu or self.model is None:
             return
-        
+
         print(f"[EmbeddingService] Offloading model to CPU/Freeing VRAM...")
         try:
             # 对于 ONNX，直接销毁 session 是释放显存最彻底的方式
@@ -328,17 +445,26 @@ class EmbeddingService:
             EMBEDDING_LATENCY.observe(latency)
             return embedding[0].tolist()
 
-        inputs = self.tokenizer([text], padding=True, truncation=True, max_length=512, return_tensors="pt")
+        inputs = self.tokenizer(
+            [text], padding=True, truncation=True, max_length=512, return_tensors="pt"
+        )
         if not self.use_onnx:
             inputs = inputs.to(self.device)
             with torch.no_grad():
                 outputs = self.model(**inputs)
         else:
             inputs = {k: v.to(self.device) for k, v in inputs.items() if v is not None}
-            ort_inputs = {k: v for k, v in inputs.items() if k in self.model.input_names}
-            if "position_ids" in self.model.input_names and "position_ids" not in ort_inputs:
+            ort_inputs = {
+                k: v for k, v in inputs.items() if k in self.model.input_names
+            }
+            if (
+                "position_ids" in self.model.input_names
+                and "position_ids" not in ort_inputs
+            ):
                 seq_len = ort_inputs["input_ids"].shape[1]
-                ort_inputs["position_ids"] = torch.arange(seq_len, device=self.device).unsqueeze(0)
+                ort_inputs["position_ids"] = torch.arange(
+                    seq_len, device=self.device
+                ).unsqueeze(0)
             outputs = self.model(**ort_inputs)
 
         last_hidden_state = outputs.last_hidden_state
@@ -383,7 +509,7 @@ class EmbeddingService:
 
             all_embeddings = []
             for i in range(0, len(texts), batch_size):
-                batch = texts[i:i + batch_size]
+                batch = texts[i : i + batch_size]
                 response = self.model.create_embedding(batch)
                 sorted_data = sorted(response["data"], key=lambda x: x["index"])
                 batch_embeddings = [item["embedding"] for item in sorted_data]
@@ -397,12 +523,16 @@ class EmbeddingService:
 
         all_embeddings = []
         for i in range(0, len(texts), batch_size):
-            batch = texts[i:i + batch_size]
+            batch = texts[i : i + batch_size]
             if self.use_onnx and self.use_onnx_runtime:
-                ort_inputs, attention_mask_np = self._onnx_np_inputs(batch, max_length=512)
+                ort_inputs, attention_mask_np = self._onnx_np_inputs(
+                    batch, max_length=512
+                )
                 outputs = self.model.run(None, ort_inputs)
                 last_hidden_state_np = np.asarray(outputs[0], dtype=np.float32)
-                embeddings_np = self._mean_pool_numpy(last_hidden_state_np, attention_mask_np)
+                embeddings_np = self._mean_pool_numpy(
+                    last_hidden_state_np, attention_mask_np
+                )
                 all_embeddings.extend(embeddings_np.tolist())
                 continue
 
@@ -419,14 +549,21 @@ class EmbeddingService:
                 with torch.no_grad():
                     outputs = self.model(**inputs)
             else:
-                inputs = {k: v.to(self.device) for k, v in inputs.items() if v is not None}
-                ort_inputs = {k: v for k, v in inputs.items() if k in self.model.input_names}
-                if "position_ids" in self.model.input_names and "position_ids" not in ort_inputs:
+                inputs = {
+                    k: v.to(self.device) for k, v in inputs.items() if v is not None
+                }
+                ort_inputs = {
+                    k: v for k, v in inputs.items() if k in self.model.input_names
+                }
+                if (
+                    "position_ids" in self.model.input_names
+                    and "position_ids" not in ort_inputs
+                ):
                     batch_size_actual = ort_inputs["input_ids"].shape[0]
                     seq_len = ort_inputs["input_ids"].shape[1]
-                    ort_inputs["position_ids"] = torch.arange(seq_len, device=self.device).expand(
-                        batch_size_actual, seq_len
-                    )
+                    ort_inputs["position_ids"] = torch.arange(
+                        seq_len, device=self.device
+                    ).expand(batch_size_actual, seq_len)
                 outputs = self.model(**ort_inputs)
 
             last_hidden_state = outputs.last_hidden_state
