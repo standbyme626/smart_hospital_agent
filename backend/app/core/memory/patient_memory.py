@@ -25,21 +25,27 @@ class PatientMemoryRetriever:
             if connections.has_connection("default"):
                 self._ensure_collection()
                 self.collection = Collection(self.collection_name)
-                self.collection.load()
+                # Guard against long blocking waits when collection is unhealthy.
+                self.collection.load(timeout=1.5)
         except Exception as e:
             print(f"[PatientMemory] Init failed: {e}. Running in degraded mode (No Memory).")
 
     def connect_milvus(self):
         try:
             if not connections.has_connection("default"):
-                connections.connect("default", host=self.milvus_host, port=self.milvus_port)
+                connections.connect(
+                    "default",
+                    host=self.milvus_host,
+                    port=self.milvus_port,
+                    timeout=1.5,
+                )
         except Exception as e:
             print(f"[PatientMemory] Failed to connect to Milvus: {e}")
 
     def _ensure_collection(self):
         """确保集合存在，不存在则创建"""
         try:
-            if utility.has_collection(self.collection_name):
+            if utility.has_collection(self.collection_name, timeout=1.5):
                 return
 
             print(f"[PatientMemory] Creating collection {self.collection_name}...")

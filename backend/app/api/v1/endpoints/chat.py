@@ -760,9 +760,13 @@ async def event_generator(
                         )
     except asyncio.CancelledError:
         cancelled = True
-        logger.info("chat_stream_cancelled", request_id=resolved_request_id, session_id=session_id)
+        logger.info(
+            "chat_stream_cancelled request_id=%s session_id=%s",
+            resolved_request_id,
+            session_id,
+        )
     except Exception as e:
-        logger.error("chat_stream_error", request_id=resolved_request_id, error=str(e))
+        logger.error("chat_stream_error request_id=%s error=%s", resolved_request_id, str(e))
         yield emit(
             "error",
             str(e),
@@ -804,14 +808,14 @@ async def event_generator(
 
         if not cancelled:
             final_text = "".join(final_parts).strip()
-            yield emit(
+            final_frame = emit(
                 "final",
                 final_text or "stream_completed",
                 node="chat_stream",
                 meta={"metrics": metrics},
                 stage="respond",
             )
-            yield emit(
+            closed_frame = emit(
                 "status",
                 "stream_closed",
                 node="chat_stream",
@@ -822,7 +826,9 @@ async def event_generator(
                 },
                 stage="route",
             )
-            yield "data: [DONE]\n\n"
+            # Emit the terminal trio in one chunk to avoid partial-finalization
+            # when transport cancellation happens between successive yields.
+            yield final_frame + closed_frame + "data: [DONE]\n\n"
 
 @router.post("/stream")
 async def stream_chat(payload: ChatRequest, request: Request):

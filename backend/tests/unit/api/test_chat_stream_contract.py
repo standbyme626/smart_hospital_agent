@@ -18,6 +18,14 @@ async def _collect_stream_payloads(
     *,
     raise_exc: Exception | None = None,
 ) -> tuple[list[dict], bool, list[dict]]:
+    def _iter_data_bodies(raw_chunk: str):
+        for frame in raw_chunk.split("\n\n"):
+            line = frame.strip()
+            if not line:
+                continue
+            assert line.startswith("data: ")
+            yield line[len("data: ") :]
+
     async def _fake_astream_events(_inputs, config=None, version="v2"):
         del config, version
         for event in raw_events:
@@ -44,13 +52,11 @@ async def _collect_stream_payloads(
         session_id="sess-contract-01",
         request_id="req-contract-01",
     ):
-        line = sse.strip()
-        assert line.startswith("data: ")
-        body = line[len("data: ") :]
-        if body == "[DONE]":
-            done_seen = True
-            continue
-        payloads.append(json.loads(body))
+        for body in _iter_data_bodies(sse):
+            if body == "[DONE]":
+                done_seen = True
+                continue
+            payloads.append(json.loads(body))
 
     return payloads, done_seen, ensure_calls
 

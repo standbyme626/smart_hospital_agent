@@ -59,18 +59,30 @@ async def _async_persistence_task(state: AgentState):
         # 2. Milvus 记忆持久化 (仅当 approved 或 fast_track)
         if status in ["approved", "fast_track"] and diagnosis_report:
             try:
-                memory_retriever = PatientMemoryRetriever()
+                # Initialize Milvus retriever in a worker thread.
+                # PatientMemoryRetriever may trigger collection.load(), which is blocking.
+                memory_retriever = await asyncio.to_thread(PatientMemoryRetriever)
+                if getattr(memory_retriever, "collection", None) is None:
+                    logger.warning(
+                        "patient_memory_unavailable_skip_add",
+                        patient_id=patient_id,
+                        session_id=session_id,
+                    )
+                    memory_retriever = None
+
                 memory_content = f"Symptoms: {state.get('symptoms')}\nDiagnosis: {diagnosis_report}"
                 if len(memory_content) > 1000:
                     memory_content = memory_content[:1000] + "...(truncated)"
-                
-                loop = asyncio.get_running_loop()
-                await loop.run_in_executor(
-                    None, 
-                    lambda: memory_retriever.add_memory(patient_id, session_id, memory_content)
-                )
-                logger.info("persistence_success", target="milvus", session_id=session_id)
-                
+
+                if memory_retriever is not None:
+                    await asyncio.to_thread(
+                        memory_retriever.add_memory,
+                        patient_id,
+                        session_id,
+                        memory_content,
+                    )
+                    logger.info("persistence_success", target="milvus", session_id=session_id)
+
             except Exception as e:
                 logger.error("milvus_persistence_failed", error=str(e))
                 
