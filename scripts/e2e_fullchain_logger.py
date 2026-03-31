@@ -1124,12 +1124,21 @@ async def run(args: argparse.Namespace) -> int:
     if not args.start_backend and args.backend_log_file:
         backend_log_path = Path(args.backend_log_file).resolve()
     backend_python = resolve_backend_python(project_root, args.backend_python)
+    requested_base_url = args.base_url.rstrip("/")
+    derived_base_url = f"http://{args.backend_host}:{args.backend_port}"
+    base_url = requested_base_url or derived_base_url
+    if args.start_backend and requested_base_url and requested_base_url != derived_base_url:
+        print(
+            f"[warn] --start-backend enabled; override --base-url from {requested_base_url} to {derived_base_url}",
+            file=sys.stderr,
+        )
+        base_url = derived_base_url
 
     meta = {
         "run_id": run_id,
         "started_at": now_iso(),
         "project_root": str(project_root),
-        "base_url": args.base_url.rstrip("/"),
+        "base_url": base_url,
         "start_backend": args.start_backend,
         "backend_python": backend_python,
         "case_timeout_s": args.case_timeout,
@@ -1173,7 +1182,7 @@ async def run(args: argparse.Namespace) -> int:
             log_path=backend_log_path,  # type: ignore[arg-type]
             python_bin=backend_python,
         )
-        ready = await wait_backend_ready(args.base_url.rstrip("/"), timeout_s=args.backend_ready_timeout)
+        ready = await wait_backend_ready(base_url, timeout_s=args.backend_ready_timeout)
         if not ready:
             tail = ""
             if backend_log_path and backend_log_path.exists():
@@ -1219,7 +1228,7 @@ async def run(args: argparse.Namespace) -> int:
                 session_group_map[session_group] = session_id
             r, backend_offset = await run_case(
                 client=client,
-                base_url=args.base_url.rstrip("/"),
+                base_url=base_url,
                 case_id=cid,
                 message=msg,
                 session_id=session_id,
@@ -1324,7 +1333,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Robust full-chain e2e logger for Smart Hospital Agent")
     p.add_argument("--project-root", default=".", help="Project root path")
     p.add_argument("--output-dir", default="logs/e2e_fullchain", help="Output directory (under project root)")
-    p.add_argument("--base-url", default="http://127.0.0.1:8001", help="Backend base URL")
+    p.add_argument("--base-url", default="", help="Backend base URL; default derives from backend host/port")
     p.add_argument("--session-prefix", default="e2e", help="Session id prefix")
     p.add_argument("--cases-file", default="", help="JSON file of test cases: [{id,message}, ...]")
     p.add_argument("--global-timeout", type=int, default=900, help="Global timeout seconds")

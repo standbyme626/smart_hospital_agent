@@ -37,13 +37,18 @@ def _read_summary(path: Path) -> Dict[str, Any]:
 
 def run(args: argparse.Namespace) -> int:
     project_root = Path(args.project_root).resolve()
+    effective_shell_base_url = (
+        args.shell_base_url.rstrip("/")
+        if args.shell_base_url
+        else f"http://{args.shell_backend_host}:{args.shell_backend_port}"
+    )
     shell_cmd: List[str] = [
         sys.executable,
         "scripts/e2e_fullchain_logger.py",
         "--project-root",
         str(project_root),
         "--base-url",
-        args.shell_base_url,
+        effective_shell_base_url,
         "--cases-file",
         args.cases_file,
         "--case-timeout",
@@ -55,7 +60,15 @@ def run(args: argparse.Namespace) -> int:
         "--no-progress",
     ]
     if args.start_backend:
-        shell_cmd.append("--start-backend")
+        shell_cmd.extend(
+            [
+                "--start-backend",
+                "--backend-host",
+                args.shell_backend_host,
+                "--backend-port",
+                str(args.shell_backend_port),
+            ]
+        )
 
     shell_proc = subprocess.run(
         shell_cmd,
@@ -156,7 +169,9 @@ def run(args: argparse.Namespace) -> int:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run shell regression and auto-trigger Open WebUI control rerun on failures.")
     parser.add_argument("--project-root", default=".")
-    parser.add_argument("--shell-base-url", default="http://127.0.0.1:8001")
+    parser.add_argument("--shell-base-url", default="", help="Shell e2e base URL; defaults to shell backend host/port")
+    parser.add_argument("--shell-backend-host", default="127.0.0.1", help="Host used when shell e2e auto-starts backend")
+    parser.add_argument("--shell-backend-port", type=int, default=8001, help="Port used when shell e2e auto-starts backend")
     parser.add_argument("--cases-file", default="scripts/e2e_cases_multiturn.json")
     parser.add_argument("--case-timeout", type=int, default=240)
     parser.add_argument("--stall-timeout", type=int, default=60)
