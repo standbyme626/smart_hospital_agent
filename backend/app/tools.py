@@ -51,16 +51,16 @@ class ToolRegistry:
 
     def definitions(self) -> list[dict[str, Any]]:
         return [
-            _tool("retrieve_evidence", "检索医学证据并返回证据 ID、标题与摘要。", {"query": "string", "department": "string"}),
-            _tool("check_drug_interaction", "从文本中抽取药物并检查药物相互作用与妊娠禁忌。", {"text": "string"}),
-            _tool("lookup_guideline", "检索指南/共识类证据。", {"topic": "string"}),
-            _tool("list_departments", "列出医院科室。", {}),
-            _tool("list_schedules", "查询某科室的号源。", {"department": "string", "date": "string"}),
-            _tool("lock_slot", "锁定号源 10 分钟。", {"slot_id": "string", "patient_id": "string"}),
-            _tool("create_order", "从锁定的号源创建挂号订单。", {"lock_id": "string", "patient_id": "string"}),
-            _tool("pay_order", "支付订单（必须由用户确认后调用）。", {"order_id": "string", "confirm_token": "string", "method": "string"}),
-            _tool("get_payment_status", "查询订单支付状态。", {"order_id": "string"}),
-            _tool("cancel_order", "取消未支付订单。", {"order_id": "string"}),
+            _tool("retrieve_evidence", "检索医学证据并返回证据 ID、标题与摘要。", {"query": "string", "department": "string"}, required=["query"]),
+            _tool("check_drug_interaction", "从文本中抽取药物并检查药物相互作用与妊娠禁忌。", {"text": "string"}, required=["text"]),
+            _tool("lookup_guideline", "检索指南/共识类证据。", {"topic": "string"}, required=["topic"]),
+            _tool("list_departments", "列出医院科室。", {}, required=[]),
+            _tool("list_schedules", "查询某科室的号源。", {"department": "string", "date": "string"}, required=["department"]),
+            _tool("lock_slot", "锁定号源 10 分钟。", {"slot_id": "string", "patient_id": "string"}, required=["slot_id"]),
+            _tool("create_order", "从锁定的号源创建挂号订单。", {"lock_id": "string", "patient_id": "string"}, required=["lock_id"]),
+            _tool("pay_order", "支付订单（必须由用户确认后调用）。", {"order_id": "string", "confirm_token": "string", "method": "string"}, required=["order_id", "confirm_token"]),
+            _tool("get_payment_status", "查询订单支付状态。", {"order_id": "string"}, required=["order_id"]),
+            _tool("cancel_order", "取消未支付订单。", {"order_id": "string"}, required=["order_id"]),
             _tool(
                 "submit_report",
                 "提交最终结构化报告。",
