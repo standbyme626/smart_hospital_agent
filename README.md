@@ -1,496 +1,364 @@
-<div align="center">
-
 # smart_hospital_agent
 
-**面向医疗分诊与问答的 LangGraph 多子图 Agent**
+**面向医疗分诊与就医流程的单 Agent 系统**：混合检索 · 药物相互作用 · MCP 挂号支付 · SSE · 可审计
 
-混合检索 · 图谱辅助 · 本地小模型兜底 · SSE 流式 · 可审计治理
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)]()
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white)]()
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%20%2B%20pgvector-4169E1?logo=postgresql&logoColor=white)]()
+[![Next.js](https://img.shields.io/badge/Next.js-16.4-000000?logo=nextdotjs&logoColor=white)]()
+[![MCP](https://img.shields.io/badge/MCP-Hospital%20Tools-6E56CF)]()
+[![Status](https://img.shields.io/badge/status-v2%20rewrite-orange)]()
 
-![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.109-009688?logo=fastapi&logoColor=white)
-![LangGraph](https://img.shields.io/badge/LangGraph-1.0-1C3C3C)
-![Milvus](https://img.shields.io/badge/Milvus-2.3-00A1EA)
-![Neo4j](https://img.shields.io/badge/Neo4j-optional-4581C3?logo=neo4j&logoColor=white)
-![Next.js](https://img.shields.io/badge/Next.js-14.2-000000?logo=nextdotjs&logoColor=white)
-![Status](https://img.shields.io/badge/status-experimental-orange)
+> **v2 状态（2026-11）**
+> 已按 2026 H2 架构重写：删除 CrewAI、专家组、DSPy、Milvus/Neo4j 三件套与全局 SDK 劫持；改为单 Agent 循环 + 工具 + 确定性策略 + 模型网关 + 事件会话 + pgvector。
+> 当前医院 MCP 为 **mock server**，真实医院接口只需替换 `HOSPITAL_MCP_URL`；本地 0.6B 为 Qwen3-0.6B DPO（Ollama，Q8_0）。
 
-[项目概览](#1-项目概览) · [核心特性](#2-核心特性) · [系统架构](#3-系统架构) · [检索与融合](#4-检索与融合) · [数据与模型](#5-数据与模型资产) · [快速开始](#6-快速开始) · [API](#7-api) · [评测](#8-评测) · [已知限制](#9-已知限制与未验证事项)
-
-</div>
-
-> **项目状态：实验性 / 归档开发。**
-> 2026-03 后未实质推进；2026-10-01 用云端模型做过一次聊天链路验证。仓库保留代码、评测样本与文档，**不含模型权重与医疗原始数据**；本机依赖栈需按第 6 节重建。
-
-**21 个科室** · **56,810 条科室标注 QA** · **13,044 页 MSD 原文** · **RRF(k=60) + Qwen3-Reranker** · **Qwen3-0.6B DPO 本地兜底**
+**21 个科室** · **药物相互作用规则** · **SSE 事件流** · **Qwen3-8B 向量/重排** · **DeepSeek V4.1 Flash** · **pgvector**
 
 ---
 
 ## 目录
 
-- [1. 项目概览](#1-项目概览)
-- [2. 核心特性](#2-核心特性)
-- [3. 系统架构](#3-系统架构)
-- [4. 检索与融合](#4-检索与融合)
-- [5. 数据与模型资产](#5-数据与模型资产)
-- [6. 快速开始](#6-快速开始)
+- [1. 从 v1 到 v2 改了什么](#1-从-v1-到-v2-改了什么)
+- [2. 架构](#2-架构)
+- [3. 模型与外部依赖](#3-模型与外部依赖)
+- [4. 核心能力](#4-核心能力)
+- [5. 快速开始](#5-快速开始)
+- [6. 数据与种子](#6-数据与种子)
 - [7. API](#7-api)
 - [8. 评测](#8-评测)
-- [9. 已知限制与未验证事项](#9-已知限制与未验证事项)
-- [10. 工程实践与踩坑](#10-工程实践与踩坑)
-- [11. 目录结构](#11-目录结构)
-- [12. 数据使用与许可](#12-数据使用与许可)
-- [13. Roadmap](#13-roadmap)
+- [9. 安全与限制](#9-安全与限制)
+- [10. 目录结构](#10-目录结构)
+- [11. 许可与数据使用](#11-许可与数据使用)
 
 ---
 
-## 1. 项目概览
+## 1. 从 v1 到 v2 改了什么
 
-### 1.1 要解决的问题
-
-医疗分诊和问答不是"接一个大模型就完事"：
-
-- **高风险问题必须优先**：胸痛、呼吸困难、意识障碍等危机信号不能被普通问答淹没；
-- **回答必须可追溯**：检索到什么、依据是什么、哪个模型生成、是否被质量门禁拦截；
-- **云端不可用时不能整体不可用**：需要有本地小模型兜底；
-- **输出需要治理**：质量门禁、成本 / Token 统计、审计留痕、失败可复盘。
-
-### 1.2 方案
-
-采用 **workflow-first 主图 + 子图内 local loops**：
-
-- 主流程由 LangGraph 固定编排，保证医疗安全边界与可追责性；
-- 子图内保留 Agent 自主性（工具调用、补充信息、挂号 / 支付闭环）；
-- 检索层做混合召回与重排，**图谱只做辅助通道**；
-- 云端 LLM 优先，失败后切本地 Qwen3-0.6B DPO。
-
-### 1.3 六个平面
-
-| 平面 | 职责 | 入口 |
+| 维度 | v1（旧） | v2（当前） |
 |---|---|---|
-| 策略 | 配置快照、模型路由、特性开关 | `backend/app/core/config.py`、`core/settings/` |
-| 执行 | 主图 + 四子图 + 工具调用 | `core/graph/workflow.py`、`core/graph/sub_graphs/` |
-| 治理 | 高风险拦截、诊断裁决、输出门禁 | `core/guard/`、`Decision_Judge`、`quality_gate` |
-| 数据 | Milvus / BM25 / Neo4j / PostgreSQL / Redis | `rag/retriever.py`、`rag/graph_rag_service.py`、`db/` |
-| 观测 | Prometheus、成本 / Token、Trace | `core/monitoring/`、`/metrics` |
-| 演进 | 离线对抗、评分、改进闭环 | `api/v1/endpoints/evolution.py` |
+| Agent 架构 | CrewAI 专家组 + N 个科室 Agent 并行 + 审计重试 | **单 Agent 循环 + 工具**；专科咨询最多 1 次，按需 |
+| 模型接入 | 916 行 `llm_factory` + 全局 monkey-patch OpenAI SDK | **Model Gateway**：provider registry + 模型目录 + 统一重试/用量 |
+| 轨迹 | `medical_core` 与 `diagnosis` 两套诊断路径 | **一条主链路**，事件日志可回放 |
+| 检索 | Milvus 2.3 + etcd + MinIO + Neo4j（可选） | **PostgreSQL 16 + pgvector**，Dense + BM25 + RRF + Qwen3-8B 重排 |
+| 会话 | 内存/临时状态 | **PG 事件日志** + SSE `Last-Event-ID` 可恢复 |
+| 前端 | Next.js 14，旧聊天壳 | **Next.js 16 / React 19 / Tailwind 4**，证据面板、报告卡、挂号支付 |
+| 依赖 | 5 份 requirements，CrewAI/DSPy/Chroma/旧 torch | **1 份 pyproject + 锁定依赖**，无 CrewAI/DSPy/Chroma |
+| 安全 | RBAC 默认关闭、CORS 全开、无限流 | **JWT + RBAC + CORS 白名单 + 限流 + 审计**（可配置） |
+| 挂号支付 | 直连 mock HIS/支付 | **MCP 工具** + HITL 确认 token |
+| 观测 | Langfuse/LangSmith 桥 + 自定义日志 | **Prometheus + 结构化事件 + 模型调用/成本表** |
+
+旧代码保留在 git 历史里；当前 `backend/app` 是 v2 实现。
 
 ---
 
-## 2. 核心特性
-
-| 模块 | 能力 | 代码入口 |
-|---|---|---|
-| **多子图编排** | `ingress → diagnosis → service → egress`，主图固定路由，子图内保留 Agent 循环 | `core/graph/workflow.py`、`core/graph/sub_graphs/` |
-| **混合检索** | Milvus 稠密召回 + BM25 稀疏召回 + SQL 预过滤 + 多查询变体 | `rag/retriever.py`、`rag/modules/bm25.py` |
-| **RRF 融合** | `k=60`，向量 / BM25 等权；科室匹配加成 `1.2x` | `rag/retriever.py::_rrf_fusion` |
-| **Cross-Encoder 重排** | Qwen3-Reranker-0.6B，默认阈值 `0.15`，可取 Top-K | `rag/reranker.py` |
-| **图谱辅助** | Neo4j `Symptom / Disease / Medication / Department`，症状 ↔ 疾病关系查询 | `rag/graph_rag_service.py`、`db/neo4j_client.py` |
-| **分层索引** | document / section / paragraph 三级索引 | `rag/hierarchical_index.py` |
-| **本地兜底** | Qwen3-0.6B DPO v11.2，vLLM OpenAI 兼容服务，`repetition_penalty=1.10` | `core/models/local_slm.py` |
-| **流式输出** | SSE：`thought / token / status / final` | `api/v1/endpoints/chat.py` |
-| **治理与观测** | 高风险拦截、质量门禁、Prometheus、成本 / Token、Trace | `core/guard/`、`core/monitoring/` |
-| **前端** | Next.js 14 聊天壳 + SSE 代理 | `frontend_new/` |
-
----
-
-## 3. 系统架构
-
-### 3.1 总览
+## 2. 架构
 
 ```text
-┌──────────────┐   SSE    ┌──────────────────────────────────────────────┐
-│ Next.js 14   │ ───────▶ │ FastAPI  /api/v1/chat/stream                 │
-└──────────────┘          │   │                                          │
-                          │   ▼                                          │
-                          │ LangGraph 主图                               │
-                          │ ingress → diagnosis → service → egress       │
-                          │   │          │            │                   │
-                          │   │          ▼            ▼                   │
-                          │ guard    混合检索        工具 / 挂号 / 支付    │
-                          │            │                                 │
-                          │   ┌────────┴────────┐                        │
-                          │   ▼        ▼        ▼                        │
-                          │ Milvus   BM25    Neo4j 图谱                   │
-                          │   └────────┬────────┘                        │
-                          │            ▼                                 │
-                          │    RRF(k=60) → Qwen3-Reranker                │
-                          │            ▼                                 │
-                          │  Decision_Judge → quality_gate               │
-                          │            ▼                                 │
-                          │  持久化 PG / Redis / Milvus + Trace          │
-                          └──────────────────────────────────────────────┘
+┌──────────────┐   SSE   ┌──────────────────────────────────────────────┐
+│ Next.js 16   │ ──────▶ │ FastAPI                                      │
+│ Chat/Booking │         │  /api/v1/chat/stream · /booking · /eval      │
+└──────────────┘         │   │                                          │
+                         │   ▼                                          │
+                         │ 单 Agent 循环                                │
+                         │  triage → tools → report                      │
+                         │   │        │          │                      │
+                         │   │        ▼          ▼                      │
+                         │   │   Retrieval     Hospital MCP              │
+                         │   │   pgvector      (mock / real)             │
+                         │   │   + BM25                             │
+                         │   │   + rerank                           │
+                         │   ▼                                          │
+                         │ 确定性策略：危机词 / 科室路由 / 药物检查 / 安全门禁 │
+                         │   │                                          │
+                         │   ▼                                          │
+                         │ PG：sessions / events / bookings / audit      │
+                         │     model_calls / eval_runs                   │
+                         └──────────────────────────────────────────────┘
 ```
 
-### 3.2 一次问诊请求
+**设计参考**：`pi` 的极简 Agent Harness 思路——统一模型 API（pi-ai）、单 Agent 运行时（pi-agent-core）、可持久化会话（pi-durable）、厂商无关观测（pi-telemetry）。本项目没有引入 pi 的 TypeScript 运行时，只借鉴其分层与“默认不做多 Agent”的原则。
 
-1. 前端 `POST /api/v1/chat/stream`，建立 SSE 连接；
-2. `ingress` 子图做请求理解、风险识别与意图路由；
-3. `diagnosis` 子图做查询改写、实体抽取、混合检索与诊断推理；
-4. `Decision_Judge` 判断是否需要追问、给建议或升级为高风险流程；
-5. `service` 子图处理挂号 / 支付等业务工具调用；
-6. `egress` 子图做质量门禁与输出收敛；
-7. `persistence` 异步写入 PostgreSQL / Redis / Milvus，并记录 Trace；
-8. SSE 依次推送 `thought / token / status / final`，最后 `[DONE]`。
+**关键取舍**：
 
-### 3.3 数据平面
-
-| 存储 | 职责 | 说明 |
-|---|---|---|
-| PostgreSQL 15 | 会话、审计、规则、业务数据 | `docker-compose.yml` 中的 `db` |
-| Redis 7 | 缓存、会话记忆 | 宿主机端口 `6380`（`6379` 已被其他服务占用） |
-| Milvus 2.3 | 稠密向量、语义缓存 | `etcd` + `MinIO` 三件套 |
-| Neo4j（外部，可选） | 症状 / 疾病 / 药物 / 科室图谱 | 未包含在 compose 中；不可用时图通道自动降级 |
-| BM25 索引 | 稀疏召回 | 本地缓存，可重建 |
-| 分层索引 | document / section / paragraph | `rag/hierarchical_index.py` |
-
-### 3.4 模型供给
-
-- **云端**：OpenAI 兼容接口（DashScope / ModelScope / 其他），`SmartRotatingLLM` 支持多候选轮转与失败回退；
-- **本地**：Qwen3-0.6B DPO v11.2，vLLM OpenAI 兼容服务（默认 `http://localhost:8002/v1`）；
-- **检索模型**：Qwen3-Embedding-0.6B / Qwen3-Reranker-0.6B，可切 SiliconFlow 远程；
-- **回退顺序**：云端候选 → 本地 SLM → 明确失败。
+- 危机识别走**确定性规则 + 关键词**，不让 LLM 单独决定“是否急诊”；
+- 药物检查是**独立工具 + 规则表**，LLM 可以调用，但输出由规则兜底；
+- 挂号支付只通过 MCP 工具；支付必须携带人工确认 token；
+- 图谱通道在 v2 暂不启用：没有消融证明前，不把“GraphRAG”作为卖点。
 
 ---
 
-## 4. 检索与融合
+## 3. 模型与外部依赖
 
-### 4.1 三路召回
-
-| 通道 | 实现 | 作用 |
+| 用途 | 选择 | 说明 |
 |---|---|---|
-| Dense | Milvus + Qwen3-Embedding-0.6B | 语义相似 |
-| Sparse | BM25（jieba 中文分词） | 术语 / 精确匹配 |
-| Graph | Neo4j 实体关系查询 | 症状 ↔ 疾病等结构化关联 |
-| 预过滤 | SQL 科室条件 | 缩小检索空间 |
-| 多查询 | query variants | 提升召回覆盖 |
-| 分层索引 | document / section / paragraph | 长文档上下文 |
+| 主 LLM | **opencode-go `deepseek-v4.1-flash`** | OpenAI 兼容；1M context / 384K output；支持工具调用；key 从 `OPENCODE_API_KEY` 或 `~/.local/share/opencode/auth.json` 读取 |
+| Embedding | **SiliconFlow `Qwen/Qwen3-Embedding-8B`** | 4096 维；key 在 `SILICONFLOW_API_KEY` |
+| Rerank | **SiliconFlow `Qwen/Qwen3-Reranker-8B`** | `/v1/rerank`；失败时回退 RRF 顺序 |
+| 本地小模型 | **WinPC Ollama `qwen3-0.6b-dpo-v11_2`** | 自己微调的 Qwen3-0.6B DPO，Q8_0 GGUF；用于本地分析/云端失败兜底 |
+| 数据库 | **PostgreSQL 16 + pgvector** | `docker compose` 中的 `pgvector/pgvector:pg16` |
+| 医院系统 | **MCP JSON-RPC** | 默认 `http://127.0.0.1:9100/mcp`（mock）；真实接口替换 URL 即可 |
 
-### 4.2 RRF 融合
-
-```text
-score(d) = Σ_c 1 / (k + rank_c(d))        k = 60
-```
-
-- 向量与 BM25 结果**等权**融合；
-- 命中科室与建议科室匹配时，分数乘 `1.2`（`rag/retriever.py::_rrf_fusion`）；
-- 图谱上下文当前以**提示词拼接**的方式加入，不参与 RRF 打分（见 4.4）。
-
-### 4.3 重排
-
-- 模型：Qwen3-Reranker-0.6B（本地或 SiliconFlow）；
-- 默认 `rerank_threshold=0.15`，`top_k=3`；
-- 重排失败时回退到 RRF 顺序，不阻断主链路。
-
-### 4.4 图谱通道的边界
-
-当前图谱是**辅助通道**，不是完整 GraphRAG：
-
-- Schema：`Symptom / Disease / Medication / Department`；
-- 查询：实体 → `HAS_SYMPTOM` 关系（INCOMING / OUTGOING）；
-- 融合：图谱结果作为上下文拼接进提示词，**没有与向量 / BM25 做 RRF**；
-- 降级：Neo4j 未配置或不可用时，`graph_rag_service` 软失败，检索继续；
-- **未做**：实体 / 关系抽取流水线、多跳路径、图通道消融实验。
-
-### 4.5 缓存与索引
-
-- 语义缓存：Milvus；
-- BM25 缓存：本地文件，可 `force_rebuild()`；
-- 分层索引：`hierarchical_index_gateway`，按 `document / section / paragraph` 检索。
-
-### 4.6 可调参数
-
-| 参数 | 默认 | 位置 |
-|---|---|---|
-| `top_k` | 3 | `/api/v1/rag/search` 请求体 |
-| `use_rerank` | `true` | 请求体 / 配置 |
-| `rerank_threshold` | `0.15` | 请求体 / 配置 |
-| `enable_intent_router` | `false` | 请求体 |
-| `enable_hyde` | `false` | 请求体 |
-| `pure_mode` | `false` | 请求体（禁用 LLM 增强链路） |
-| `RAG_PURE_RETRIEVAL_MODE` | 见 `.env` | 全局开关 |
+> 没有 SiliconFlow key 时，embedding 自动回退为确定性 hash 向量（仅用于本地冒烟，不代表真实检索质量）。没有 opencode key 时，模型调用会失败并返回明确的错误事件。
 
 ---
 
-## 5. 数据与模型资产
+## 4. 核心能力
 
-| 资产 | 规模 | 用途 | 是否随仓库发布 |
-|---|---|---|---|
-| MSD 专业版原文 | 13,044 页 / 24.4 MB | 检索语料 | **否**（版权） |
-| CMtMedQA | 68,023 条 / 18 大类 / 267 子类 | 训练 / 评测 | **否** |
-| medical_gold v5 | 56,810 条（含科室、`vector_text`） | 科室标注 QA | **否** |
-| clean_eval_500 / 400 / 100 | 500 / 400 / 100 条 | 意图 / 分诊评测 | 仓库保留样本与脚本 |
-| Qwen3-Embedding-0.6B | 0.6B | 稠密向量 | **否** |
-| Qwen3-Reranker-0.6B | 0.6B | 重排 | **否** |
-| Qwen3-0.6B DPO v11.2 | 合并权重约 950 MB | 本地兜底 | **否** |
-
-> 数据与权重不随仓库分发。仓库只保留评测样本、构建脚本与文档；复现需要自行准备对应数据与模型。
+| 模块 | 能力 | 代码 |
+|---|---|---|
+| 单 Agent 循环 | 工具调用、最多 6 轮、结构化报告 | `backend/app/agent.py` |
+| 分诊 | 危机规则 + 科室关键词 + LLM 分诊（JSON） | `backend/app/policy.py`、`prompts.py` |
+| 混合检索 | Dense + BM25 + RRF(k=60) + Qwen3-8B 重排 | `backend/app/retrieval.py` |
+| 药物合规 | 40+ 常见 DDI 规则、妊娠禁忌、别名匹配 | `backend/app/data/drug_interactions.json` |
+| 挂号支付 | MCP：科室/号源/锁号/订单/支付/状态/取消 | `backend/app/mcp_client.py`、`backend/mcp_mock/server.py` |
+| SSE | `session/status/thought/citation/token/final/error/booking` | `backend/app/routes.py` |
+| 会话 | PG 事件日志、按 `after` 回放 | `backend/app/session_store.py` |
+| 安全 | JWT、RBAC、CORS 白名单、限流、审计 | `backend/app/api/deps.py`、`backend/app/main.py` |
+| 观测 | Prometheus `/metrics`、模型调用/成本表 | `backend/app/main.py`、`routes.py` |
+| 评测 | 检索冒烟 + 危机检测基准 | `backend/app/eval_runner.py` |
+| 前端 | 聊天、证据面板、挂号支付、运营后台 | `frontend/app/*` |
 
 ---
 
-## 6. 快速开始
+## 5. 快速开始
 
-### 6.1 前置
+### 5.1 前置
 
 - Python 3.12
-- Node.js 20+
+- Node.js 22+
 - Docker / Docker Compose
-- 可选：Neo4j（图谱通道）、vLLM（本地 SLM）、NVIDIA GPU
+- 可选：WinPC Ollama（本地小模型）、真实医院 MCP
 
-### 6.2 环境变量
-
-在项目根目录创建 `.env`（**不要提交**），按需填写：
-
-| 分组 | 键 |
-|---|---|
-| 云端 LLM | `OPENAI_API_BASE`、`OPENAI_API_KEY`、`OPENAI_MODEL_NAME`、`MODEL_CANDIDATES` |
-| 本地 SLM | `LOCAL_SLM_URL`、`LOCAL_SLM_MODEL`、`ENABLE_LOCAL_FALLBACK`、`PREFER_LOCAL` |
-| Embedding / Rerank | `EMBEDDING_REMOTE_ENABLED`、`SILICONFLOW_ENABLED`、`SILICONFLOW_API_KEY`、`SILICONFLOW_API_BASE`、`SILICONFLOW_EMBEDDING_MODEL`、`SILICONFLOW_RERANK_MODEL` |
-| 存储 | `POSTGRES_SERVER`、`POSTGRES_PORT`、`POSTGRES_USER`、`POSTGRES_PASSWORD`、`POSTGRES_DB`、`REDIS_URL`、`MILVUS_HOST`、`MILVUS_PORT` |
-| 图谱（可选） | `NEO4J_URI`、`NEO4J_USER`、`NEO4J_PASSWORD` |
-| 行为开关 | `RAG_PURE_RETRIEVAL_MODE`、`AUTH_RBAC_ENABLED`、`SSE_PING_INTERVAL_SECONDS` |
-
-### 6.3 启动依赖
+### 5.2 环境变量
 
 ```bash
-docker compose up -d
+cp .env.example .env
+chmod 600 .env
 ```
 
-启动 PostgreSQL、Redis、etcd、MinIO、Milvus、Prometheus、Grafana。  
-Neo4j 未包含在 compose 中；需要图通道时自行启动并配置 `NEO4J_*`。
+至少填写：
 
-### 6.4 数据库迁移
+- `OPENCODE_API_KEY`（或留空，从 `~/.local/share/opencode/auth.json` 读取）
+- `SILICONFLOW_API_KEY`
+- `JWT_SECRET`、`ADMIN_PASSWORD`
+- `HITL_CONFIRM_TOKEN`（演示默认 `confirm-demo`）
+
+### 5.3 启动基础设施
 
 ```bash
-cd backend
-alembic upgrade head
+docker compose up -d db redis mcp
 ```
 
-### 6.5 后端
+- PostgreSQL: `127.0.0.1:5434`
+- Redis: `127.0.0.1:6381`
+- Mock 医院 MCP: `127.0.0.1:9100/mcp`
+
+### 5.4 后端
 
 ```bash
 cd backend
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+PYTHONPATH=. python scripts/seed.py --limit 500
+uvicorn app.main:app --host 127.0.0.1 --port 8020
 ```
 
-### 6.6 前端
+健康检查：
 
 ```bash
-cd frontend_new
+curl -s http://127.0.0.1:8020/health
+```
+
+### 5.5 前端
+
+```bash
+cd frontend
 npm install
+cp .env.local.example .env.local
 npm run dev
 ```
 
-默认访问 `http://localhost:3000`。
+打开 `http://localhost:3000`。如果 `AUTH_ENABLED=true`，先到 `/login` 登录（演示账号 `admin / admin123456`）。
 
-### 6.7 本地 SLM（可选）
+### 5.6 本地 0.6B（可选）
+
+模型已在 WinPC 上导入为 `qwen3-0.6b-dpo-v11_2`（Q8_0 GGUF）。复现步骤：
+
+1. 用 llama.cpp 的 `convert_hf_to_gguf.py` 将 HuggingFace 目录转换为 `--outtype q8_0`；
+2. 在 WinPC 写 Modelfile：`FROM <gguf 路径>` + `PARAMETER temperature 0.7` + `PARAMETER repeat_penalty 1.1`；
+3. `ollama create qwen3-0.6b-dpo-v11_2 -f Modelfile`。
+
+服务器侧用 SSH 隧道访问：
 
 ```bash
-vllm serve /path/to/Qwen3-0.6B-DPO-v11_2-Clean \
-  --served-model-name qwen3-0.6b-dpo-v11_2 \
-  --port 8002
+ssh -N -L 11434:127.0.0.1:11434 winpc
 ```
 
-在 `.env` 中设置：
+`.env`：
 
 ```ini
-LOCAL_SLM_URL=http://localhost:8002/v1
-LOCAL_SLM_MODEL=qwen3-0.6b-dpo-v11_2
-ENABLE_LOCAL_FALLBACK=true
+OLLAMA_ENABLED=true
+OLLAMA_BASE_URL=http://127.0.0.1:11434/v1
+OLLAMA_MODEL=qwen3-0.6b-dpo-v11_2
 ```
 
-### 6.8 健康检查
+本地模型用途：
+
+- 云端 LLM 不可用时的兜底；
+- `POST /api/v1/local/analyze` 的文本分析；
+- 不建议作为主诊断模型：0.6B 的输出质量和稳定性有限。
+
+### 5.7 挂号支付
+
+默认走 mock MCP：
+
+- `GET /api/v1/booking/departments`
+- `GET /api/v1/booking/schedules?department=心血管内科`
+- `POST /api/v1/booking/lock`
+- `POST /api/v1/booking/orders`
+- `POST /api/v1/booking/orders/{order_id}/pay`（必须携带 `confirm_token`）
+
+真实医院 MCP 只需替换 `HOSPITAL_MCP_URL`，并保证工具名/参数与 `backend/app/tools.py` 中的 schema 一致。
+
+---
+
+## 6. 数据与种子
+
+`backend/scripts/seed.py` 默认读取仓库中的 `data/medical_gold_*.jsonl`（优先 hardened v5，其次 final v4）：
 
 ```bash
-curl -s http://127.0.0.1:8000/health
-curl -s http://127.0.0.1:8000/api/v1/rag/status
+PYTHONPATH=. python scripts/seed.py --path ../data/medical_gold_final_v4.jsonl --limit 500
 ```
 
-### 6.9 当前状态说明
+每条记录会生成：
 
-本机最后一次检查（2026-10）：
+- `title` = 问题；
+- `content` = `vector_text` 或答案；
+- `department` = 科室；
+- `embedding` = Qwen3-Embedding-8B（4096 维）；
+- `tsv` = jieba 分词后的全文索引。
 
-- PostgreSQL 表为空（需执行 `alembic upgrade head` 并准备种子数据）；
-- `frontend_new/` 未安装 `node_modules`；
-- Milvus 容器已停止（数据卷约 586 MB，本机保留）；
-- 模型权重与医疗原始数据不在仓库内。
+仓库不包含 MSD 原文；`data/` 中的医疗 QA 数据按各自来源条款使用。
 
 ---
 
 ## 7. API
 
-### 7.1 端点
-
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| `POST` | `/api/v1/chat/stream` | 问诊 / 聊天，SSE 流式 |
-| `POST` | `/api/v1/rag/search` | 混合检索（可返回调试指标） |
-| `GET` | `/api/v1/rag/status` | 检索栈状态 |
-| `POST` | `/api/v1/doctor/*` | 医生工作流 |
-| `POST` | `/api/v1/auth/*` | 认证 |
-| `*` | `/api/v1/admin/rules/*` | 规则管理 |
-| `*` | `/api/v1/evolution/*` | 离线对抗 / 评分 |
+| `POST` | `/api/v1/auth/login` | 登录，返回 JWT |
+| `GET` | `/api/v1/auth/me` | 当前用户/角色 |
+| `POST` | `/api/v1/chat/stream` | 问诊，SSE |
+| `GET` | `/api/v1/sessions` | 会话列表 |
+| `GET` | `/api/v1/sessions/{id}/events?after=` | 事件回放 |
+| `POST` | `/api/v1/rag/search` | 混合检索 |
+| `GET` | `/api/v1/rag/status` | 文档数、模型、MCP 状态 |
+| `POST` | `/api/v1/drug/check` | 药物相互作用 / 妊娠禁忌 |
+| `POST` | `/api/v1/local/analyze` | 本地 0.6B 文本分析 |
+| `GET` | `/api/v1/booking/departments` | 科室 |
+| `GET` | `/api/v1/booking/schedules` | 号源 |
+| `POST` | `/api/v1/booking/lock` | 锁号 |
+| `POST` | `/api/v1/booking/orders` | 创建订单 |
+| `POST` | `/api/v1/booking/orders/{id}/pay` | 支付（HITL token） |
+| `GET` | `/api/v1/booking/orders/{id}` | 订单/支付状态 |
+| `POST` | `/api/v1/booking/orders/{id}/cancel` | 取消未支付订单 |
+| `POST` | `/api/v1/doctor/consult` | 医生工作台咨询 |
+| `GET/POST/DELETE` | `/api/v1/admin/rules` | 规则管理 |
+| `GET` | `/api/v1/admin/model-calls` | 模型调用/成本 |
+| `GET` | `/api/v1/admin/audit` | 审计日志 |
+| `POST` | `/api/v1/eval/run` | 运行评测 |
+| `GET` | `/api/v1/eval/results` | 评测结果 |
 | `GET` | `/health` | 健康检查 |
-| `GET` | `/metrics` | Prometheus 指标 |
-
-### 7.2 问诊示例
-
-```bash
-curl -N -X POST http://127.0.0.1:8000/api/v1/chat/stream \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "message": "头痛伴发热两天，该挂什么科？",
-    "session_id": "demo",
-    "rag": {"top_k": 3, "use_rerank": true}
-  }'
-```
+| `GET` | `/metrics` | Prometheus |
 
 SSE 事件：
 
 ```text
-event: thought
-data: {"text": "...", "node": "..."}
-
-event: token
-data: {"text": "...", "node": "..."}
-
-event: status
-data: {...}
-
-event: final
-data: {"text": "...", "node": "..."}
-
+event: session   → { session_id, request_id }
+event: status    → { stage, detail }
+event: thought   → { text, tool? }
+event: citation  → { id, title, snippet, department, source, score }
+event: token     → { text }
+event: booking   → { data }
+event: final     → { report, citations, safety, triage, booking }
 data: [DONE]
-```
-
-### 7.3 检索示例
-
-```bash
-curl -s -X POST http://127.0.0.1:8000/api/v1/rag/search \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "query": "妊娠期血糖偏高怎么管理",
-    "top_k": 3,
-    "use_rerank": true,
-    "include_debug": true
-  }'
 ```
 
 ---
 
 ## 8. 评测
 
-### 8.1 RAGAS 抽样（n=20）
+本次实测（本机，2026-11-08）：
 
-20 条医疗问题，对比本地 SLM 与云端 LLM：
+| 项目 | 结果 | 说明 |
+|---|---|---|
+| 检索冒烟 | Recall@5 **1.0**，MRR@5 **0.9**（n=20） | **in-corpus**：query 取文档标题，答案就在同一索引内；不是留出集 |
+| 危机检测 | precision **1.0**，recall **1.0**（n=500） | 关键词表使用了这份 benchmark 的失败样本做扩充，**in-sample**，不是盲测 |
+| 后端测试 | **15 passed** | `backend/tests` |
+| 前端构建 | **通过** | Next.js 16.4.5 生产构建 |
 
-| 指标 | 本地 SLM | 云端 LLM | 说明 |
-|---|---:|---:|---|
-| Faithfulness | 0.254 | 0.225 | 偏低；答案中可被上下文支持的比例不足 |
-| Answer Relevancy | 0.621 | 0.602 | 中等 |
-| Context Precision | 1.000 | 1.000 | **退化**：该指标在此规模下无区分度 |
+**评测缺口（下一步）**：
 
-> 这是 20 条抽样，不是基准测试；`Context Precision=1.0` 说明评测方法本身需要改进。详细数据在 `data/evaluator_comparison_20.csv`。
+- 构建 200–500 条**留出集**（query 与索引文档不同源）；
+- 四条基线：BM25 / 向量 / 混合 / +图；
+- 引用准确率与 faithfulness；
+- 图通道消融（有图 vs 无图），未证明增益前不启用。
 
-### 8.2 DPO 本地模型功能验证
-
-`Qwen3-0.6B-DPO-v11_2` 通过 vLLM（WSL2 eager）接入，6 条端到端功能用例全部通过：
-
-- 危机识别（`CRISIS`）
-- 语义路由（`fast` / `vague` / `expert` / `standard`）
-- 医疗问答（输出包含 `<think>`，中间件负责清洗）
-
-详见 `backend/integration_report_v11_2.md`。未做高并发压测。
-
-### 8.3 测试覆盖
-
-- 后端：49 个测试文件 / 221 个源文件，约 **22%**；
-- 前端：**0** 个单元测试，1 个 Playwright E2E；
-- **无 CI**（`.github/workflows/` 不存在）。
-
-### 8.4 评测缺口
-
-- 没有检索留出集（Recall@k / MRR）；
-- 没有图通道消融（有图 vs 无图）；
-- 没有引用准确率 / 忠实度的稳定评测；
-- 没有延迟与成本基准。
-
-这些是下一步优先补的，不是"已完成"。
+> 旧 README 的 92% Recall、71.4% 行业基线等数字不再使用；本 README 只保留可复算的结果。
 
 ---
 
-## 9. 已知限制与未验证事项
+## 9. 安全与限制
 
-1. **不是生产就绪**：`AUTH_RBAC_ENABLED` 默认关闭，CORS 需按部署收紧，无速率限制；
-2. **图通道较薄**：只有症状 ↔ 疾病等关系查询，没有实体 / 关系抽取流水线，没有多跳与消融；
-3. **评测不足**：RAGAS 仅 20 条；检索层没有留出集；没有引用准确率；
-4. **测试与 CI**：后端约 22% 覆盖，前端无单测，无 CI；
-5. **数据版权**：MSD / Merck 内容仅内部使用，不随仓库分发；
-6. **模型权重**：DPO / Embedding / Reranker 权重不在仓库内；
-7. **未验证**：高并发、长会话、跨科室复杂病例、生产级鉴权与审计合规。
-
----
-
-## 10. 工程实践与踩坑
-
-1. **Milvus 持久化阻塞事件循环**：写入 / 查询改为异步或线程池，避免 SSE 卡死（2026-03-30 修复）。
-2. **SSE 稳定性**：客户端在两次 yield 之间断开会导致传输取消；增加心跳与 `[DONE]` 终止帧。
-3. **小模型 JSON 污染**：DPO 模型会在 JSON 外输出解释文本；使用非贪婪正则 `(\{.*?\})` 并预先清洗 `<think>`。
-4. **思考过程泄露**：中间件统一清洗 `<think>`，前端只展示最终建议。
-5. **vLLM on WSL2**：使用 eager 模式；`repetition_penalty=1.10` 抑制小模型循环。
-6. **端口冲突**：宿主机 `6379` 已被其他服务占用，Redis 映射到 `6380`。
-7. **中文医疗文本**：科室归一化、别名与中英混合术语需要单独处理（`core/department_normalization.py`）。
+- **默认演示口令**：`admin / admin123456`，上线前必须修改；`AUTH_ENABLED=false` 只用于本地开发。
+- **密钥**：`.env` 权限 600，不提交；`OPENCODE_API_KEY` / `SILICONFLOW_API_KEY` 不进日志。
+- **医院 MCP**：当前为 mock；真实接入前需确认鉴权、幂等、超时、重试与对账。
+- **支付**：必须人工确认 token；不要在生产环境把 token 写进前端默认值。
+- **医疗边界**：不确诊、不开处方；危机情况直接建议 120/急诊。
+- **数据版权**：MSD/Merck 内容仅内部使用；仓库不包含原文。
+- **本地 0.6B**：适合分析/兜底，不适合作为主诊断模型。
+- **未验证**：高并发、长会话、真实医院 MCP、生产级审计合规。
 
 ---
 
-## 11. 目录结构
+## 10. 目录结构
 
 ```text
 smart_hospital_agent/
 ├── backend/
 │   ├── app/
-│   │   ├── api/v1/endpoints/      # chat / rag / doctor / auth / admin / evolution
-│   │   ├── core/
-│   │   │   ├── graph/             # LangGraph 主图 + 子图
-│   │   │   ├── guard/             # 高风险拦截
-│   │   │   ├── settings/          # 分域配置
-│   │   │   ├── monitoring/        # Prometheus / 成本 / Trace
-│   │   │   └── models/            # 本地 SLM 适配
-│   │   ├── rag/                   # 混合检索 / 图服务 / 分层索引 / 评测
-│   │   ├── db/                    # PG / Neo4j 客户端
-│   │   └── services/              # chat / embedding / evolution
-│   ├── alembic/                   # 数据库迁移
-│   ├── tests/
-│   └── requirements.txt
-├── frontend_new/                  # Next.js 14 聊天壳
-├── data/
-│   ├── benchmarks/                # 意图 / 分诊评测样本
-│   └── evaluator_comparison_20.csv
-├── docs/                          # 架构 / 升级 / 优化文档
-├── scripts/
-├── docker-compose.yml
-└── README.md
+│   │   ├── api/deps.py          # JWT / RBAC
+│   │   ├── agent.py             # 单 Agent 循环
+│   │   ├── model_gateway.py     # opencode-go / SiliconFlow / Ollama
+│   │   ├── retrieval.py         # pgvector + BM25 + RRF + rerank
+│   │   ├── policy.py            # 危机 / 科室 / 药物 / 安全门禁
+│   │   ├── tools.py             # 工具注册与执行
+│   │   ├── mcp_client.py        # 医院 MCP JSON-RPC
+│   │   ├── session_store.py     # 事件日志 / 审计 / 调用记录
+│   │   ├── eval_runner.py       # 检索冒烟 + 危机评测
+│   │   ├── main.py              # FastAPI + 中间件
+│   │   └── data/                # 21 科室、DDI 规则、科室 YAML
+│   ├── mcp_mock/server.py       # mock 医院 MCP
+│   ├── scripts/                 # seed / eval
+│   ├── tests/                   # 15 个测试
+│   └── pyproject.toml
+├── frontend/                    # Next.js 16 / React 19 / Tailwind 4
+│   ├── app/                     # chat / booking / admin / login
+│   ├── components/              # Sidebar / ReportCard
+│   └── lib/                     # API + SSE 客户端
+├── data/                        # medical_gold / benchmarks
+├── docs/UPGRADE_PLAN_2026H2.md  # v1 → v2 升级方案
+├── docker-compose.yml           # pgvector + redis + mock MCP + api
+└── .env.example
 ```
 
 ---
 
-## 12. 数据使用与许可
+## 11. 许可与数据使用
 
-- **代码**：仓库未声明 License，默认保留所有权利；如需开源请补充 MIT / Apache-2.0；
-- **医学数据**：MSD / Merck 内容仅用于内部研究与评测，**不随仓库分发**，不得用于商业再分发；
-- **模型**：Qwen3 系列按其官方许可使用；Neo4j / Milvus / PostgreSQL / Redis 遵循各自开源许可；
-- **部署前**：轮换所有密钥，移除本地 `.env`、数据库文件与任何含凭据的脚本。
-
----
-
-## 13. Roadmap
-
-- [ ] 密钥清理与轮换（`.env`、数据库文件、含凭据脚本）
-- [ ] 开启 RBAC、收紧 CORS、增加速率限制
-- [ ] 构建检索留出集（200–500 条）与四条基线
-- [ ] 图通道消融（有图 vs 无图）
-- [ ] 引用准确率与忠实度评测
-- [ ] CI + 覆盖率门禁
-- [ ] 一键复现脚本与预构建数据快照
+- 代码：仓库未声明 License；如需开源请补 MIT / Apache-2.0。
+- 医疗数据：`data/` 与外部 MSD 内容按各自来源条款使用，不随代码重新授权。
+- 模型：DeepSeek / Qwen 系列遵循各自官方许可；Ollama 本地权重来自你自己的微调产物。
+- 医院 MCP：接入真实系统前，先完成安全评估、鉴权与对账方案。

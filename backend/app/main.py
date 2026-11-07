@@ -1,101 +1,139 @@
-from fastapi import FastAPI
+from __future__ import annotations
+
+import asyncio
+import time
+import uuid
+from collections import defaultdict, deque
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from app.core.config import settings
-from app.api.v1.api import api_router
-from app.core.logging.setup import setup_logging
-from app.core.middleware.error_handler import RequestLogMiddleware, GlobalExceptionHandlerMiddleware
-import structlog
-import logging
-import sys
+from fastapi.responses import JSONResponse
+from prometheus_client import Counter, Histogram
 
-# 1. 初始化全局日志系统 (Setup Global Logging)
-setup_logging()
-logger = structlog.get_logger()
+from .agent import MedicalAgent
+from .config import get_settings
+from .db import Database
+from .eval_runner import EvalRunner
+from .mcp_client import HospitalMCPClient
+from .model_gateway import ModelGateway
+from .retrieval import RetrievalService
+from .routes import router
+from .session_store import SessionStore
+from .tools import ToolRegistry
 
-from app.core.infra import lifespan
+REQUEST_COUNT = Counter("sha_http_requests_total", "HTTP requests", ["method", "path", "status"])
+REQUEST_LATENCY = Histogram("sha_http_request_duration_seconds", "HTTP request latency", ["method", "path"])
+LLM_CALLS = Counter("sha_llm_calls_total", "LLM calls", ["provider", "task"])
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    settings = get_settings()
+    app.state.settings = settings
+    db = Database(settings)
+    try:
+        await db.init_schema()
+    except Exception as exc:  # keep the app bootable for diagnostics
+        print(f"[startup] database init failed: {exc}")
+    gateway = ModelGateway(settings)
+    retrieval = RetrievalService(settings, db, gateway)
+    mcp = HospitalMCPClient(settings)
+    tools = ToolRegistry(retrieval, mcp, db)
+    sessions = SessionStore(db)
+    agent = MedicalAgent(settings, gateway, retrieval, tools, sessions)
+    eval_runner = EvalRunner(settings, db, retrieval, gateway)
+    app.state.db = db
+    app.state.gateway = gateway
+    app.state.retrieval = retrieval
+    app.state.mcp = mcp
+    app.state.tools = tools
+    app.state.sessions = sessions
+    app.state.agent = agent
+    app.state.eval_runner = eval_runner
+    try:
+        yield
+    finally:
+        await gateway.close()
+        await mcp.close()
+        await db.close()
+
 
 app = FastAPI(
-    title=settings.PROJECT_NAME,
-    version=settings.VERSION,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json",
-    lifespan=lifespan
+    title="Smart Hospital Agent",
+    version="2.0.0",
+    description="Medical triage agent with hybrid retrieval, MCP booking/payment and SSE.",
+    lifespan=lifespan,
 )
 
-# 2. 注册中间件 (Register Middlewares)
-# 注意：中间件执行顺序为 洋葱模型，后注册的先执行 (Last Added, First Executed)
-# 顺序：Prometheus -> CORS -> ExceptionHandler -> RequestLog -> ...
-
-# [P4] 注册全局异常捕获中间件 (最外层，捕获所有未处理异常)
-app.add_middleware(GlobalExceptionHandlerMiddleware)
-
-# [P4] 注册请求日志中间件 (绑定 Request ID)
-app.add_middleware(RequestLogMiddleware)
-
-# 注册 Prometheus 监控中间件
-from app.core.middleware.instrumentation import PrometheusMiddleware, metrics
-app.add_middleware(PrometheusMiddleware)
-app.add_route("/metrics", metrics)  # 暴露 /metrics 供 Prometheus 拉取
-
-# [P4] 注册特定异常处理器 (Handle Specific Exceptions)
-from fastapi.exceptions import RequestValidationError
-from starlette.exceptions import HTTPException as StarletteHTTPException
-from app.core.exceptions import AppException
-from app.core.handlers import (
-    app_exception_handler,
-    validation_exception_handler,
-    http_exception_handler,
-    # global_exception_handler # 已由 GlobalExceptionHandlerMiddleware 接管
-)
-
-app.add_exception_handler(AppException, app_exception_handler)
-app.add_exception_handler(RequestValidationError, validation_exception_handler)
-app.add_exception_handler(StarletteHTTPException, http_exception_handler)
-
-# CORS Pattern (Allow all for Dev)
+_settings = get_settings()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_settings.cors_origins or ["http://localhost:3000"],
+    allow_credentials="*" not in _settings.cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.include_router(api_router, prefix=settings.API_V1_STR)
+_rate_buckets: dict[str, deque[float]] = defaultdict(deque)
+_rate_lock = asyncio.Lock()
 
-# Mount static files
-import os
-static_dir = os.path.join(os.path.dirname(__file__), "static")
-if os.path.exists(static_dir):
-    app.mount("/admin", StaticFiles(directory=static_dir, html=True), name="admin")
 
-@app.get("/health")
-async def health_check():
-    """
-    健康检查接口 (Health Check)
-    用于 Docker/K8s 存活探针检查，确认服务是否正常运行。
-    """
-    import time
-    logger.info("health_check_called", status="ok")
-    return {
-        "status": "ok", 
-        "project": settings.PROJECT_NAME,
-        "timestamp": time.time()
-    }
+@app.middleware("http")
+async def observability(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
+    request.state.request_id = request_id
+    path = request.url.path
+    start = time.perf_counter()
+    status = 500
+    try:
+        response = await call_next(request)
+        status = response.status_code
+    finally:
+        elapsed = time.perf_counter() - start
+        REQUEST_COUNT.labels(request.method, path, str(status)).inc()
+        REQUEST_LATENCY.labels(request.method, path).observe(elapsed)
+    response.headers["X-Request-ID"] = request_id
+    return response
+
+
+@app.middleware("http")
+async def rate_limit(request: Request, call_next):
+    settings = request.app.state.settings
+    if request.url.path in {"/health", "/metrics", "/docs", "/openapi.json"}:
+        return await call_next(request)
+    client = request.client.host if request.client else "unknown"
+    now = time.time()
+    async with _rate_lock:
+        bucket = _rate_buckets[client]
+        while bucket and now - bucket[0] > 60:
+            bucket.popleft()
+        if len(bucket) >= settings.RATE_LIMIT_PER_MINUTE:
+            return JSONResponse(status_code=429, content={"detail": "rate limit exceeded"})
+        bucket.append(now)
+    return await call_next(request)
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception(request: Request, exc: Exception) -> JSONResponse:
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "internal server error",
+            "request_id": getattr(request.state, "request_id", ""),
+        },
+    )
+
+
+app.include_router(router)
+
 
 @app.get("/")
-async def root():
-    """
-    根路由 (Root Endpoint)
-    用于验证 API 服务是否成功启动。
-    """
-    logger.info("root_accessed")
-    return {"message": "欢迎使用智能医院 Agent API (Welcome to Smart Hospital Agent API)"}
-
-# 移除过时的 shutdown_event，统一由 lifespan 管理
-
-# 全局生命周期已由 lifespan 统一管理
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+async def root() -> dict:
+    return {
+        "app": "smart-hospital-agent",
+        "version": "2.0.0",
+        "docs": "/docs",
+        "health": "/health",
+        "chat": "/api/v1/chat/stream",
+    }

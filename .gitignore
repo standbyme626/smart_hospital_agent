@@ -31,3 +31,15 @@ venv/
 .DS_Store
 
 venv_bettafish/
+
+# v2 runtime / build artifacts
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+backend/.venv/
+backend/.pytest_cache/
+backend/.ruff_cache/
+*.gguf
+*.db
+frontend/.env.local
+frontend/*.tsbuildinfo

@@ -1,0 +1,36 @@
+[project]
+name = "smart-hospital-agent"
+version = "2.0.0"
+description = "Medical triage agent: single-agent loop, hybrid retrieval, MCP booking/payment, SSE."
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.34,<1",
+    "httpx>=0.28,<1",
+    "pydantic>=2.10,<3",
+    "pydantic-settings>=2.7,<3",
+    "asyncpg>=0.30,<1",
+    "prometheus-client>=0.21,<1",
+    "PyJWT>=2.10,<3",
+    "jieba>=0.42,<1",
+    "python-dotenv>=1.0,<2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3,<9",
+    "pytest-asyncio>=0.25,<1",
+    "ruff>=0.8,<1",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = ["E501"]
