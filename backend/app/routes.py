@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
+import io
 import json
 import re
 import uuid
+import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -25,6 +28,7 @@ from .reports import (
 )
 from .reviews import approve_review, create_payment_review, reject_review, review_json
 from .schemas import (
+    AccountDeleteRequest,
     AdminUserCreateRequest,
     AdminUserUpdateRequest,
     AnalyticsEventRequest,
@@ -1269,6 +1273,124 @@ async def delete_report(
         action="report.delete",
         detail={"report_id": report_id},
     )
+    return {"ok": True}
+
+
+# -------------------------------------------------------- account export/delete
+@router.get("/api/v1/me/export")
+async def export_me(
+    request: Request,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> Response:
+    state = _state(request)
+    db = state.db
+    user_id = str(user["sub"])
+    user_row = await db.fetchrow(
+        "SELECT id, username, role, enabled, created_at, updated_at FROM users WHERE id=$1",
+        user_id,
+    )
+    if not user_row:
+        raise HTTPException(status_code=404, detail="user not found")
+    report_rows = await db.fetch("SELECT * FROM reports WHERE user_id=$1 ORDER BY created_at", user_id)
+    collections = {
+        "family": await db.fetch("SELECT * FROM family_members WHERE user_id=$1 ORDER BY created_at", user_id),
+        "medications": await db.fetch("SELECT * FROM medications WHERE user_id=$1 ORDER BY created_at", user_id),
+        "reports": report_rows,
+        "followups": await db.fetch("SELECT * FROM followups WHERE user_id=$1 ORDER BY created_at", user_id),
+        "health_events": await db.fetch("SELECT * FROM health_events WHERE user_id=$1 ORDER BY occurred_at", user_id),
+        "bookings": await db.fetch("SELECT * FROM bookings WHERE user_id=$1 ORDER BY created_at", user_id),
+        "sessions": await db.fetch("SELECT * FROM sessions WHERE user_id=$1 ORDER BY created_at", user_id),
+        "messages": await db.fetch("SELECT * FROM messages WHERE user_id=$1 ORDER BY id", user_id),
+        "review_requests": await db.fetch("SELECT * FROM review_requests WHERE user_id=$1 ORDER BY created_at", user_id),
+    }
+    data = jsonable(
+        {
+            "exported_at": datetime.now(UTC).isoformat(),
+            "user": _row_json(user_row),
+            **{key: [_row_json(row) for row in rows] for key, rows in collections.items()},
+        }
+    )
+    for item in data["reports"]:
+        item.pop("image_path", None)
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as bundle:
+        bundle.writestr("data.json", json.dumps(data, ensure_ascii=False, indent=2))
+        for row in report_rows:
+            path = resolve_report_image(state.settings, row["image_path"])
+            if path is not None and path.is_file():
+                bundle.write(path, f"reports/{path.name}")
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": 'attachment; filename="smart-hospital-data.zip"',
+            "Cache-Control": "private",
+        },
+    )
+
+
+@router.delete("/api/v1/me")
+async def delete_me(
+    payload: AccountDeleteRequest,
+    request: Request,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    state = _state(request)
+    db = state.db
+    user_id = str(user["sub"])
+    row = await db.fetchrow(
+        "SELECT id, role, enabled, password_hash FROM users WHERE id=$1",
+        user_id,
+    )
+    if not row:
+        raise HTTPException(status_code=401, detail="user not found")
+    if not await asyncio.to_thread(verify_password, payload.password, row["password_hash"]):
+        raise HTTPException(status_code=403, detail="password incorrect")
+    if row["role"] == "admin" and row["enabled"]:
+        remaining = await db.fetchval(
+            "SELECT count(*) FROM users WHERE role='admin' AND enabled=true AND id<>$1",
+            user_id,
+        )
+        if remaining == 0:
+            raise HTTPException(status_code=400, detail="cannot delete the last enabled admin")
+    tag = "deleted-" + hashlib.sha256(user_id.encode("utf-8")).hexdigest()[:12]
+    report_rows = await db.fetch("SELECT image_path FROM reports WHERE user_id=$1", user_id)
+    session_ids = [item["id"] for item in await db.fetch("SELECT id FROM sessions WHERE user_id=$1", user_id)]
+    async with db.transaction() as conn:
+        if session_ids:
+            await conn.execute("DELETE FROM events WHERE session_id = ANY($1::text[])", session_ids)
+            await conn.execute(
+                "UPDATE model_calls SET session_id=$2 WHERE session_id = ANY($1::text[])",
+                session_ids,
+                tag,
+            )
+        await conn.execute(
+            "DELETE FROM messages WHERE user_id=$1 OR session_id = ANY($2::text[])",
+            user_id,
+            session_ids,
+        )
+        await conn.execute("DELETE FROM sessions WHERE user_id=$1", user_id)
+        await conn.execute("DELETE FROM health_events WHERE user_id=$1", user_id)
+        await conn.execute("DELETE FROM followups WHERE user_id=$1", user_id)
+        await conn.execute("DELETE FROM medications WHERE user_id=$1", user_id)
+        await conn.execute("DELETE FROM reports WHERE user_id=$1", user_id)
+        await conn.execute("DELETE FROM bookings WHERE user_id=$1", user_id)
+        await conn.execute("DELETE FROM review_requests WHERE user_id=$1", user_id)
+        await conn.execute("DELETE FROM family_members WHERE user_id=$1", user_id)
+        await conn.execute("DELETE FROM users WHERE id=$1", user_id)
+        await conn.execute("UPDATE audit_log SET actor=$2 WHERE actor=$1", user_id, tag)
+        await conn.execute("UPDATE analytics_events SET user_id=$2 WHERE user_id=$1", user_id, tag)
+        await conn.execute(
+            """
+            INSERT INTO audit_log (request_id, session_id, actor, action, detail)
+            VALUES ($1, $2, 'anonymous', 'account.delete', $3::jsonb)
+            """,
+            getattr(request.state, "request_id", uuid.uuid4().hex),
+            tag,
+            json.dumps({"deleted_user": tag}, ensure_ascii=False),
+        )
+    for item in report_rows:
+        remove_report_image(state.settings, item["image_path"])
     return {"ok": True}
 
 

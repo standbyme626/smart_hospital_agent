@@ -23,6 +23,10 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class AccountDeleteRequest(BaseModel):
+    password: str = Field(..., min_length=1, max_length=200)
+
+
 class LockRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

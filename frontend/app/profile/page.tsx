@@ -4,8 +4,11 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   Activity,
+  AlertTriangle,
   ChevronRight,
   Contrast,
+  Download,
+  Loader2,
   LogOut,
   Pencil,
   Plus,
@@ -21,7 +24,7 @@ import {
 import clsx from "clsx";
 import { AppShell } from "@/components/AppShell";
 import { useApp } from "@/lib/app-context";
-import { createMember, deleteMember, updateMember } from "@/lib/api";
+import { createMember, deleteAccount, deleteMember, exportMyData, updateMember } from "@/lib/api";
 import { relationOptions } from "@/lib/format";
 import type { Member } from "@/lib/types";
 
@@ -49,6 +52,47 @@ export default function ProfilePage() {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleting, setDeleting] = useState(false);
+
+  async function exportData() {
+    setExporting(true);
+    try {
+      const blob = await exportMyData();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "smart-hospital-data.zip";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showToast("数据导出已开始");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "导出失败，请稍后再试");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function confirmDeleteAccount() {
+    if (!deletePassword) {
+      showToast("请输入登录密码");
+      return;
+    }
+    if (!window.confirm("确定永久删除账号？所有健康档案、报告图片和会话记录将无法恢复。")) return;
+    setDeleting(true);
+    try {
+      await deleteAccount(deletePassword);
+      showToast("账号已删除");
+      logout();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "删除失败，请稍后再试");
+      setDeleting(false);
+    }
+  }
 
   function startEdit(member: Member) {
     setEditingId(member.id);
@@ -189,12 +233,57 @@ export default function ProfilePage() {
         <section className="card p-5">
           <div className="flex items-center gap-2"><ShieldCheck size={17} className="text-primary" /><h2 className="section-title">隐私与数据</h2></div>
           <p className="mt-2 text-[12px] leading-6 text-muted">
-            演示环境：数据保留用于展示；导出/删除功能见设置页（若已上线）。
+            你可以随时导出自己的全部健康数据（JSON + 报告图片），或永久删除账号及关联记录。
             家庭成员档案需要你授权后使用。
           </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button onClick={exportData} disabled={exporting} className="chip text-primary disabled:opacity-40">
+              {exporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+              导出我的数据
+            </button>
+            <button onClick={() => setDeleteOpen((prev) => !prev)} className="chip text-rose-600">
+              <Trash2 size={13} />
+              删除账号
+            </button>
+          </div>
+          {deleteOpen ? (
+            <div className="mt-3 space-y-2 rounded-2xl border border-rose-200 bg-rose-50 p-3">
+              <p className="flex items-center gap-1.5 text-[12px] font-medium text-rose-700">
+                <AlertTriangle size={14} />删除后无法恢复
+              </p>
+              <p className="text-[11px] leading-5 text-rose-700">
+                将永久删除账号、家庭成员档案、报告图片、用药、随访、会话与健康记录，并匿名化审计日志。
+              </p>
+              <input
+                className="input"
+                type="password"
+                value={deletePassword}
+                onChange={(event) => setDeletePassword(event.target.value)}
+                placeholder="输入登录密码确认"
+                autoComplete="current-password"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setDeleteOpen(false); setDeletePassword(""); }}
+                  className="btn-ghost flex-1"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={confirmDeleteAccount}
+                  disabled={deleting || !deletePassword}
+                  className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-full bg-rose-600 px-4 text-sm font-medium text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {deleting ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                  {deleting ? "删除中…" : "永久删除"}
+                </button>
+              </div>
+            </div>
+          ) : null}
           <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-muted">
-            <span className="chip">演示环境</span>
             <span className="chip">最小化采集</span>
+            <span className="chip">可导出</span>
+            <span className="chip">可删除</span>
           </div>
         </section>
 
