@@ -73,9 +73,17 @@ class HospitalMCPClient:
         self._tools = tools
         return tools
 
-    async def call_tool(self, name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def call_tool(
+        self,
+        name: str,
+        arguments: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
         await self.initialize()
-        result = await self._rpc("tools/call", {"name": name, "arguments": arguments or {}})
+        payload = dict(arguments or {})
+        if idempotency_key:
+            payload["idempotency_key"] = idempotency_key
+        result = await self._rpc("tools/call", {"name": name, "arguments": payload})
         if not isinstance(result, dict):
             return {"text": str(result), "is_error": False}
         content = result.get("content") or []

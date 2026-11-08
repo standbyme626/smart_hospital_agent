@@ -430,27 +430,35 @@ async def booking_order(
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     state = _state(request)
-    data = await _mcp(
-        state,
+    user_id = str(user["sub"])
+    idempotency_key = f"order:{user_id}:{payload.lock_id}"
+    result = await state.mcp.call_tool(
         "create_order",
-        {"lock_id": payload.lock_id, "patient_id": str(user["sub"])},
+        {"lock_id": payload.lock_id, "patient_id": user_id},
+        idempotency_key=idempotency_key,
     )
+    if result["is_error"]:
+        raise HTTPException(status_code=502, detail=result["text"])
+    data = result["data"] or {}
     await state.db.execute(
         """
-        INSERT INTO bookings (id, session_id, patient_id, user_id, department, slot_id, order_id, status, payment_status, amount, detail)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
-        ON CONFLICT (id) DO NOTHING
+        INSERT INTO bookings
+            (id, session_id, patient_id, user_id, department, slot_id, order_id, status,
+             payment_status, amount, idempotency_key, detail)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)
+        ON CONFLICT DO NOTHING
         """,
         data.get("order_id"),
-        str(user["sub"]),
-        str(user["sub"]),
-        str(user["sub"]),
+        user_id,
+        user_id,
+        user_id,
         (data.get("slot_id") or "").split("|")[0],
         data.get("slot_id"),
         data.get("order_id"),
         data.get("status", "created"),
         data.get("payment_status", "unpaid"),
         data.get("amount", 50),
+        idempotency_key,
         json.dumps(data, ensure_ascii=False),
     )
     return {"order": data}

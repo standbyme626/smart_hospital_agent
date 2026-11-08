@@ -139,9 +139,11 @@ class ToolRegistry:
         return {"ok": True, "data": result["data"]}
 
     async def create_order(self, args: dict[str, Any], context: ToolContext) -> dict[str, Any]:
+        idempotency_key = f"chat:{context.session_id}:{args.get('lock_id')}"
         result = await self.mcp.call_tool(
             "create_order",
             {"lock_id": args.get("lock_id"), "patient_id": context.user_id},
+            idempotency_key=idempotency_key,
         )
         if result["is_error"]:
             return {"ok": False, "error": result["text"]}
@@ -149,9 +151,11 @@ class ToolRegistry:
         context.booking = order
         await self.db.execute(
             """
-            INSERT INTO bookings (id, session_id, patient_id, user_id, department, slot_id, order_id, status, payment_status, amount, detail)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
-            ON CONFLICT (id) DO NOTHING
+            INSERT INTO bookings
+                (id, session_id, patient_id, user_id, department, slot_id, order_id, status,
+                 payment_status, amount, idempotency_key, detail)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)
+            ON CONFLICT DO NOTHING
             """,
             order.get("order_id"),
             context.session_id,
@@ -163,6 +167,7 @@ class ToolRegistry:
             order.get("status", "created"),
             order.get("payment_status", "unpaid"),
             order.get("amount", 50),
+            idempotency_key,
             json.dumps(order, ensure_ascii=False),
         )
         return {"ok": True, "data": order}

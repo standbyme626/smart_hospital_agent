@@ -4,10 +4,12 @@ import json
 import os
 import secrets
 import time
+from contextlib import asynccontextmanager
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
+import asyncpg
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 
@@ -16,14 +18,81 @@ load_dotenv(BASE.parent / ".env")
 SPECIALISTS = json.loads((BASE / "app" / "data" / "specialists.json").read_text(encoding="utf-8"))["specialists"]
 DEPARTMENTS = [item.get("name_cn", key) for key, item in SPECIALISTS.items()]
 
-app = FastAPI(title="Hospital MCP Mock", version="2.0.0")
+MCP_SCHEMA = [
+    """
+    CREATE TABLE IF NOT EXISTS mcp_locks (
+        lock_id TEXT PRIMARY KEY,
+        slot_id TEXT NOT NULL,
+        patient_id TEXT NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS mcp_orders (
+        order_id TEXT PRIMARY KEY,
+        slot_id TEXT NOT NULL,
+        patient_id TEXT NOT NULL,
+        amount NUMERIC(10, 2) NOT NULL,
+        status TEXT NOT NULL,
+        payment_status TEXT NOT NULL,
+        idempotency_key TEXT UNIQUE,
+        payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS mcp_booked (
+        slot_id TEXT PRIMARY KEY,
+        order_id TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+]
 
-locks: dict[str, dict[str, Any]] = {}
-orders: dict[str, dict[str, Any]] = {}
-booked: set[str] = set()
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    try:
+        conn = await _connect()
+        try:
+            await conn.execute("DELETE FROM mcp_locks WHERE expires_at < now()")
+        finally:
+            await conn.close()
+    except Exception as exc:  # allow the process to boot for diagnostics
+        print(f"[mcp-mock] database init failed: {exc}")
+    yield
 
 
-def _slots(department: str) -> list[dict[str, Any]]:
+app = FastAPI(title="Hospital MCP Mock", version="3.1.0", lifespan=lifespan)
+
+_schema_ready = False
+
+
+def _dsn() -> str:
+    return os.getenv("DATABASE_URL", "postgresql://sha:sha_pwd@127.0.0.1:5434/sha")
+
+
+async def _connect() -> asyncpg.Connection:
+    global _schema_ready
+    conn = await asyncpg.connect(_dsn())
+    if not _schema_ready:
+        for statement in MCP_SCHEMA:
+            await conn.execute(statement)
+        _schema_ready = True
+    return conn
+
+
+@asynccontextmanager
+async def _db():
+    conn = await _connect()
+    try:
+        yield conn
+    finally:
+        await conn.close()
+
+
+def _slots(department: str, booked: set[str]) -> list[dict[str, Any]]:
     slots: list[dict[str, Any]] = []
     today = date.today()
     for offset in range(1, 8):
@@ -51,6 +120,26 @@ def _text(data: Any) -> dict[str, Any]:
 
 def _error(message: str) -> dict[str, Any]:
     return {"content": [{"type": "text", "text": json.dumps({"error": message}, ensure_ascii=False)}], "isError": True}
+
+
+def _order_json(row: asyncpg.Record) -> dict[str, Any]:
+    payload = row["payload"] or {}
+    if isinstance(payload, str):
+        payload = json.loads(payload)
+    data = dict(payload)
+    data.update(
+        {
+            "order_id": row["order_id"],
+            "slot_id": row["slot_id"],
+            "patient_id": row["patient_id"],
+            "amount": float(row["amount"]),
+            "status": row["status"],
+            "payment_status": row["payment_status"],
+        }
+    )
+    if row["idempotency_key"]:
+        data["idempotency_key"] = row["idempotency_key"]
+    return data
 
 
 TOOLS = [
@@ -91,6 +180,7 @@ TOOLS = [
             "properties": {
                 "lock_id": {"type": "string"},
                 "patient_id": {"type": "string"},
+                "idempotency_key": {"type": "string"},
             },
             "required": ["lock_id"],
         },
@@ -147,14 +237,16 @@ TOOLS = [
 ]
 
 
-def _call(name: str, args: dict[str, Any]) -> dict[str, Any]:
+async def _call(name: str, args: dict[str, Any]) -> dict[str, Any]:
     if name == "list_departments":
         return _text({"departments": DEPARTMENTS})
     if name == "list_schedules":
         department = args.get("department") or ""
         if department not in DEPARTMENTS:
             return _error(f"unknown department: {department}")
-        slots = _slots(department)
+        async with _db() as conn:
+            booked = {row["slot_id"] for row in await conn.fetch("SELECT slot_id FROM mcp_booked")}
+        slots = _slots(department, booked)
         day = args.get("date")
         if day:
             slots = [slot for slot in slots if slot["date"] == day]
@@ -163,48 +255,98 @@ def _call(name: str, args: dict[str, Any]) -> dict[str, Any]:
         slot_id = args.get("slot_id") or ""
         if not slot_id or "|" not in slot_id:
             return _error("invalid slot_id")
-        if slot_id in booked:
-            return _error("slot already booked")
-        lock_id = "lock_" + secrets.token_hex(6)
-        locks[lock_id] = {
-            "lock_id": lock_id,
-            "slot_id": slot_id,
-            "patient_id": args.get("patient_id") or "anonymous",
-            "expires_at": time.time() + 600,
-        }
+        async with _db() as conn:
+            if await conn.fetchval("SELECT 1 FROM mcp_booked WHERE slot_id=$1", slot_id):
+                return _error("slot already booked")
+            await conn.execute("DELETE FROM mcp_locks WHERE expires_at < now()")
+            lock_id = "lock_" + secrets.token_hex(6)
+            await conn.execute(
+                "INSERT INTO mcp_locks (lock_id, slot_id, patient_id, expires_at) "
+                "VALUES ($1, $2, $3, now() + interval '10 minutes')",
+                lock_id,
+                slot_id,
+                args.get("patient_id") or "anonymous",
+            )
         return _text({"lock_id": lock_id, "slot_id": slot_id, "expires_in": 600})
     if name == "create_order":
         lock_id = args.get("lock_id") or ""
-        lock = locks.get(lock_id)
-        if not lock:
-            return _error("lock not found or expired")
-        if lock["expires_at"] < time.time():
-            return _error("lock expired")
-        order_id = "order_" + secrets.token_hex(6)
-        orders[order_id] = {
-            "order_id": order_id,
-            "slot_id": lock["slot_id"],
-            "patient_id": args.get("patient_id") or lock["patient_id"],
-            "amount": 50,
-            "status": "created",
-            "payment_status": "unpaid",
-            "created_at": time.time(),
-        }
-        return _text(orders[order_id])
+        key = args.get("idempotency_key") or None
+        async with _db() as conn:
+            async with conn.transaction():
+                if key:
+                    row = await conn.fetchrow("SELECT * FROM mcp_orders WHERE idempotency_key=$1", key)
+                    if row:
+                        return _text(_order_json(row))
+                lock = await conn.fetchrow(
+                    "SELECT * FROM mcp_locks WHERE lock_id=$1 AND expires_at > now()",
+                    lock_id,
+                )
+                if not lock:
+                    return _error("lock not found or expired")
+                if await conn.fetchval("SELECT 1 FROM mcp_booked WHERE slot_id=$1", lock["slot_id"]):
+                    return _error("slot already booked")
+                order_id = "order_" + secrets.token_hex(6)
+                payload = {"created_at": time.time(), "lock_id": lock_id}
+                row = await conn.fetchrow(
+                    """
+                    INSERT INTO mcp_orders
+                        (order_id, slot_id, patient_id, amount, status, payment_status, idempotency_key, payload)
+                    VALUES ($1, $2, $3, 50, 'created', 'unpaid', $4, $5::jsonb)
+                    ON CONFLICT (idempotency_key) DO NOTHING
+                    RETURNING *
+                    """,
+                    order_id,
+                    lock["slot_id"],
+                    args.get("patient_id") or lock["patient_id"],
+                    key,
+                    json.dumps(payload, ensure_ascii=False),
+                )
+                if row is None and key:
+                    row = await conn.fetchrow("SELECT * FROM mcp_orders WHERE idempotency_key=$1", key)
+                if row is None:
+                    return _error("order create conflict, retry")
+                await conn.execute("DELETE FROM mcp_locks WHERE lock_id=$1", lock_id)
+        return _text(_order_json(row))
     if name == "pay_order":
         order_id = args.get("order_id") or ""
-        order = orders.get(order_id)
-        if not order:
-            return _error("order not found")
-        expected = os.getenv("HITL_CONFIRM_TOKEN", "confirm-demo")
-        if args.get("confirm_token") != expected:
-            return _error("requires_confirmation: human confirmation token missing or invalid")
-        order["payment_status"] = "paid"
-        order["status"] = "booked"
-        order["paid_at"] = time.time()
-        order["method"] = args.get("method") or "mock"
-        booked.add(order["slot_id"])
-        return _text(order)
+        async with _db() as conn:
+            row = await conn.fetchrow("SELECT * FROM mcp_orders WHERE order_id=$1", order_id)
+            if not row:
+                return _error("order not found")
+            if row["payment_status"] == "paid":
+                return _text(_order_json(row))
+            expected = os.getenv("HITL_CONFIRM_TOKEN", "confirm-demo")
+            if args.get("confirm_token") != expected:
+                return _error("requires_confirmation: human confirmation token missing or invalid")
+            payload = row["payload"] or {}
+            if isinstance(payload, str):
+                payload = json.loads(payload)
+            payload.update(
+                {
+                    "paid_at": time.time(),
+                    "method": args.get("method") or "mock",
+                }
+            )
+            async with conn.transaction():
+                row = await conn.fetchrow(
+                    """
+                    UPDATE mcp_orders
+                    SET status='booked', payment_status='paid', payload=$2::jsonb, updated_at=now()
+                    WHERE order_id=$1
+                    RETURNING *
+                    """,
+                    order_id,
+                    json.dumps(payload, ensure_ascii=False),
+                )
+                await conn.execute(
+                    """
+                    INSERT INTO mcp_booked (slot_id, order_id) VALUES ($1, $2)
+                    ON CONFLICT (slot_id) DO UPDATE SET order_id=EXCLUDED.order_id
+                    """,
+                    row["slot_id"],
+                    order_id,
+                )
+        return _text(_order_json(row))
     if name == "list_doctors":
         department = args.get("department") or ""
         if department not in DEPARTMENTS:
@@ -212,7 +354,7 @@ def _call(name: str, args: dict[str, Any]) -> dict[str, Any]:
         doctors = [
             {
                 "doctor_id": f"doc_{department}_{index}",
-                "name": name,
+                "name": doctor_name,
                 "title": title,
                 "hospital": "示范医院",
                 "department": department,
@@ -220,7 +362,7 @@ def _call(name: str, args: dict[str, Any]) -> dict[str, Any]:
                 "intro": intro,
                 "fee": fee,
             }
-            for index, (name, title, rating, intro, fee) in enumerate(
+            for index, (doctor_name, title, rating, intro, fee) in enumerate(
                 [
                     ("张医生", "主任医师", 4.9, "擅长常见病与慢性病管理，注重循证与沟通。", 50),
                     ("李医生", "副主任医师", 4.8, "擅长症状鉴别与随访管理，耐心细致。", 40),
@@ -231,14 +373,15 @@ def _call(name: str, args: dict[str, Any]) -> dict[str, Any]:
         ]
         return _text({"department": department, "doctors": doctors})
     if name == "get_visit_guide":
-        order = orders.get(args.get("order_id") or "")
-        if not order:
+        async with _db() as conn:
+            row = await conn.fetchrow("SELECT * FROM mcp_orders WHERE order_id=$1", args.get("order_id") or "")
+        if not row:
             return _error("order not found")
-        if order["payment_status"] != "paid":
+        if row["payment_status"] != "paid":
             return _error("order not paid")
         return _text(
             {
-                "order": order,
+                "order": _order_json(row),
                 "hospital": "示范医院",
                 "address": "示例路 88 号",
                 "floor": "门诊楼 3 层",
@@ -248,18 +391,25 @@ def _call(name: str, args: dict[str, Any]) -> dict[str, Any]:
             }
         )
     if name == "get_payment_status":
-        order = orders.get(args.get("order_id") or "")
-        if not order:
+        async with _db() as conn:
+            row = await conn.fetchrow("SELECT * FROM mcp_orders WHERE order_id=$1", args.get("order_id") or "")
+        if not row:
             return _error("order not found")
-        return _text(order)
+        return _text(_order_json(row))
     if name == "cancel_order":
-        order = orders.get(args.get("order_id") or "")
-        if not order:
-            return _error("order not found")
-        if order["payment_status"] == "paid":
-            return _error("paid order cannot be cancelled in mock")
-        order["status"] = "cancelled"
-        return _text(order)
+        order_id = args.get("order_id") or ""
+        async with _db() as conn:
+            row = await conn.fetchrow("SELECT * FROM mcp_orders WHERE order_id=$1", order_id)
+            if not row:
+                return _error("order not found")
+            if row["payment_status"] == "paid":
+                return _error("paid order cannot be cancelled in mock")
+            row = await conn.fetchrow(
+                "UPDATE mcp_orders SET status='cancelled', updated_at=now() WHERE order_id=$1 RETURNING *",
+                order_id,
+            )
+            await conn.execute("DELETE FROM mcp_booked WHERE order_id=$1", order_id)
+        return _text(_order_json(row))
     return _error(f"unknown tool: {name}")
 
 
@@ -273,12 +423,15 @@ async def mcp(request: Request) -> dict[str, Any]:
         result = {
             "protocolVersion": "2024-11-05",
             "capabilities": {"tools": {}},
-            "serverInfo": {"name": "hospital-mcp-mock", "version": "2.0.0"},
+            "serverInfo": {"name": "hospital-mcp-mock", "version": "3.1.0"},
         }
     elif method == "tools/list":
         result = {"tools": TOOLS}
     elif method == "tools/call":
-        result = _call(params.get("name") or "", params.get("arguments") or {})
+        try:
+            result = await _call(params.get("name") or "", params.get("arguments") or {})
+        except Exception as exc:
+            result = _error(f"database error: {exc}")
     else:
         return {
             "jsonrpc": "2.0",
@@ -290,4 +443,10 @@ async def mcp(request: Request) -> dict[str, Any]:
 
 @app.get("/health")
 async def health() -> dict[str, Any]:
-    return {"ok": True, "departments": len(DEPARTMENTS), "orders": len(orders), "locks": len(locks)}
+    try:
+        async with _db() as conn:
+            orders = await conn.fetchval("SELECT count(*) FROM mcp_orders")
+            locks = await conn.fetchval("SELECT count(*) FROM mcp_locks")
+    except Exception:
+        orders, locks = 0, 0
+    return {"ok": True, "departments": len(DEPARTMENTS), "orders": orders or 0, "locks": locks or 0}
