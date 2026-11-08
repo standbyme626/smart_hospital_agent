@@ -143,6 +143,8 @@ class MedicalAgent:
             if context.report:
                 break
 
+        if not context.citations:
+            context.citations = await self.retrieval.search(message, top_k=3)
         report = context.report or self._fallback_report(triage, final_content, context)
         if not str(report.get("summary") or "").strip():
             report["summary"] = self._default_summary(triage)

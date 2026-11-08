@@ -96,7 +96,13 @@ class ToolRegistry:
         for item in results:
             if item["id"] not in {citation["id"] for citation in context.citations}:
                 context.citations.append(item)
-        return {"ok": True, "count": len(results), "evidence": results}
+        return {
+            "ok": True,
+            "count": len(results),
+            "filtered": self.retrieval.last_filtered,
+            "dept_unavailable": self.retrieval.last_dept_unavailable,
+            "evidence": results,
+        }
 
     async def lookup_guideline(self, args: dict[str, Any], context: ToolContext) -> dict[str, Any]:
         topic = str(args.get("topic") or context.user_text).strip()

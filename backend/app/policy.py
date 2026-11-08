@@ -102,7 +102,7 @@ for _key, _item in SPECIALISTS.items():
 def normalize_department(value: str | None) -> str:
     text = str(value or "").strip()
     if not text:
-        return "General Practice"
+        return "全科"
     if text in DEPARTMENT_NAMES:
         return text
     direct = _DEPARTMENT_ALIASES.get(text.lower())
@@ -115,7 +115,7 @@ def normalize_department(value: str | None) -> str:
         for keyword in keywords:
             if keyword in text:
                 return department
-    return "General Practice"
+    return "全科"
 
 
 def detect_crisis(text: str) -> tuple[bool, list[str]]:

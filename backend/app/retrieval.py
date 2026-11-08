@@ -13,6 +13,7 @@ import jieba
 from .config import Settings
 from .db import Database
 from .model_gateway import ModelGateway
+from .policy import normalize_department
 
 CJK = re.compile(r"[\u4e00-\u9fff]")
 ASCII = re.compile(r"[a-zA-Z0-9_]+")
@@ -59,6 +60,8 @@ class RetrievalService:
         self.settings = settings
         self.db = db
         self.gateway = gateway
+        self.last_filtered = False
+        self.last_dept_unavailable = False
 
     async def search(
         self,
@@ -68,11 +71,20 @@ class RetrievalService:
         department: str | None = None,
     ) -> list[dict[str, Any]]:
         top_k = top_k or self.settings.RETRIEVAL_TOP_K
+        self.last_filtered = False
+        self.last_dept_unavailable = False
         if not query.strip():
             return []
+        normalized = normalize_department(department) if department else None
         query_vector = (await self.gateway.embed([query]))[0]
-        dense = await self._dense(query_vector, department)
-        sparse = await self._sparse(query, department)
+        dense = await self._dense(query_vector, normalized)
+        sparse = await self._sparse(query, normalized)
+        if normalized and not dense and not sparse:
+            self.last_dept_unavailable = True
+            dense = await self._dense(query_vector, None)
+            sparse = await self._sparse(query, None)
+        elif normalized:
+            self.last_filtered = True
         fused = rrf_fuse(
             [[row["id"] for row in dense], [row["id"] for row in sparse]],
             k=60,
@@ -221,7 +233,7 @@ class RetrievalService:
                         "doc_key": doc_key,
                         "title": title,
                         "content": content,
-                        "department": item.get("department") or item.get("cate1"),
+                        "department": normalize_department(item.get("department") or item.get("cate1")),
                         "source": item.get("source") or "medical_gold",
                         "metadata": {"raw_keys": sorted(item.keys())},
                     }
