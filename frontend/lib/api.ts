@@ -15,6 +15,7 @@ import type {
   ReviewRequest,
   ScheduleSlot,
   Session,
+  SessionDetail,
   StreamEvent,
   TimelineEvent,
   User,
@@ -129,6 +130,10 @@ export async function getHomeSummary(memberId?: string): Promise<HomeSummary> {
 export async function getSessions(): Promise<Session[]> {
   const data = await apiFetch<{ sessions: Session[] }>("/api/v1/sessions");
   return data.sessions;
+}
+
+export async function getSession(id: string): Promise<SessionDetail> {
+  return apiFetch(`/api/v1/sessions/${encodeURIComponent(id)}`);
 }
 
 export async function getMedications(memberId?: string): Promise<Medication[]> {

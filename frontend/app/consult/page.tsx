@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -9,6 +9,7 @@ import {
   Check,
   CheckCircle2,
   Loader2,
+  Send,
   ShieldCheck,
   Sparkles,
   Stethoscope,
@@ -18,16 +19,22 @@ import clsx from "clsx";
 import { AppShell } from "@/components/AppShell";
 import { ResultView } from "@/components/ResultView";
 import { useApp } from "@/lib/app-context";
-import { streamChat, track } from "@/lib/api";
-import type { Citation, Report, Safety, Triage } from "@/lib/types";
+import { getSession, streamChat, track } from "@/lib/api";
+import type { ChatMessage, Citation, Report, Safety, StreamEvent, Triage } from "@/lib/types";
 import { bodyAreas, durationOptions, redFlagOptions, symptomOptions } from "@/lib/format";
 
 type Step = 0 | 1 | 2;
 type SymptomStep = 0 | 1 | 2 | 3 | 4;
 
+function displayContent(content: string): string {
+  const marker = "用户输入：";
+  const index = content.lastIndexOf(marker);
+  return index >= 0 ? content.slice(index + marker.length) : content;
+}
+
 export default function ConsultPage() {
   const router = useRouter();
-  const { members, activeMember, setActiveMemberId, showToast } = useApp();
+  const { authReady, members, activeMember, setActiveMemberId, showToast } = useApp();
   const [step, setStep] = useState<Step>(0);
   const [memberId, setMemberId] = useState<string | null>(activeMember?.id || null);
   const [age, setAge] = useState("");
@@ -50,6 +57,10 @@ export default function ConsultPage() {
   const [safety, setSafety] = useState<Safety | undefined>();
   const [triage, setTriage] = useState<Triage | undefined>();
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [followup, setFollowup] = useState("");
+  const [restoring, setRestoring] = useState(false);
+  const restoreStarted = useRef(false);
 
   useEffect(() => {
     const saved = window.sessionStorage.getItem("consult_draft");
@@ -58,6 +69,48 @@ export default function ConsultPage() {
       window.sessionStorage.removeItem("consult_draft");
     }
   }, []);
+
+  useEffect(() => {
+    if (!authReady || restoreStarted.current) return;
+    restoreStarted.current = true;
+    const existing = new URLSearchParams(window.location.search).get("session");
+    if (!existing) return;
+    let cancelled = false;
+    setRestoring(true);
+    (async () => {
+      try {
+        const detail = await getSession(existing);
+        if (cancelled) return;
+        if (detail.session.member_id && activeMember?.id && detail.session.member_id !== activeMember.id) {
+          window.history.replaceState(null, "", "/consult/");
+          showToast("该会话属于其他就诊人，已为你开启新会话");
+          return;
+        }
+        setSessionId(detail.session.id);
+        if (detail.session.member_id) {
+          setMemberId(detail.session.member_id);
+          setActiveMemberId(detail.session.member_id);
+        }
+        setMessages(detail.messages || []);
+        const latest = detail.latest_final;
+        if (latest?.report) {
+          setReport(latest.report);
+          setCitations(latest.citations || []);
+          setSafety(latest.safety);
+          setTriage(latest.triage);
+          setStep(2);
+        }
+      } catch {
+        if (!cancelled) showToast("会话恢复失败，请重新开始");
+      } finally {
+        if (!cancelled) setRestoring(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authReady]);
 
   useEffect(() => {
     if (activeMember) {
@@ -72,6 +125,46 @@ export default function ConsultPage() {
 
   function toggleSymptom(value: string) {
     setSymptoms((prev) => (prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value]));
+  }
+
+  function applyStreamEvent(event: StreamEvent) {
+    if (event.type === "session") {
+      const id = String(event.data.session_id || "");
+      if (id) {
+        setSessionId(id);
+        window.history.replaceState(null, "", `/consult/?session=${encodeURIComponent(id)}`);
+      }
+    } else if (event.type === "status") {
+      const stage = String(event.data.stage || "");
+      const detail = event.data.detail as Record<string, unknown> | undefined;
+      const label =
+        stage === "triage" ? "正在分诊" :
+        stage === "triage_done" ? `分诊完成 · ${detail?.department || ""}` :
+        stage === "tool" ? `检查 · ${event.data.tool || ""}` :
+        stage === "drug_check" ? `用药检查 · ${event.data.highest_severity || "none"}` : stage;
+      setStatusLines((prev) => [...prev, label]);
+    } else if (event.type === "thought") {
+      const text = String(event.data.text || "").trim();
+      if (text) setStatusLines((prev) => [...prev, text]);
+    } else if (event.type === "citation") {
+      const citation = event.data as unknown as Citation;
+      setCitations((prev) => (prev.some((item) => String(item.id) === String(citation.id)) ? prev : [...prev, citation]));
+    } else if (event.type === "token") {
+      setStreamingText((prev) => prev + String(event.data.text || ""));
+    } else if (event.type === "final") {
+      const nextReport = event.data.report as Report;
+      setReport(nextReport);
+      setCitations((event.data.citations as unknown as Citation[]) || []);
+      setSafety(event.data.safety as Safety);
+      setTriage(event.data.triage as Triage);
+      setStep(2);
+      if (nextReport?.summary) {
+        setMessages((prev) => [...prev, { role: "assistant", content: nextReport.summary }]);
+      }
+      track("consult_complete", { department: nextReport?.department });
+    } else if (event.type === "error") {
+      showToast(String(event.data.message || "服务暂时不可用"));
+    }
   }
 
   async function submit() {
@@ -106,37 +199,30 @@ export default function ConsultPage() {
       draft ? `补充描述：${draft}` : "",
     ].filter(Boolean);
     const message = [...memberBits, "", ...symptomBits].join("\n");
+    setMessages((prev) => [...prev, { role: "user", content: message }]);
     try {
-      for await (const event of streamChat({ message, member_id: memberId || undefined })) {
-        if (event.type === "session") {
-          setSessionId(String(event.data.session_id || ""));
-        } else if (event.type === "status") {
-          const stage = String(event.data.stage || "");
-          const detail = event.data.detail as Record<string, unknown> | undefined;
-          const label =
-            stage === "triage" ? "正在分诊" :
-            stage === "triage_done" ? `分诊完成 · ${detail?.department || ""}` :
-            stage === "tool" ? `检查 · ${event.data.tool || ""}` :
-            stage === "drug_check" ? `用药检查 · ${event.data.highest_severity || "none"}` : stage;
-          setStatusLines((prev) => [...prev, label]);
-        } else if (event.type === "thought") {
-          const text = String(event.data.text || "").trim();
-          if (text) setStatusLines((prev) => [...prev, text]);
-        } else if (event.type === "citation") {
-          const citation = event.data as unknown as Citation;
-          setCitations((prev) => (prev.some((item) => String(item.id) === String(citation.id)) ? prev : [...prev, citation]));
-        } else if (event.type === "token") {
-          setStreamingText((prev) => prev + String(event.data.text || ""));
-        } else if (event.type === "final") {
-          setReport(event.data.report as Report);
-          setCitations((event.data.citations as unknown as Citation[]) || []);
-          setSafety(event.data.safety as Safety);
-          setTriage(event.data.triage as Triage);
-          setStep(2);
-          track("consult_complete", { department: (event.data.report as Report)?.department });
-        } else if (event.type === "error") {
-          showToast(String(event.data.message || "服务暂时不可用"));
-        }
+      for await (const event of streamChat({ message, session_id: sessionId || undefined, member_id: memberId || undefined })) {
+        applyStreamEvent(event);
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "请求失败，请稍后再试");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function sendFollowup() {
+    const text = followup.trim();
+    if (!text || submitting || !sessionId) return;
+    setFollowup("");
+    setMessages((prev) => [...prev, { role: "user", content: text }]);
+    setSubmitting(true);
+    setStatusLines([]);
+    setStreamingText("");
+    track("consult_followup", { session_id: sessionId });
+    try {
+      for await (const event of streamChat({ message: text, session_id: sessionId, member_id: memberId || undefined })) {
+        applyStreamEvent(event);
       }
     } catch (err) {
       showToast(err instanceof Error ? err.message : "请求失败，请稍后再试");
@@ -158,6 +244,10 @@ export default function ConsultPage() {
     setCitations([]);
     setStatusLines([]);
     setStreamingText("");
+    setMessages([]);
+    setFollowup("");
+    setSessionId(null);
+    window.history.replaceState(null, "", "/consult/");
   }
 
   function nextSymptom() {
@@ -355,8 +445,15 @@ export default function ConsultPage() {
           </div>
         ) : null}
 
+        {restoring ? (
+          <div className="card flex items-center gap-2 p-4 text-[13px] text-muted">
+            <Loader2 size={15} className="animate-spin text-primary" />
+            正在恢复上次会话…
+          </div>
+        ) : null}
+
         {report ? (
-          <div className="fade-up">
+          <div className="fade-up space-y-4">
             <ResultView
               report={report}
               citations={citations}
@@ -368,7 +465,48 @@ export default function ConsultPage() {
               }}
               onRestart={reset}
             />
-            {sessionId ? <p className="mt-3 text-center text-[11px] text-muted">会话已保存 · {sessionId}</p> : null}
+            {messages.length ? (
+              <div className="card p-4">
+                <h3 className="section-title">对话记录</h3>
+                <div className="mt-3 space-y-2">
+                  {messages.map((item, index) => (
+                    <div
+                      key={index}
+                      className={clsx(
+                        "rounded-2xl px-3 py-2 text-[13px] leading-6",
+                        item.role === "user" ? "ml-8 bg-primary-soft text-ink" : "mr-8 bg-canvas text-ink",
+                      )}
+                    >
+                      <p className="text-[11px] text-muted">{item.role === "user" ? "我" : "大医"}</p>
+                      <p className="whitespace-pre-wrap">
+                        {item.role === "user" ? displayContent(item.content) : item.content}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            <div className="card p-4">
+              <h3 className="section-title">继续追问</h3>
+              <p className="mt-1 text-[12px] text-muted">追问会沿用本次会话，大医能看到前面的问答。</p>
+              <div className="mt-3 flex items-end gap-2">
+                <textarea
+                  className="input min-h-[72px] flex-1"
+                  value={followup}
+                  onChange={(event) => setFollowup(event.target.value)}
+                  placeholder={report.followup_question ? `回答：${report.followup_question}` : "继续问，例如：需要做哪些检查？"}
+                />
+                <button
+                  onClick={sendFollowup}
+                  disabled={submitting || !followup.trim()}
+                  className="btn-primary h-11 px-3"
+                  aria-label="发送追问"
+                >
+                  {submitting ? <Loader2 size={15} className="animate-spin" /> : <Send size={16} />}
+                </button>
+              </div>
+            </div>
+            {sessionId ? <p className="text-center text-[11px] text-muted">会话已保存 · {sessionId}</p> : null}
           </div>
         ) : null}
       </div>
