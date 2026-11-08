@@ -63,7 +63,13 @@ class MedicalAgent:
                 yield event
             return
 
-        context = ToolContext(session_id=session_id, request_id=request_id, user_id=user_id, user_text=message)
+        context = ToolContext(
+            session_id=session_id,
+            request_id=request_id,
+            user_id=user_id,
+            member_id=member_id,
+            user_text=message,
+        )
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": AGENT_SYSTEM},
             *trim_history(history or []),

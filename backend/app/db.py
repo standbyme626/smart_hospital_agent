@@ -222,7 +222,8 @@ SCHEMA = [
         decision_note TEXT,
         decided_by TEXT,
         decided_at TIMESTAMPTZ,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_reviews_status ON review_requests (status, created_at)",
@@ -278,6 +279,11 @@ MIGRATIONS = [
     "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS review_id TEXT",
     "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS idempotency_key TEXT",
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_idem ON bookings (idempotency_key) WHERE idempotency_key IS NOT NULL",
+    "ALTER TABLE family_members ADD COLUMN IF NOT EXISTS hospital_patient_id TEXT",
+    "UPDATE family_members SET hospital_patient_id = 'HP-' || id WHERE hospital_patient_id IS NULL",
+    "ALTER TABLE review_requests ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ",
+    "UPDATE review_requests SET updated_at = created_at WHERE updated_at IS NULL",
+    "ALTER TABLE review_requests ALTER COLUMN updated_at SET DEFAULT now()",
     "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS member_id TEXT",
     "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS last_message_at TIMESTAMPTZ",
 ]

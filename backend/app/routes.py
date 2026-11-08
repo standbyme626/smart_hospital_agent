@@ -470,8 +470,11 @@ async def booking_lock(
     request: Request,
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
+    state = _state(request)
+    if payload.member_id:
+        await _owned_member(state.db, payload.member_id, str(user["sub"]))
     data = await _mcp(
-        _state(request),
+        state,
         "lock_slot",
         {"slot_id": payload.slot_id, "patient_id": str(user["sub"])},
     )
@@ -486,6 +489,18 @@ async def booking_order(
 ) -> dict[str, Any]:
     state = _state(request)
     user_id = str(user["sub"])
+    member_id = None
+    hospital_patient_id = None
+    if payload.member_id:
+        member = await _owned_member(state.db, payload.member_id, user_id)
+        member_id = member["id"]
+        hospital_patient_id = member.get("hospital_patient_id") or f"HP-{member_id}"
+        if not member.get("hospital_patient_id"):
+            await state.db.execute(
+                "UPDATE family_members SET hospital_patient_id=$2 WHERE id=$1",
+                member_id,
+                hospital_patient_id,
+            )
     idempotency_key = f"order:{user_id}:{payload.lock_id}"
     result = await state.mcp.call_tool(
         "create_order",
@@ -499,9 +514,9 @@ async def booking_order(
         """
         INSERT INTO bookings
             (id, session_id, patient_id, user_id, department, slot_id, order_id, status,
-             payment_status, amount, idempotency_key, detail)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)
-        ON CONFLICT DO NOTHING
+             payment_status, amount, idempotency_key, member_id, hospital_patient_id, detail)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb)
+        ON CONFLICT (id) DO NOTHING
         """,
         data.get("order_id"),
         user_id,
@@ -514,6 +529,8 @@ async def booking_order(
         data.get("payment_status", "unpaid"),
         data.get("amount", 50),
         idempotency_key,
+        member_id,
+        hospital_patient_id,
         json.dumps(data, ensure_ascii=False),
     )
     return {"order": data}
@@ -540,7 +557,11 @@ async def booking_request_payment(
         session_id=user_id,
         actor=user_id,
         action="payment.request",
-        detail={"review_id": result["review"]["id"], "order_id": order_id, "duplicate": result.get("duplicate", False)},
+        detail={
+            "review_id": result["review"]["id"],
+            "order_id": booking.get("order_id") or order_id,
+            "duplicate": result.get("duplicate", False),
+        },
     )
     return result
 

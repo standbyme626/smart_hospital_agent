@@ -45,9 +45,11 @@ _TRUNCATE_TABLES = (
 async def _truncate() -> None:
     conn = await asyncpg.connect(TEST_DATABASE_URL)
     try:
-        await conn.execute(f"TRUNCATE {_TRUNCATE_TABLES}")
-    except asyncpg.UndefinedTableError:
-        pass
+        rows = await conn.fetch("SELECT tablename FROM pg_tables WHERE schemaname='public'")
+        existing = {row["tablename"] for row in rows}
+        tables = [name.strip() for name in _TRUNCATE_TABLES.split(",") if name.strip() in existing]
+        if tables:
+            await conn.execute(f"TRUNCATE {', '.join(tables)}")
     finally:
         await conn.close()
 

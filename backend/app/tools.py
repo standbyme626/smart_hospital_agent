@@ -18,6 +18,7 @@ class ToolContext:
     session_id: str
     request_id: str
     user_id: str = "anonymous"
+    member_id: str | None = None
     user_text: str = ""
     citations: list[dict[str, Any]] = field(default_factory=list)
     drug_result: dict[str, Any] | None = None
@@ -140,6 +141,24 @@ class ToolRegistry:
 
     async def create_order(self, args: dict[str, Any], context: ToolContext) -> dict[str, Any]:
         idempotency_key = f"chat:{context.session_id}:{args.get('lock_id')}"
+        member_id = context.member_id or None
+        hospital_patient_id = None
+        if member_id:
+            member = await self.db.fetchrow(
+                "SELECT id, hospital_patient_id FROM family_members WHERE id=$1 AND user_id=$2",
+                member_id,
+                context.user_id,
+            )
+            if member:
+                hospital_patient_id = member["hospital_patient_id"] or f"HP-{member['id']}"
+                if not member["hospital_patient_id"]:
+                    await self.db.execute(
+                        "UPDATE family_members SET hospital_patient_id=$2 WHERE id=$1",
+                        member_id,
+                        hospital_patient_id,
+                    )
+            else:
+                member_id = None
         result = await self.mcp.call_tool(
             "create_order",
             {"lock_id": args.get("lock_id"), "patient_id": context.user_id},
@@ -153,9 +172,9 @@ class ToolRegistry:
             """
             INSERT INTO bookings
                 (id, session_id, patient_id, user_id, department, slot_id, order_id, status,
-                 payment_status, amount, idempotency_key, detail)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)
-            ON CONFLICT DO NOTHING
+                 payment_status, amount, idempotency_key, member_id, hospital_patient_id, detail)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb)
+            ON CONFLICT (id) DO NOTHING
             """,
             order.get("order_id"),
             context.session_id,
@@ -168,6 +187,8 @@ class ToolRegistry:
             order.get("payment_status", "unpaid"),
             order.get("amount", 50),
             idempotency_key,
+            member_id,
+            hospital_patient_id,
             json.dumps(order, ensure_ascii=False),
         )
         return {"ok": True, "data": order}

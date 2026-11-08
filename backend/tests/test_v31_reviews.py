@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 import asyncpg
 import pytest
@@ -21,9 +22,22 @@ class FakeMCP:
     def _ok(self, data):
         return {"is_error": False, "text": "", "data": data}
 
-    async def call_tool(self, name, arguments=None):
+    async def call_tool(self, name, arguments=None, idempotency_key=None):
         args = dict(arguments or {})
         self.calls.append((name, args))
+        if name == "lock_slot":
+            return self._ok({"lock_id": "lock_fake", "slot_id": args.get("slot_id"), "expires_in": 600})
+        if name == "create_order":
+            return self._ok(
+                {
+                    "order_id": "order_mem",
+                    "slot_id": SLOT_ID,
+                    "patient_id": "patient",
+                    "amount": 50,
+                    "status": "created",
+                    "payment_status": "unpaid",
+                }
+            )
         if name == "pay_order":
             if self.fail_pay:
                 return {"is_error": True, "text": "mcp unavailable", "data": None}
@@ -287,10 +301,125 @@ def test_approve_processing_review_returns_202_without_mcp(client):
     admin = _admin(client)
     review = client.post("/api/v1/booking/orders/order_rev1/request-payment", headers=patient).json()["review"]
     dsn = client.app.state.settings.DATABASE_URL
-    _sql(dsn, "UPDATE review_requests SET status='processing' WHERE id=$1", review["id"])
+    _sql(
+        dsn,
+        "UPDATE review_requests SET status='processing', updated_at=now() WHERE id=$1",
+        review["id"],
+    )
 
     response = client.post(f"/api/v1/admin/reviews/{review['id']}/approve", headers=admin)
     assert response.status_code == 202
     assert response.json()["review"]["status"] == "processing"
     assert response.json()["mcp_called"] is False
     assert client.app.state.mcp.pay_calls() == []
+
+
+def test_member_persisted_and_used_for_review_and_followup(client):
+    patient = _patient(client)
+    admin = _admin(client)
+    member = client.post(
+        "/api/v1/family",
+        json={"name": "王小明", "relation": "child"},
+        headers=patient,
+    ).json()["member"]
+
+    allowed = client.post(
+        "/api/v1/booking/lock",
+        json={"slot_id": SLOT_ID, "member_id": member["id"]},
+        headers=patient,
+    )
+    assert allowed.status_code == 200, allowed.text
+    foreign = client.post(
+        "/api/v1/booking/orders",
+        json={"lock_id": "lock_fake", "member_id": member["id"]},
+        headers=admin,
+    )
+    assert foreign.status_code == 404
+
+    ordered = client.post(
+        "/api/v1/booking/orders",
+        json={"lock_id": "lock_fake", "member_id": member["id"]},
+        headers=patient,
+    )
+    assert ordered.status_code == 200, ordered.text
+    booking = _booking_row(client, "order_mem")
+    assert booking["member_id"] == member["id"]
+    assert booking["hospital_patient_id"] == f"HP-{member['id']}"
+    dsn = client.app.state.settings.DATABASE_URL
+    assert (
+        _sql(
+            dsn,
+            "SELECT hospital_patient_id FROM family_members WHERE id=$1",
+            member["id"],
+            fetch=True,
+        )
+        == f"HP-{member['id']}"
+    )
+
+    review = client.post("/api/v1/booking/orders/order_mem/request-payment", headers=patient).json()["review"]
+    queue = client.get("/api/v1/admin/reviews", params={"status": "pending"}, headers=admin).json()["reviews"]
+    item = next(entry for entry in queue if entry["id"] == review["id"])
+    assert item["member_id"] == member["id"]
+    assert item["member_name"] == "王小明"
+
+    assert client.post(f"/api/v1/admin/reviews/{review['id']}/approve", headers=admin).status_code == 200
+    followup = asyncio.run(_followup(client, "order_mem"))
+    assert followup["member_id"] == member["id"]
+
+
+async def _followup(client, order_id: str) -> dict:
+    conn = await asyncpg.connect(client.app.state.settings.DATABASE_URL)
+    try:
+        return dict(await conn.fetchrow("SELECT * FROM followups WHERE booking_id=$1", order_id))
+    finally:
+        await conn.close()
+
+
+def test_stale_processing_is_reclaimed_and_retried(client):
+    _create_booking(client)
+    patient = _patient(client)
+    admin = _admin(client)
+    review = client.post("/api/v1/booking/orders/order_rev1/request-payment", headers=patient).json()["review"]
+    dsn = client.app.state.settings.DATABASE_URL
+    _sql(
+        dsn,
+        "UPDATE review_requests SET status='processing', updated_at=now() - interval '10 minutes' WHERE id=$1",
+        review["id"],
+    )
+
+    response = client.post(f"/api/v1/admin/reviews/{review['id']}/approve", headers=admin)
+    assert response.status_code == 200, response.text
+    assert response.json()["review"]["status"] == "approved"
+    assert response.json()["mcp_called"] is True
+    assert len(client.app.state.mcp.pay_calls()) == 1
+    assert _booking_row(client)["payment_status"] == "paid"
+
+
+def test_reject_audit_uses_mcp_order_id(client):
+    dsn = client.app.state.settings.DATABASE_URL
+    _sql(
+        dsn,
+        """
+        INSERT INTO bookings
+            (id, session_id, patient_id, user_id, department, slot_id, order_id, status, payment_status, amount)
+        VALUES ('bk_audit', 'bk_audit', 'patient', 'patient', '心血管内科', $1, 'order_audit', 'created', 'unpaid', 50)
+        """,
+        SLOT_ID,
+    )
+    patient = _patient(client)
+    admin = _admin(client)
+    review = client.post("/api/v1/booking/orders/bk_audit/request-payment", headers=patient).json()["review"]
+    assert review["payload"]["order_id"] == "order_audit"
+
+    rejected = client.post(
+        f"/api/v1/admin/reviews/{review['id']}/reject",
+        json={"note": "金额有误"},
+        headers=admin,
+    )
+    assert rejected.status_code == 200, rejected.text
+
+    detail = _sql(dsn, "SELECT detail FROM audit_log WHERE action='payment.reject'", fetch=True)
+    if isinstance(detail, str):
+        detail = json.loads(detail)
+    assert detail["order_id"] == "order_audit"
+    assert detail["order_id"] != "bk_audit"

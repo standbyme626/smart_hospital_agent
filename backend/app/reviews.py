@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import HTTPException
@@ -10,6 +11,7 @@ from fastapi import HTTPException
 from .db import Database
 
 PAYMENT_KIND = "payment"
+STALE_PROCESSING_SECONDS = 120
 
 
 def _decode(value: Any) -> Any:
@@ -161,16 +163,23 @@ async def approve_review(
         review = await conn.fetchrow("SELECT * FROM review_requests WHERE id=$1 FOR UPDATE", review_id)
         if not review:
             raise HTTPException(status_code=404, detail="review not found")
-        if review["status"] in {"approved", "processing"}:
+        if review["status"] == "approved":
             return {
                 "review": review_json(review),
                 "order": await _booking(conn, review["ref_id"]),
                 "mcp_called": False,
             }
-        if review["status"] != "pending":
+        stale_before = datetime.now(UTC) - timedelta(seconds=STALE_PROCESSING_SECONDS)
+        if review["status"] == "processing" and review["updated_at"] and review["updated_at"] > stale_before:
+            return {
+                "review": review_json(review),
+                "order": await _booking(conn, review["ref_id"]),
+                "mcp_called": False,
+            }
+        if review["status"] not in {"pending", "processing"}:
             raise HTTPException(status_code=409, detail=f"review is {review['status']}")
         review = await conn.fetchrow(
-            "UPDATE review_requests SET status='processing' WHERE id=$1 RETURNING *",
+            "UPDATE review_requests SET status='processing', updated_at=now() WHERE id=$1 RETURNING *",
             review_id,
         )
         booking = await _booking(conn, review["ref_id"])
@@ -190,7 +199,7 @@ async def approve_review(
         note = str(result.get("text") or "payment failed")[:500]
         async with db.transaction() as conn:
             await conn.execute(
-                "UPDATE review_requests SET status='failed', decision_note=$2 WHERE id=$1",
+                "UPDATE review_requests SET status='failed', decision_note=$2, updated_at=now() WHERE id=$1",
                 review_id,
                 note,
             )
@@ -217,7 +226,7 @@ async def approve_review(
             }
         review = await conn.fetchrow(
             """
-            UPDATE review_requests SET status='approved', decided_by=$2, decided_at=now()
+            UPDATE review_requests SET status='approved', decided_by=$2, decided_at=now(), updated_at=now()
             WHERE id=$1 RETURNING *
             """,
             review_id,
@@ -269,7 +278,7 @@ async def reject_review(
         review = await conn.fetchrow(
             """
             UPDATE review_requests
-            SET status='rejected', decision_note=$2, decided_by=$3, decided_at=now()
+            SET status='rejected', decision_note=$2, decided_by=$3, decided_at=now(), updated_at=now()
             WHERE id=$1 RETURNING *
             """,
             review_id,
@@ -282,11 +291,13 @@ async def reject_review(
         )
         if booking is None:
             booking = await conn.fetchrow("SELECT * FROM bookings WHERE id=$1", review["ref_id"])
+        payload = _decode(review["payload"]) or {}
+        audit_order_id = payload.get("order_id") or (booking["order_id"] if booking else None) or review["ref_id"]
         await _audit(
             conn,
             admin_id,
             "payment.reject",
-            {"review_id": review_id, "order_id": review["ref_id"], "note": note},
+            {"review_id": review_id, "order_id": audit_order_id, "note": note},
         )
     return {
         "review": review_json(review),

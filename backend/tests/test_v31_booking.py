@@ -19,15 +19,17 @@ SLOT_ID = "心血管内科|2031-01-01|09:00|张医生"
 class CaptureMCP:
     def __init__(self):
         self.calls: list[tuple[str, dict, str | None]] = []
+        self.order_ids: list[str] = []
 
     async def call_tool(self, name, arguments=None, idempotency_key=None):
         self.calls.append((name, dict(arguments or {}), idempotency_key))
         if name == "create_order":
+            order_id = self.order_ids.pop(0) if self.order_ids else "order_idem"
             return {
                 "is_error": False,
                 "text": "",
                 "data": {
-                    "order_id": "order_idem",
+                    "order_id": order_id,
                     "slot_id": SLOT_ID,
                     "patient_id": "patient",
                     "amount": 50,
@@ -171,4 +173,65 @@ def test_booking_route_reuses_idempotency_key(client):
 
 
 def test_admin_login_still_works(client):
+    from app.security import hash_password, reset_lockout_state
+
+    reset_lockout_state()
+    client.app.state.settings.AUTH_ENABLED = True
+
+    async def seed_admin():
+        conn = await asyncpg.connect(os.environ["DATABASE_URL"])
+        try:
+            await conn.execute(
+                """
+                INSERT INTO users (id, username, password_hash, role, enabled)
+                VALUES ('admin', 'admin', $1, 'admin', true)
+                ON CONFLICT (id) DO UPDATE SET password_hash=EXCLUDED.password_hash, enabled=true
+                """,
+                hash_password(ADMIN_PASSWORD),
+            )
+        finally:
+            await conn.close()
+
+    asyncio.run(seed_admin())
     assert _token(client, "admin", ADMIN_PASSWORD)
+
+
+async def test_mock_health_ok_and_reports_db_failure(monkeypatch):
+    healthy = await mock.health()
+    assert healthy["ok"] is True
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql://sha:sha_pwd@127.0.0.1:1/sha_test")
+    broken = await mock.health()
+    assert broken["ok"] is False
+    assert broken["error"]
+
+
+def test_mock_dsn_requires_database_url(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    with pytest.raises(RuntimeError):
+        mock._dsn()
+
+
+def test_booking_insert_does_not_swallow_idempotency_conflict(client):
+    token = _token(client, "patient", PATIENT_PASSWORD)
+    headers = {"Authorization": f"Bearer {token}"}
+    fake: CaptureMCP = client.app.state.mcp
+    fake.order_ids = ["order_a", "order_b"]
+
+    first = client.post("/api/v1/booking/orders", json={"lock_id": "lock_x"}, headers=headers)
+    assert first.status_code == 200, first.text
+    try:
+        second = client.post("/api/v1/booking/orders", json={"lock_id": "lock_x"}, headers=headers)
+    except asyncpg.UniqueViolationError:
+        pass
+    else:
+        assert second.status_code >= 500
+
+    async def count():
+        conn = await asyncpg.connect(os.environ["DATABASE_URL"])
+        try:
+            return await conn.fetchval("SELECT count(*) FROM bookings WHERE idempotency_key='order:patient:lock_x'")
+        finally:
+            await conn.close()
+
+    assert asyncio.run(count()) == 1

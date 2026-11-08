@@ -243,18 +243,21 @@ export async function getSchedules(department: string, date?: string): Promise<S
   return data.slots;
 }
 
-export async function lockSlot(slotId: string): Promise<{ lock_id: string; slot_id: string; expires_in: number }> {
+export async function lockSlot(
+  slotId: string,
+  memberId?: string,
+): Promise<{ lock_id: string; slot_id: string; expires_in: number }> {
   const data = await apiFetch<{ lock: { lock_id: string; slot_id: string; expires_in: number } }>(
     "/api/v1/booking/lock",
-    { method: "POST", body: JSON.stringify({ slot_id: slotId }) },
+    { method: "POST", body: JSON.stringify({ slot_id: slotId, member_id: memberId }) },
   );
   return data.lock;
 }
 
-export async function createOrder(lockId: string): Promise<BookingOrder> {
+export async function createOrder(lockId: string, memberId?: string): Promise<BookingOrder> {
   const data = await apiFetch<{ order: BookingOrder }>("/api/v1/booking/orders", {
     method: "POST",
-    body: JSON.stringify({ lock_id: lockId }),
+    body: JSON.stringify({ lock_id: lockId, member_id: memberId }),
   });
   return data.order;
 }

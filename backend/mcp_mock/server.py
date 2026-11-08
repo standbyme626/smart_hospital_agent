@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import secrets
 import time
@@ -51,6 +52,9 @@ MCP_SCHEMA = [
 ]
 
 
+logger = logging.getLogger("mcp-mock")
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     try:
@@ -59,8 +63,9 @@ async def lifespan(_: FastAPI):
             await conn.execute("DELETE FROM mcp_locks WHERE expires_at < now()")
         finally:
             await conn.close()
+        logger.info("mcp mock database ready")
     except Exception as exc:  # allow the process to boot for diagnostics
-        print(f"[mcp-mock] database init failed: {exc}")
+        logger.error("mcp mock database init failed (DATABASE_URL missing or unreachable): %s", exc)
     yield
 
 
@@ -70,7 +75,10 @@ _schema_ready = False
 
 
 def _dsn() -> str:
-    return os.getenv("DATABASE_URL", "postgresql://sha:sha_pwd@127.0.0.1:5434/sha")
+    dsn = os.getenv("DATABASE_URL")
+    if not dsn:
+        raise RuntimeError("DATABASE_URL is required for the hospital MCP mock")
+    return dsn
 
 
 async def _connect() -> asyncpg.Connection:
@@ -447,6 +455,6 @@ async def health() -> dict[str, Any]:
         async with _db() as conn:
             orders = await conn.fetchval("SELECT count(*) FROM mcp_orders")
             locks = await conn.fetchval("SELECT count(*) FROM mcp_locks")
-    except Exception:
-        orders, locks = 0, 0
+    except Exception as exc:
+        return {"ok": False, "departments": len(DEPARTMENTS), "error": str(exc)}
     return {"ok": True, "departments": len(DEPARTMENTS), "orders": orders or 0, "locks": locks or 0}

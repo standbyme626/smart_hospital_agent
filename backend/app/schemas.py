@@ -27,12 +27,14 @@ class LockRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     slot_id: str
+    member_id: str | None = None
 
 
 class OrderRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     lock_id: str
+    member_id: str | None = None
 
 
 class PayRequest(BaseModel):
