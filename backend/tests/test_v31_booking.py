@@ -14,6 +14,7 @@ from app.mcp_client import HospitalMCPClient
 PATIENT_PASSWORD = "patient123456"
 ADMIN_PASSWORD = "admin123456"
 SLOT_ID = "心血管内科|2031-01-01|09:00|张医生"
+OTHER_SLOT = "心血管内科|2031-01-02|09:00|李医生"
 
 
 class CaptureMCP:
@@ -152,7 +153,7 @@ async def test_mock_persists_orders_and_is_idempotent():
     assert guide["order"]["order_id"] == first["order_id"]
 
 
-async def test_mock_pay_requires_token_and_cancel_releases_slot():
+async def test_mock_pay_requires_token_and_cancel_releases_own_reservation():
     lock = _payload(await mock._call("lock_slot", {"slot_id": SLOT_ID, "patient_id": "u_mock"}))
     order = _payload(await mock._call("create_order", {"lock_id": lock["lock_id"]}))
 
@@ -166,22 +167,37 @@ async def test_mock_pay_requires_token_and_cancel_releases_slot():
         SLOT_ID,
         order["order_id"],
     )
+    # mcp_booked.slot_id is the primary key, so another user's booking on the
+    # same slot cannot coexist with this row; seed it on another slot instead.
     await _execute(
-        "INSERT INTO mcp_locks (lock_id, slot_id, patient_id, expires_at) "
-        "VALUES ('lock_stale', $1, 'u_mock', now() + interval '10 minutes') "
-        "ON CONFLICT (lock_id) DO NOTHING",
-        SLOT_ID,
+        "INSERT INTO mcp_booked (slot_id, order_id) VALUES ($1, 'order_other')",
+        OTHER_SLOT,
     )
-    assert await _count("SELECT count(*) FROM mcp_booked WHERE slot_id=$1", SLOT_ID) == 1
-    assert await _count("SELECT count(*) FROM mcp_locks WHERE slot_id=$1", SLOT_ID) == 1
+    for lock_id, slot_id, patient_id in (
+        ("lock_own", SLOT_ID, "u_mock"),
+        ("lock_other_patient", SLOT_ID, "u_other"),
+        ("lock_own_other_slot", OTHER_SLOT, "u_mock"),
+    ):
+        await _execute(
+            "INSERT INTO mcp_locks (lock_id, slot_id, patient_id, expires_at) "
+            "VALUES ($1, $2, $3, now() + interval '10 minutes')",
+            lock_id,
+            slot_id,
+            patient_id,
+        )
+    assert await _count("SELECT count(*) FROM mcp_booked") == 2
+    assert await _count("SELECT count(*) FROM mcp_locks") == 3
 
     cancelled = _payload(await mock._call("cancel_order", {"order_id": order["order_id"]}))
     assert cancelled["status"] == "cancelled"
-    assert await _count("SELECT count(*) FROM mcp_booked WHERE slot_id=$1", SLOT_ID) == 0
-    assert await _count("SELECT count(*) FROM mcp_locks WHERE slot_id=$1", SLOT_ID) == 0
+    assert await _count("SELECT count(*) FROM mcp_booked WHERE order_id=$1", order["order_id"]) == 0
+    assert await _count("SELECT count(*) FROM mcp_booked WHERE slot_id=$1", OTHER_SLOT) == 1
+    assert await _count("SELECT count(*) FROM mcp_locks WHERE lock_id='lock_own'") == 0
+    assert await _count("SELECT count(*) FROM mcp_locks WHERE lock_id='lock_other_patient'") == 1
+    assert await _count("SELECT count(*) FROM mcp_locks WHERE lock_id='lock_own_other_slot'") == 1
 
 
-async def test_mock_cancel_releases_booked_and_lock_rows_for_slot():
+async def test_mock_cancel_only_removes_own_booked_and_patient_locks():
     lock = _payload(await mock._call("lock_slot", {"slot_id": SLOT_ID, "patient_id": "u_mock"}))
     order = _payload(await mock._call("create_order", {"lock_id": lock["lock_id"]}))
     await _execute(
@@ -190,15 +206,27 @@ async def test_mock_cancel_releases_booked_and_lock_rows_for_slot():
         order["order_id"],
     )
     await _execute(
-        "INSERT INTO mcp_locks (lock_id, slot_id, patient_id, expires_at) "
-        "VALUES ('lock_other', $1, 'u_mock', now() + interval '10 minutes')",
-        SLOT_ID,
+        "INSERT INTO mcp_booked (slot_id, order_id) VALUES ($1, 'order_other')",
+        OTHER_SLOT,
     )
+    for lock_id, slot_id, patient_id in (
+        ("lock_own", SLOT_ID, "u_mock"),
+        ("lock_other_patient", SLOT_ID, "u_other"),
+    ):
+        await _execute(
+            "INSERT INTO mcp_locks (lock_id, slot_id, patient_id, expires_at) "
+            "VALUES ($1, $2, $3, now() + interval '10 minutes')",
+            lock_id,
+            slot_id,
+            patient_id,
+        )
 
     await mock._call("cancel_order", {"order_id": order["order_id"]})
 
-    assert await _count("SELECT count(*) FROM mcp_booked WHERE slot_id=$1", SLOT_ID) == 0
-    assert await _count("SELECT count(*) FROM mcp_locks WHERE slot_id=$1", SLOT_ID) == 0
+    assert await _count("SELECT count(*) FROM mcp_booked WHERE order_id=$1", order["order_id"]) == 0
+    assert await _count("SELECT count(*) FROM mcp_booked WHERE slot_id=$1", OTHER_SLOT) == 1
+    assert await _count("SELECT count(*) FROM mcp_locks WHERE lock_id='lock_own'") == 0
+    assert await _count("SELECT count(*) FROM mcp_locks WHERE lock_id='lock_other_patient'") == 1
 
 
 async def test_client_passes_idempotency_key():

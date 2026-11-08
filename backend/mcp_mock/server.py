@@ -416,8 +416,12 @@ async def _call(name: str, args: dict[str, Any]) -> dict[str, Any]:
                 "UPDATE mcp_orders SET status='cancelled', updated_at=now() WHERE order_id=$1 RETURNING *",
                 order_id,
             )
-            await conn.execute("DELETE FROM mcp_booked WHERE slot_id=$1", row["slot_id"])
-            await conn.execute("DELETE FROM mcp_locks WHERE slot_id=$1", row["slot_id"])
+            await conn.execute("DELETE FROM mcp_booked WHERE order_id=$1", order_id)
+            await conn.execute(
+                "DELETE FROM mcp_locks WHERE slot_id=$1 AND patient_id=$2",
+                row["slot_id"],
+                row["patient_id"],
+            )
         return _text(_order_json(row))
     return _error(f"unknown tool: {name}")
 
