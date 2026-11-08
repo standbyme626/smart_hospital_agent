@@ -8,9 +8,11 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 
 BASE = Path(__file__).resolve().parents[1]
+load_dotenv(BASE.parent / ".env")
 SPECIALISTS = json.loads((BASE / "app" / "data" / "specialists.json").read_text(encoding="utf-8"))["specialists"]
 DEPARTMENTS = [item.get("name_cn", key) for key, item in SPECIALISTS.items()]
 

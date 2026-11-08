@@ -39,7 +39,7 @@ export default function ServicesPage() {
   const [lock, setLock] = useState<{ lock_id: string; slot_id: string; expires_in: number } | null>(null);
   const [order, setOrder] = useState<BookingOrder | null>(null);
   const [guide, setGuide] = useState<VisitGuide | null>(null);
-  const [confirmToken, setConfirmToken] = useState("confirm-demo");
+  const [confirmToken, setConfirmToken] = useState("wasd1234");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -244,7 +244,7 @@ export default function ServicesPage() {
             </div>
             <div className="rounded-2xl bg-canvas p-3 text-[11px] text-muted">
               <p className="font-medium text-ink">支付确认（HITL）</p>
-              <input className="input mt-1.5 !py-2 text-[12px]" value={confirmToken} onChange={(event) => setConfirmToken(event.target.value)} placeholder="confirm-demo" />
+              <input className="input mt-1.5 !py-2 text-[12px]" value={confirmToken} onChange={(event) => setConfirmToken(event.target.value)} placeholder="wasd1234" />
             </div>
           </div>
         </section>

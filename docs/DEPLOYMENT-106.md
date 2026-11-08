@@ -73,6 +73,7 @@ Type=simple
 User=root
 WorkingDirectory=/home/kkk/Project/smart_hospital_agent_v2/backend
 Environment=PYTHONPATH=/home/kkk/Project/smart_hospital_agent_v2/backend
+EnvironmentFile=/home/kkk/Project/smart_hospital_agent_v2/.env
 ExecStart=/home/kkk/Project/smart_hospital_agent_v2/backend/.venv/bin/uvicorn mcp_mock.server:app --host 127.0.0.1 --port 9100
 Restart=always
 RestartSec=3
@@ -204,7 +205,7 @@ ADMIN_PASSWORD=<random>
 PATIENT_USER=patient
 PATIENT_PASSWORD=<random>
 GUEST_LOGIN_ENABLED=false
-HITL_CONFIRM_TOKEN=confirm-demo   # 演示支付；真实医院 MCP 会签发确认
+HITL_CONFIRM_TOKEN=wasd1234   # 演示支付；真实医院 MCP 会签发确认
 DATABASE_URL=postgresql://sha:...@127.0.0.1:5434/sha
 HOSPITAL_MCP_URL=http://127.0.0.1:9100/mcp
 CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001
