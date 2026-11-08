@@ -36,7 +36,7 @@ jobs:
       - name: Install
         run: pip install -r backend/requirements.txt
       - name: Lint
-        run: cd backend && ruff check app mcp_mock tests
+        run: cd backend && ruff check . ../scripts
       - name: Test
         env:
           TEST_DATABASE_URL: postgresql://sha:sha_pwd@localhost:5432/sha_test

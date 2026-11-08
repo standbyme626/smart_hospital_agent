@@ -27,7 +27,7 @@ export default defineConfig({
   expect: { timeout: 20_000 },
   fullyParallel: false,
   workers: 1,
-  retries: process.env.CI ? 1 : 0,
+  retries: 0,
   reporter: [["list"]],
   globalSetup: "./e2e/global-setup.ts",
   use: {
@@ -54,7 +54,7 @@ export default defineConfig({
     {
       command: `"${PYTHON}" -m uvicorn app.main:app --host 127.0.0.1 --port ${BACKEND_PORT}`,
       cwd: BACKEND_DIR,
-      url: `${API_BASE}/health`,
+      url: `${API_BASE}/api/health`,
       env: {
         DATABASE_URL,
         AUTH_ENABLED: "true",

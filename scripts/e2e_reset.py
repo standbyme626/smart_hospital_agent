@@ -57,8 +57,8 @@ async def _reset(dsn: str) -> None:
         await db.init_schema()
         await db.execute(f"TRUNCATE {', '.join(APP_TABLES)} RESTART IDENTITY CASCADE")
         accounts = (
-            (settings.ADMIN_USER, os.getenv("ADMIN_PASSWORD", "e2e-admin-pass"), "admin"),
-            (settings.PATIENT_USER, os.getenv("PATIENT_PASSWORD", "e2e-patient-pass"), "patient"),
+            (os.getenv("ADMIN_USER", settings.ADMIN_USER), os.getenv("ADMIN_PASSWORD", "e2e-admin-pass"), "admin"),
+            (os.getenv("PATIENT_USER", settings.PATIENT_USER), os.getenv("PATIENT_PASSWORD", "e2e-patient-pass"), "patient"),
         )
         for username, password, role in accounts:
             await db.execute(
