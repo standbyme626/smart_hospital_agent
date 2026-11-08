@@ -4,6 +4,7 @@ import base64
 import json
 import re
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -1167,6 +1168,16 @@ async def admin_analytics(
 
 
 # ------------------------------------------------------------------ health
+@router.get("/api/health")
+async def api_health(request: Request) -> dict[str, Any]:
+    settings = _state(request).settings
+    return {
+        "ok": True,
+        "version": settings.APP_VERSION,
+        "time": datetime.now(UTC).isoformat(),
+    }
+
+
 @router.get("/health")
 async def health(request: Request) -> dict[str, Any]:
     state = _state(request)

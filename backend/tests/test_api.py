@@ -1,3 +1,6 @@
+import time
+from datetime import datetime
+
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -63,3 +66,33 @@ def test_login_returns_admin_token():
         body = response.json()
         assert body["role"] == "admin"
         assert body["access_token"]
+
+
+def test_api_health():
+    class NoExternalCalls:
+        def __getattr__(self, name):
+            raise AssertionError(f"/api/health must not touch external dependency: {name}")
+
+    with TestClient(app) as client:
+        originals = {
+            "gateway": client.app.state.gateway,
+            "mcp": client.app.state.mcp,
+            "db": client.app.state.db,
+            "retrieval": client.app.state.retrieval,
+        }
+        for name in originals:
+            setattr(client.app.state, name, NoExternalCalls())
+        try:
+            start = time.perf_counter()
+            response = client.get("/api/health")
+            elapsed = time.perf_counter() - start
+        finally:
+            for name, original in originals.items():
+                setattr(client.app.state, name, original)
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["ok"] is True
+        assert body["version"] == client.app.state.settings.APP_VERSION
+        assert datetime.fromisoformat(body["time"]).tzinfo is not None
+        assert elapsed < 0.1

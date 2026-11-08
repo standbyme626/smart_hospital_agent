@@ -205,7 +205,7 @@ ADMIN_PASSWORD=<random>
 PATIENT_USER=patient
 PATIENT_PASSWORD=<random>
 GUEST_LOGIN_ENABLED=false
-HITL_CONFIRM_TOKEN=wasd1234   # 演示支付；真实医院 MCP 会签发确认
+HITL_CONFIRM_TOKEN=change-me   # 占位符；真实值只存服务器凭据文件
 DATABASE_URL=postgresql://sha:...@127.0.0.1:5434/sha
 HOSPITAL_MCP_URL=http://127.0.0.1:9100/mcp
 CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001
@@ -219,6 +219,9 @@ CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,h
 # 静态
 curl -I https://hospital.kk.zhzepei.cn/
 
+# 轻量健康检查（不依赖 DB/模型/MCP）
+curl -fsS https://hospital.kk.zhzepei.cn/api/health
+
 # API（公开）
 curl -s https://hospital.kk.zhzepei.cn/api/v1/rag/status
 
@@ -230,6 +233,14 @@ curl -s -H "Authorization: Bearer $TOKEN" https://hospital.kk.zhzepei.cn/api/v1/
 ```
 
 线上 Playwright 已完整验证：登录、三步问诊、证据、挂号支付、报告视觉解读、药管家、健康时间线、后台、移动端。
+
+## 7.1 健康检查与备份
+
+- `GET /api/health` 只返回进程存活、版本与 UTC 时间，不访问 DB/模型/MCP，供 Kuma/负载均衡探活。
+- `scripts/backup.sh`：`pg_dump`（custom 格式）+ `backend/uploads` tar，产物在 `/home/data/backups/smart-hospital/`，权限 600，保留 7 天。
+- systemd：`smart-hospital-backup.timer` 每天 03:30 触发 `smart-hospital-backup.service`；手工执行 `systemctl start smart-hospital-backup.service`。
+- 恢复步骤见 `scripts/restore.md`；恢复前先停 API，避免写入冲突。
+- Kuma 监控项：`https://hospital.kk.zhzepei.cn/api/health`，期望 200 且响应体 `{"ok": true, ...}`。
 
 ## 8. 回滚
 

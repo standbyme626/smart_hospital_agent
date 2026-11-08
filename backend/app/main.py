@@ -100,7 +100,7 @@ async def observability(request: Request, call_next):
 @app.middleware("http")
 async def rate_limit(request: Request, call_next):
     settings = request.app.state.settings
-    if request.url.path in {"/health", "/metrics", "/docs", "/openapi.json"}:
+    if request.url.path in {"/health", "/api/health", "/metrics", "/docs", "/openapi.json"}:
         return await call_next(request)
     forwarded = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
     client = request.headers.get("x-real-ip") or forwarded or (request.client.host if request.client else "unknown")
