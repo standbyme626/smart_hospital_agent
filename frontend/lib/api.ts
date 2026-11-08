@@ -1,6 +1,7 @@
 import type {
   BookingOrder,
   Doctor,
+  DocumentDetail,
   EvalResult,
   Followup,
   HomeSummary,
@@ -272,6 +273,10 @@ export async function track(name: string, props: Record<string, unknown> = {}, s
 
 export async function getRagStatus(): Promise<RagStatus> {
   return apiFetch("/api/v1/rag/status");
+}
+
+export async function getDocument(docKey: string): Promise<DocumentDetail> {
+  return apiFetch(`/api/v1/rag/documents/${encodeURIComponent(docKey)}`);
 }
 
 export async function getModelCalls(): Promise<ModelCall[]> {

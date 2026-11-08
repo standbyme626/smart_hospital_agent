@@ -15,9 +15,9 @@ import {
   X,
 } from "lucide-react";
 import clsx from "clsx";
-import type { Citation, Report, Safety, Triage } from "@/lib/types";
+import type { Citation, DocumentDetail, Report, Safety, Triage } from "@/lib/types";
 import { urgencyMeta } from "@/lib/format";
-import { track } from "@/lib/api";
+import { getDocument, track } from "@/lib/api";
 
 const toneClasses: Record<string, string> = {
   mint: "border-emerald-200 bg-emerald-50 text-emerald-800",
@@ -42,15 +42,35 @@ export function ResultView({
 }) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [selected, setSelected] = useState<Citation | null>(null);
+  const [detail, setDetail] = useState<DocumentDetail | null>(null);
+  const [detailState, setDetailState] = useState<"idle" | "loading" | "error">("idle");
   const [pro, setPro] = useState(false);
   const urgency = urgencyMeta[report.urgency] || urgencyMeta.normal;
   const citationMap = new Map(citations.map((item) => [String(item.id), item]));
   const confidence = Math.max(0, Math.min(1, Number(report.confidence) || 0));
 
-  function openCitation(citation: Citation) {
+  function selectCitation(citation: Citation) {
     setSelected(citation);
+    setDetail(null);
+    setDetailState("idle");
+  }
+
+  function openCitation(citation: Citation) {
+    selectCitation(citation);
     setSheetOpen(true);
     track("evidence_open", { citation_id: citation.id, title: citation.title });
+  }
+
+  async function loadFullText() {
+    if (!selected?.doc_key || detailState === "loading") return;
+    setDetailState("loading");
+    try {
+      const document = await getDocument(selected.doc_key);
+      setDetail(document);
+      setDetailState("idle");
+    } catch {
+      setDetailState("error");
+    }
   }
 
   return (
@@ -208,10 +228,24 @@ export function ResultView({
 
             <div className="mt-4 space-y-3">
               {selected ? (
-                <div className="rounded-2xl bg-canvas p-3 text-[13px] leading-6 text-ink">{selected.snippet}</div>
+                <div className="rounded-2xl bg-canvas p-3 text-[13px] leading-6 text-ink">
+                  <p className="whitespace-pre-wrap">{detail?.content || selected.snippet}</p>
+                  {detailState === "error" ? (
+                    <p className="mt-2 text-[11px] text-muted">全文加载失败，以上为摘要内容。</p>
+                  ) : null}
+                  {!detail && selected.doc_key ? (
+                    <button
+                      onClick={loadFullText}
+                      disabled={detailState === "loading"}
+                      className="mt-2 text-[11px] text-primary underline underline-offset-2 disabled:opacity-60"
+                    >
+                      {detailState === "loading" ? "加载中…" : "查看全文"}
+                    </button>
+                  ) : null}
+                </div>
               ) : (
                 citations.map((item, index) => (
-                  <button key={`${item.id}-${index}`} onClick={() => setSelected(item)} className="block w-full rounded-2xl bg-canvas p-3 text-left">
+                  <button key={`${item.id}-${index}`} onClick={() => selectCitation(item)} className="block w-full rounded-2xl bg-canvas p-3 text-left">
                     <p className="text-[13px] font-medium text-ink">{item.title}</p>
                     <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-muted">{item.snippet}</p>
                   </button>

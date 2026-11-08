@@ -17,11 +17,21 @@ export type Member = {
 
 export type Citation = {
   id: number | string;
+  doc_key?: string;
   title: string;
   snippet: string;
   department?: string;
   source?: string;
   score?: number;
+};
+
+export type DocumentDetail = {
+  doc_key: string;
+  title: string;
+  content: string;
+  department?: string | null;
+  source?: string | null;
+  metadata?: Record<string, unknown>;
 };
 
 export type Report = {

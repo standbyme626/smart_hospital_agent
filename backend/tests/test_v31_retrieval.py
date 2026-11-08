@@ -1,9 +1,13 @@
+import asyncio
 import json
 
+import asyncpg
 import pytest
+from fastapi.testclient import TestClient
 
 from app.config import get_settings
 from app.db import Database
+from app.main import app
 from app.policy import DEPARTMENT_NAMES, normalize_department
 from app.retrieval import RetrievalService
 from app.tools import ToolContext, ToolRegistry
@@ -160,3 +164,75 @@ async def test_retrieve_evidence_reports_filter_metadata(retrieval_env):
     )
     assert miss["ok"] is True and miss["count"] >= 1
     assert miss["filtered"] is False and miss["dept_unavailable"] is True
+
+
+def _insert_detail_doc(doc_key: str, content: str) -> None:
+    async def run() -> None:
+        conn = await asyncpg.connect(get_settings().DATABASE_URL)
+        try:
+            await conn.execute(
+                """
+                INSERT INTO documents (doc_key, title, content, department, source, metadata)
+                VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+                ON CONFLICT (doc_key) DO UPDATE SET
+                    content = EXCLUDED.content,
+                    metadata = EXCLUDED.metadata
+                """,
+                doc_key,
+                "证据全文标题",
+                content,
+                "心血管内科",
+                SOURCE,
+                json.dumps({"origin": "test"}),
+            )
+        finally:
+            await conn.close()
+
+    asyncio.run(run())
+
+
+def _delete_detail_doc(doc_key: str) -> None:
+    async def run() -> None:
+        conn = await asyncpg.connect(get_settings().DATABASE_URL)
+        try:
+            await conn.execute("DELETE FROM documents WHERE doc_key=$1", doc_key)
+        finally:
+            await conn.close()
+
+    asyncio.run(run())
+
+
+def test_document_detail():
+    doc_key = "v31test-document-detail"
+    content = "完整证据正文。" * 40
+    _insert_detail_doc(doc_key, content)
+    try:
+        with TestClient(app) as client:
+            client.app.state.settings.AUTH_ENABLED = True
+            try:
+                assert client.get(f"/api/v1/rag/documents/{doc_key}").status_code == 401
+
+                login = client.post(
+                    "/api/v1/auth/login",
+                    json={"username": "admin", "password": "admin123456"},
+                )
+                assert login.status_code == 200, login.text
+                headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+                response = client.get(f"/api/v1/rag/documents/{doc_key}", headers=headers)
+                assert response.status_code == 200, response.text
+                body = response.json()
+                assert body["doc_key"] == doc_key
+                assert body["title"] == "证据全文标题"
+                assert body["content"] == content
+                assert body["department"] == "心血管内科"
+                assert body["source"] == SOURCE
+                assert body["metadata"] == {"origin": "test"}
+                assert "embedding" not in body
+
+                missing = client.get("/api/v1/rag/documents/v31test-missing", headers=headers)
+                assert missing.status_code == 404
+            finally:
+                client.app.state.settings.AUTH_ENABLED = False
+    finally:
+        _delete_detail_doc(doc_key)

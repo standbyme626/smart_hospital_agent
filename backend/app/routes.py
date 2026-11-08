@@ -347,6 +347,29 @@ async def rag_status(request: Request) -> dict[str, Any]:
     }
 
 
+@router.get("/api/v1/rag/documents/{doc_key}")
+async def rag_document(
+    doc_key: str,
+    request: Request,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    row = await _state(request).db.fetchrow(
+        "SELECT doc_key, title, content, department, source, metadata FROM documents WHERE doc_key=$1",
+        doc_key,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="document not found")
+    data = dict(row)
+    metadata = data.get("metadata")
+    if isinstance(metadata, str):
+        try:
+            metadata = json.loads(metadata)
+        except json.JSONDecodeError:
+            metadata = {}
+    data["metadata"] = metadata or {}
+    return data
+
+
 @router.get("/api/v1/departments")
 async def departments() -> dict[str, Any]:
     return {"departments": DEPARTMENT_NAMES}
