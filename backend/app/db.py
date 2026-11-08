@@ -190,6 +190,23 @@ SCHEMA = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_analytics_name ON analytics_events (name, created_at DESC)",
+    """
+    CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        username TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'patient',
+        enabled BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+]
+
+MIGRATIONS = [
+    "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS user_id TEXT",
+    "UPDATE bookings SET user_id = patient_id WHERE user_id IS NULL",
+    "CREATE INDEX IF NOT EXISTS idx_bookings_user ON bookings (user_id)",
 ]
 
 
@@ -217,6 +234,8 @@ class Database:
         assert self.pool is not None
         async with self.pool.acquire() as conn:
             for statement in SCHEMA:
+                await conn.execute(statement)
+            for statement in MIGRATIONS:
                 await conn.execute(statement)
 
     async def fetch(self, query: str, *args: Any) -> list[asyncpg.Record]:

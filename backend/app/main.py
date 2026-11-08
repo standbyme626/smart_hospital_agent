@@ -19,6 +19,7 @@ from .mcp_client import HospitalMCPClient
 from .model_gateway import ModelGateway
 from .retrieval import RetrievalService
 from .routes import router
+from .security import bootstrap_users
 from .session_store import SessionStore
 from .tools import ToolRegistry
 
@@ -34,6 +35,7 @@ async def lifespan(app: FastAPI):
     db = Database(settings)
     try:
         await db.init_schema()
+        await bootstrap_users(settings, db)
     except Exception as exc:  # keep the app bootable for diagnostics
         print(f"[startup] database init failed: {exc}")
     gateway = ModelGateway(settings)

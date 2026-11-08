@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ChatRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     message: str = Field(..., min_length=1, max_length=4000)
     session_id: str | None = None
-    user_id: str | None = None
     member_id: str | None = None
     mode: str = "patient"
 
@@ -23,13 +24,15 @@ class LoginRequest(BaseModel):
 
 
 class LockRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     slot_id: str
-    patient_id: str | None = None
 
 
 class OrderRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     lock_id: str
-    patient_id: str | None = None
 
 
 class PayRequest(BaseModel):
@@ -40,6 +43,19 @@ class PayRequest(BaseModel):
 class EvalRequest(BaseModel):
     name: str = "smoke"
     limit: int = Field(100, ge=10, le=500)
+
+
+class AdminUserCreateRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=64)
+    password: str = Field(..., min_length=6, max_length=200)
+    role: Literal["admin", "patient"] = "patient"
+    enabled: bool = True
+
+
+class AdminUserUpdateRequest(BaseModel):
+    enabled: bool | None = None
+    role: Literal["admin", "patient"] | None = None
+    password: str | None = Field(default=None, min_length=6, max_length=200)
 
 
 class FamilyMemberRequest(BaseModel):

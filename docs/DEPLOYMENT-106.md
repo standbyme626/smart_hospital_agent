@@ -204,7 +204,6 @@ ADMIN_USER=admin
 ADMIN_PASSWORD=<random>
 PATIENT_USER=patient
 PATIENT_PASSWORD=<random>
-GUEST_LOGIN_ENABLED=false
 HITL_CONFIRM_TOKEN=change-me   # 占位符；真实值只存服务器凭据文件
 DATABASE_URL=postgresql://sha:...@127.0.0.1:5434/sha
 HOSPITAL_MCP_URL=http://127.0.0.1:9100/mcp

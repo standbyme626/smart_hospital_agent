@@ -44,7 +44,6 @@ class Settings(BaseSettings):
     ADMIN_PASSWORD: str = "admin123456"
     PATIENT_USER: str = "patient"
     PATIENT_PASSWORD: str = "patient123456"
-    GUEST_LOGIN_ENABLED: bool = True
     CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
     RATE_LIMIT_PER_MINUTE: int = 60
 

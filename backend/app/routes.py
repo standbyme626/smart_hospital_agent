@@ -15,6 +15,8 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from .api.deps import create_token, get_current_user, require_admin
 from .policy import DEPARTMENT_NAMES, DRUG_CHECKER
 from .schemas import (
+    AdminUserCreateRequest,
+    AdminUserUpdateRequest,
     AnalyticsEventRequest,
     ChatRequest,
     DrugCheckRequest,
@@ -28,6 +30,14 @@ from .schemas import (
     OrderRequest,
     PayRequest,
 )
+from .security import (
+    clear_failures,
+    hash_password,
+    is_locked,
+    login_key,
+    record_failure,
+    verify_password,
+)
 from .session_store import jsonable
 
 router = APIRouter()
@@ -35,6 +45,20 @@ router = APIRouter()
 
 def _state(request: Request) -> Any:
     return request.app.state
+
+
+def _client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+    return request.headers.get("x-real-ip") or forwarded or (request.client.host if request.client else "unknown")
+
+
+def _public_user(row: Any) -> dict[str, Any]:
+    data = dict(row)
+    return {
+        key: value
+        for key, value in data.items()
+        if key in {"id", "username", "role", "enabled", "created_at", "updated_at"}
+    }
 
 
 def _sse(event: dict[str, Any]) -> str:
@@ -81,15 +105,53 @@ async def _ensure_self_member(db: Any, user_id: str) -> dict[str, Any]:
     return dict(row) if row else {"id": member_id, "user_id": user_id, "name": "本人", "relation": "self", "is_self": True}
 
 
+async def _owned_member(db: Any, member_id: str, user_id: str) -> dict[str, Any]:
+    row = await db.fetchrow(
+        "SELECT * FROM family_members WHERE id=$1 AND user_id=$2",
+        member_id,
+        user_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="member not found")
+    return dict(row)
+
+
+async def _owned_session(db: Any, session_id: str, user_id: str) -> dict[str, Any]:
+    row = await db.fetchrow(
+        "SELECT * FROM sessions WHERE id=$1 AND user_id=$2",
+        session_id,
+        user_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="session not found")
+    return dict(row)
+
+
+async def _owned_report(db: Any, report_id: str, user_id: str) -> dict[str, Any]:
+    row = await db.fetchrow(
+        "SELECT * FROM reports WHERE id=$1 AND user_id=$2",
+        report_id,
+        user_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="report not found")
+    return dict(row)
+
+
+async def _owned_order(db: Any, order_id: str, user_id: str) -> dict[str, Any]:
+    row = await db.fetchrow(
+        "SELECT * FROM bookings WHERE id=$1 AND (user_id=$2 OR patient_id=$2)",
+        order_id,
+        user_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="order not found")
+    return dict(row)
+
+
 async def _member_row(db: Any, member_id: str | None, user_id: str) -> dict[str, Any]:
     if member_id:
-        row = await db.fetchrow(
-            "SELECT * FROM family_members WHERE id=$1 AND user_id=$2",
-            member_id,
-            user_id,
-        )
-        if row:
-            return dict(row)
+        return await _owned_member(db, member_id, user_id)
     return await _ensure_self_member(db, user_id)
 
 
@@ -124,19 +186,39 @@ def _parse_json_text(content: str) -> dict[str, Any] | None:
 # --------------------------------------------------------------------- auth
 @router.post("/api/v1/auth/login")
 async def login(payload: LoginRequest, request: Request) -> dict[str, Any]:
-    settings = _state(request).settings
-    if payload.username == settings.ADMIN_USER and payload.password == settings.ADMIN_PASSWORD:
-        return {"access_token": create_token(settings, payload.username, "admin"), "token_type": "bearer", "role": "admin"}
-    if payload.username == settings.PATIENT_USER and payload.password == settings.PATIENT_PASSWORD:
-        return {"access_token": create_token(settings, payload.username, "patient"), "token_type": "bearer", "role": "patient"}
-    if settings.GUEST_LOGIN_ENABLED and payload.username == "guest" and payload.password == "guest":
-        return {"access_token": create_token(settings, "guest", "patient"), "token_type": "bearer", "role": "patient"}
-    raise HTTPException(status_code=401, detail="invalid credentials")
+    state = _state(request)
+    if not state.db or not getattr(state.db, "pool", None):
+        raise HTTPException(status_code=503, detail="database unavailable")
+    key = login_key(payload.username, _client_ip(request))
+    if is_locked(key):
+        raise HTTPException(status_code=423, detail="account locked, try again later")
+    row = await state.db.fetchrow(
+        "SELECT id, username, role, enabled, password_hash FROM users WHERE username=$1",
+        payload.username,
+    )
+    if not row or not verify_password(payload.password, row["password_hash"]):
+        if record_failure(key):
+            raise HTTPException(status_code=423, detail="account locked, try again later")
+        raise HTTPException(status_code=401, detail="invalid credentials")
+    if not row["enabled"]:
+        raise HTTPException(status_code=403, detail="user disabled")
+    clear_failures(key)
+    return {
+        "access_token": create_token(state.settings, row["id"], row["role"]),
+        "token_type": "bearer",
+        "role": row["role"],
+        "username": row["username"],
+    }
 
 
 @router.get("/api/v1/auth/me")
 async def me(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
-    return {"user": user.get("sub"), "role": user.get("role")}
+    return {
+        "user": user.get("sub"),
+        "username": user.get("username"),
+        "role": user.get("role"),
+        "enabled": user.get("enabled", True),
+    }
 
 
 # -------------------------------------------------------------------- chat
@@ -149,7 +231,14 @@ async def chat_stream(
     state = _state(request)
     session_id = payload.session_id or f"sess_{uuid.uuid4().hex[:12]}"
     request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
-    user_id = payload.user_id or str(user.get("sub") or "anonymous")
+    user_id = str(user["sub"])
+    if payload.session_id:
+        existing = await state.db.fetchrow(
+            "SELECT user_id FROM sessions WHERE id=$1",
+            session_id,
+        )
+        if existing and existing["user_id"] != user_id:
+            raise HTTPException(status_code=404, detail="session not found")
     try:
         member = await _member_row(state.db, payload.member_id, user_id)
     except Exception:
@@ -229,7 +318,7 @@ async def list_sessions(
     request: Request,
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
-    sessions = await _state(request).sessions.list_sessions(str(user.get("sub") or "anonymous"))
+    sessions = await _state(request).sessions.list_sessions(str(user["sub"]))
     return {"sessions": sessions}
 
 
@@ -240,6 +329,7 @@ async def session_events(
     after: int = Query(0, ge=0),
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
+    await _owned_session(_state(request).db, session_id, str(user["sub"]))
     events = await _state(request).sessions.events(session_id, after=after)
     return {"session_id": session_id, "events": events}
 
@@ -300,7 +390,7 @@ async def booking_lock(
     data = await _mcp(
         _state(request),
         "lock_slot",
-        {"slot_id": payload.slot_id, "patient_id": payload.patient_id or str(user.get("sub"))},
+        {"slot_id": payload.slot_id, "patient_id": str(user["sub"])},
     )
     return {"lock": data}
 
@@ -315,17 +405,18 @@ async def booking_order(
     data = await _mcp(
         state,
         "create_order",
-        {"lock_id": payload.lock_id, "patient_id": payload.patient_id or str(user.get("sub"))},
+        {"lock_id": payload.lock_id, "patient_id": str(user["sub"])},
     )
     await state.db.execute(
         """
-        INSERT INTO bookings (id, session_id, patient_id, department, slot_id, order_id, status, payment_status, amount, detail)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
+        INSERT INTO bookings (id, session_id, patient_id, user_id, department, slot_id, order_id, status, payment_status, amount, detail)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
         ON CONFLICT (id) DO NOTHING
         """,
         data.get("order_id"),
-        str(user.get("sub")),
-        data.get("patient_id"),
+        str(user["sub"]),
+        str(user["sub"]),
+        str(user["sub"]),
         (data.get("slot_id") or "").split("|")[0],
         data.get("slot_id"),
         data.get("order_id"),
@@ -345,6 +436,7 @@ async def booking_pay(
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     state = _state(request)
+    await _owned_order(state.db, order_id, str(user["sub"]))
     if payload.confirm_token != state.settings.HITL_CONFIRM_TOKEN:
         raise HTTPException(status_code=403, detail="invalid confirmation token")
     data = await _mcp(
@@ -353,19 +445,20 @@ async def booking_pay(
         {"order_id": order_id, "confirm_token": payload.confirm_token, "method": payload.method},
     )
     await state.db.execute(
-        "UPDATE bookings SET payment_status=$2, status=$3, updated_at=now() WHERE id=$1",
+        "UPDATE bookings SET payment_status=$2, status=$3, updated_at=now() WHERE id=$1 AND (user_id=$4 OR patient_id=$4)",
         order_id,
         data.get("payment_status", "paid"),
         data.get("status", "booked"),
+        str(user["sub"]),
     )
     await state.sessions.audit(
         request_id=request.headers.get("X-Request-ID") or uuid.uuid4().hex,
-        session_id=str(user.get("sub")),
-        actor=str(user.get("sub")),
+        session_id=str(user["sub"]),
+        actor=str(user["sub"]),
         action="booking.pay",
         detail=data,
     )
-    user_id = str(user.get("sub") or "anonymous")
+    user_id = str(user["sub"])
     member = await _ensure_self_member(state.db, user_id)
     department = (data.get("slot_id") or "").split("|")[0]
     await _add_event(
@@ -403,7 +496,9 @@ async def booking_status(
     request: Request,
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
-    data = await _mcp(_state(request), "get_payment_status", {"order_id": order_id})
+    state = _state(request)
+    await _owned_order(state.db, order_id, str(user["sub"]))
+    data = await _mcp(state, "get_payment_status", {"order_id": order_id})
     return {"order": data}
 
 
@@ -413,11 +508,77 @@ async def booking_cancel(
     request: Request,
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
-    data = await _mcp(_state(request), "cancel_order", {"order_id": order_id})
+    state = _state(request)
+    await _owned_order(state.db, order_id, str(user["sub"]))
+    data = await _mcp(state, "cancel_order", {"order_id": order_id})
     return {"order": data}
 
 
 # ------------------------------------------------------------------- admin
+@router.get("/api/v1/admin/users")
+async def list_users(
+    request: Request,
+    user: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    rows = await _state(request).db.fetch(
+        "SELECT id, username, role, enabled, created_at, updated_at FROM users ORDER BY created_at, username"
+    )
+    return {"users": [_public_user(row) for row in rows]}
+
+
+@router.post("/api/v1/admin/users", status_code=201)
+async def create_user(
+    payload: AdminUserCreateRequest,
+    request: Request,
+    user: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    db = _state(request).db
+    row = await db.fetchrow(
+        """
+        INSERT INTO users (id, username, password_hash, role, enabled)
+        VALUES ($1, $1, $2, $3, $4)
+        ON CONFLICT (id) DO NOTHING
+        RETURNING id, username, role, enabled, created_at, updated_at
+        """,
+        payload.username,
+        hash_password(payload.password),
+        payload.role,
+        payload.enabled,
+    )
+    if not row:
+        raise HTTPException(status_code=409, detail="user already exists")
+    return {"user": _public_user(row)}
+
+
+@router.patch("/api/v1/admin/users/{user_id}")
+async def update_user(
+    user_id: str,
+    payload: AdminUserUpdateRequest,
+    request: Request,
+    user: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    db = _state(request).db
+    sets = ["updated_at = now()"]
+    args: list[Any] = [user_id]
+    if payload.enabled is not None:
+        args.append(payload.enabled)
+        sets.append(f"enabled = ${len(args)}")
+    if payload.role is not None:
+        args.append(payload.role)
+        sets.append(f"role = ${len(args)}")
+    if payload.password is not None:
+        args.append(hash_password(payload.password))
+        sets.append(f"password_hash = ${len(args)}")
+    row = await db.fetchrow(
+        f"UPDATE users SET {', '.join(sets)} WHERE id = $1 "
+        "RETURNING id, username, role, enabled, created_at, updated_at",
+        *args,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="user not found")
+    return {"user": _public_user(row)}
+
+
 @router.get("/api/v1/admin/model-calls")
 async def model_calls(
     request: Request,
@@ -483,7 +644,7 @@ async def list_family(
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     db = _state(request).db
-    user_id = str(user.get("sub") or "anonymous")
+    user_id = str(user["sub"])
     await _ensure_self_member(db, user_id)
     rows = await db.fetch(
         "SELECT * FROM family_members WHERE user_id=$1 ORDER BY is_self DESC, created_at ASC",
@@ -499,7 +660,7 @@ async def create_family_member(
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     db = _state(request).db
-    user_id = str(user.get("sub") or "anonymous")
+    user_id = str(user["sub"])
     member_id = "mem_" + uuid.uuid4().hex[:10]
     if payload.is_self:
         await db.execute("UPDATE family_members SET is_self=false WHERE user_id=$1", user_id)
@@ -532,7 +693,7 @@ async def update_family_member(
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     db = _state(request).db
-    user_id = str(user.get("sub") or "anonymous")
+    user_id = str(user["sub"])
     existing = await db.fetchrow(
         "SELECT * FROM family_members WHERE id=$1 AND user_id=$2", member_id, user_id
     )
@@ -569,7 +730,7 @@ async def delete_family_member(
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     db = _state(request).db
-    user_id = str(user.get("sub") or "anonymous")
+    user_id = str(user["sub"])
     row = await db.fetchrow(
         "SELECT is_self FROM family_members WHERE id=$1 AND user_id=$2", member_id, user_id
     )
@@ -589,8 +750,9 @@ async def list_medications(
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     db = _state(request).db
-    user_id = str(user.get("sub") or "anonymous")
+    user_id = str(user["sub"])
     if member_id:
+        await _owned_member(db, member_id, user_id)
         rows = await db.fetch(
             "SELECT * FROM medications WHERE user_id=$1 AND member_id=$2 ORDER BY active DESC, created_at DESC",
             user_id,
@@ -611,7 +773,7 @@ async def create_medication(
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     db = _state(request).db
-    user_id = str(user.get("sub") or "anonymous")
+    user_id = str(user["sub"])
     member = await _member_row(db, payload.member_id, user_id)
     med_id = "med_" + uuid.uuid4().hex[:10]
     row = await db.fetchrow(
@@ -648,7 +810,7 @@ async def update_medication(
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     db = _state(request).db
-    user_id = str(user.get("sub") or "anonymous")
+    user_id = str(user["sub"])
     row = await db.fetchrow(
         "UPDATE medications SET active=$3 WHERE id=$1 AND user_id=$2 RETURNING *",
         med_id,
@@ -667,8 +829,10 @@ async def delete_medication(
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     db = _state(request).db
-    user_id = str(user.get("sub") or "anonymous")
-    await db.execute("DELETE FROM medications WHERE id=$1 AND user_id=$2", med_id, user_id)
+    user_id = str(user["sub"])
+    deleted = await db.execute("DELETE FROM medications WHERE id=$1 AND user_id=$2", med_id, user_id)
+    if deleted == "DELETE 0":
+        raise HTTPException(status_code=404, detail="medication not found")
     return {"ok": True}
 
 
@@ -679,7 +843,7 @@ async def check_medications(
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     db = _state(request).db
-    user_id = str(user.get("sub") or "anonymous")
+    user_id = str(user["sub"])
     member = await _member_row(db, payload.member_id, user_id)
     rows = await db.fetch(
         "SELECT name, dose FROM medications WHERE user_id=$1 AND member_id=$2 AND active=true",
@@ -725,7 +889,7 @@ async def interpret_report(
 ) -> dict[str, Any]:
     state = _state(request)
     settings = state.settings
-    user_id = str(user.get("sub") or "anonymous")
+    user_id = str(user["sub"])
     member = await _member_row(state.db, member_id or None, user_id)
     data = await file.read()
     if not data:
@@ -805,8 +969,9 @@ async def list_reports(
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     db = _state(request).db
-    user_id = str(user.get("sub") or "anonymous")
+    user_id = str(user["sub"])
     if member_id:
+        await _owned_member(db, member_id, user_id)
         rows = await db.fetch(
             "SELECT id, title, summary, abnormal_values, questions, created_at FROM reports WHERE user_id=$1 AND member_id=$2 ORDER BY created_at DESC LIMIT 30",
             user_id,
@@ -826,13 +991,7 @@ async def get_report(
     request: Request,
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
-    row = await _state(request).db.fetchrow(
-        "SELECT * FROM reports WHERE id=$1 AND user_id=$2",
-        report_id,
-        str(user.get("sub") or "anonymous"),
-    )
-    if not row:
-        raise HTTPException(status_code=404, detail="report not found")
+    row = await _owned_report(_state(request).db, report_id, str(user["sub"]))
     return {"report": _row_json(row)}
 
 
@@ -844,7 +1003,7 @@ async def list_followups(
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     db = _state(request).db
-    user_id = str(user.get("sub") or "anonymous")
+    user_id = str(user["sub"])
     if status:
         rows = await db.fetch(
             "SELECT * FROM followups WHERE user_id=$1 AND status=$2 ORDER BY due_date NULLS LAST, created_at DESC LIMIT 50",
@@ -866,7 +1025,7 @@ async def create_followup(
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     db = _state(request).db
-    user_id = str(user.get("sub") or "anonymous")
+    user_id = str(user["sub"])
     member = await _member_row(db, payload.member_id, user_id)
     followup_id = "fu_" + uuid.uuid4().hex[:10]
     row = await db.fetchrow(
@@ -895,7 +1054,7 @@ async def complete_followup(
     row = await _state(request).db.fetchrow(
         "UPDATE followups SET status='done' WHERE id=$1 AND user_id=$2 RETURNING *",
         followup_id,
-        str(user.get("sub") or "anonymous"),
+        str(user["sub"]),
     )
     if not row:
         raise HTTPException(status_code=404, detail="followup not found")
@@ -911,8 +1070,9 @@ async def health_timeline(
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     db = _state(request).db
-    user_id = str(user.get("sub") or "anonymous")
+    user_id = str(user["sub"])
     if member_id:
+        await _owned_member(db, member_id, user_id)
         rows = await db.fetch(
             "SELECT id, kind, title, detail, occurred_at FROM health_events WHERE user_id=$1 AND member_id=$2 ORDER BY occurred_at DESC LIMIT $3",
             user_id,
@@ -943,7 +1103,7 @@ async def home_summary(
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     state = _state(request)
-    user_id = str(user.get("sub") or "anonymous")
+    user_id = str(user["sub"])
     member = await _member_row(state.db, member_id, user_id)
     sessions = await state.sessions.list_sessions(user_id, limit=1)
     followups = await state.db.fetch(
@@ -1000,7 +1160,9 @@ async def visit_guide(
     order_id: str = Query(...),
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
-    data = await _mcp(_state(request), "get_visit_guide", {"order_id": order_id})
+    state = _state(request)
+    await _owned_order(state.db, order_id, str(user["sub"]))
+    data = await _mcp(state, "get_visit_guide", {"order_id": order_id})
     return data
 
 
@@ -1013,7 +1175,7 @@ async def analytics_event(
 ) -> dict[str, Any]:
     await _state(request).db.execute(
         "INSERT INTO analytics_events (user_id, session_id, name, props) VALUES ($1,$2,$3,$4::jsonb)",
-        str(user.get("sub") or "anonymous"),
+        str(user["sub"]),
         payload.session_id,
         payload.name,
         json.dumps(payload.props, ensure_ascii=False),
