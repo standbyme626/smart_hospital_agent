@@ -21,15 +21,12 @@ from .schemas import (
     EvalRequest,
     FamilyMemberRequest,
     FollowupRequest,
-    LocalAnalyzeRequest,
     LockRequest,
     LoginRequest,
     MedCheckRequest,
     MedicationRequest,
     OrderRequest,
     PayRequest,
-    RagSearchRequest,
-    RuleRequest,
 )
 from .session_store import jsonable
 
@@ -248,20 +245,6 @@ async def session_events(
 
 
 # --------------------------------------------------------------------- rag
-@router.post("/api/v1/rag/search")
-async def rag_search(
-    payload: RagSearchRequest,
-    request: Request,
-    user: dict[str, Any] = Depends(get_current_user),
-) -> dict[str, Any]:
-    results = await _state(request).retrieval.search(
-        payload.query,
-        top_k=payload.top_k,
-        department=payload.department,
-    )
-    return {"query": payload.query, "count": len(results), "results": results}
-
-
 @router.get("/api/v1/rag/status")
 async def rag_status(request: Request) -> dict[str, Any]:
     state = _state(request)
@@ -277,31 +260,6 @@ async def rag_status(request: Request) -> dict[str, Any]:
 @router.get("/api/v1/departments")
 async def departments() -> dict[str, Any]:
     return {"departments": DEPARTMENT_NAMES}
-
-
-@router.post("/api/v1/local/analyze")
-async def local_analyze(
-    payload: LocalAnalyzeRequest,
-    request: Request,
-    user: dict[str, Any] = Depends(get_current_user),
-) -> dict[str, Any]:
-    state = _state(request)
-    result = await state.gateway.chat(
-        [
-            {"role": "system", "content": payload.instruction},
-            {"role": "user", "content": payload.text},
-        ],
-        task="local",
-        temperature=0.3,
-        max_tokens=800,
-        session_id=f"local-{uuid.uuid4().hex[:8]}",
-    )
-    return {
-        "content": result.content,
-        "provider": result.provider,
-        "model": result.model,
-        "tokens": {"prompt": result.prompt_tokens, "completion": result.completion_tokens},
-    }
 
 
 @router.post("/api/v1/drug/check")
@@ -460,48 +418,6 @@ async def booking_cancel(
 
 
 # ------------------------------------------------------------------- admin
-@router.get("/api/v1/admin/rules")
-async def list_rules(
-    request: Request,
-    user: dict[str, Any] = Depends(require_admin),
-) -> dict[str, Any]:
-    rows = await _state(request).db.fetch(
-        "SELECT id, kind, key, value, enabled, created_at FROM rules ORDER BY id DESC LIMIT 200"
-    )
-    return {"rules": [dict(row) for row in rows]}
-
-
-@router.post("/api/v1/admin/rules")
-async def upsert_rule(
-    payload: RuleRequest,
-    request: Request,
-    user: dict[str, Any] = Depends(require_admin),
-) -> dict[str, Any]:
-    row = await _state(request).db.fetchrow(
-        """
-        INSERT INTO rules (kind, key, value, enabled)
-        VALUES ($1, $2, $3::jsonb, $4)
-        ON CONFLICT (kind, key) DO UPDATE SET value=EXCLUDED.value, enabled=EXCLUDED.enabled
-        RETURNING id, kind, key, value, enabled
-        """,
-        payload.kind,
-        payload.key,
-        json.dumps(payload.value, ensure_ascii=False),
-        payload.enabled,
-    )
-    return {"rule": dict(row) if row else None}
-
-
-@router.delete("/api/v1/admin/rules/{rule_id}")
-async def disable_rule(
-    rule_id: int,
-    request: Request,
-    user: dict[str, Any] = Depends(require_admin),
-) -> dict[str, Any]:
-    await _state(request).db.execute("UPDATE rules SET enabled=false WHERE id=$1", rule_id)
-    return {"ok": True}
-
-
 @router.get("/api/v1/admin/model-calls")
 async def model_calls(
     request: Request,
@@ -558,50 +474,6 @@ async def eval_results(
         "SELECT id, name, metrics, created_at FROM eval_runs ORDER BY id DESC LIMIT 20"
     )
     return {"results": [dict(row) for row in rows]}
-
-
-@router.post("/api/v1/evolution/run")
-async def evolution_run(
-    payload: EvalRequest,
-    request: Request,
-    user: dict[str, Any] = Depends(require_admin),
-) -> dict[str, Any]:
-    return await run_eval(payload, request, user)
-
-
-@router.get("/api/v1/evolution/results")
-async def evolution_results(
-    request: Request,
-    user: dict[str, Any] = Depends(require_admin),
-) -> dict[str, Any]:
-    return await eval_results(request, user)
-
-
-# ------------------------------------------------------------------ doctor
-@router.post("/api/v1/doctor/consult")
-async def doctor_consult(
-    payload: ChatRequest,
-    request: Request,
-    user: dict[str, Any] = Depends(get_current_user),
-) -> dict[str, Any]:
-    if user.get("role") not in {"doctor", "admin"}:
-        raise HTTPException(status_code=403, detail="doctor role required")
-    state = _state(request)
-    session_id = payload.session_id or f"doc_{uuid.uuid4().hex[:12]}"
-    request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
-    final: dict[str, Any] | None = None
-    async for event in state.agent.stream(
-        session_id=session_id,
-        message=f"医生工作台咨询：{payload.message}",
-        user_id=str(user.get("sub")),
-        request_id=request_id,
-    ):
-        if event["type"] == "final":
-            final = event["data"]
-    if not final:
-        raise HTTPException(status_code=502, detail="no report produced")
-    return {"session_id": session_id, **final}
-
 
 
 # ------------------------------------------------------------------- family
