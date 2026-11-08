@@ -17,8 +17,31 @@
 
 ---
 
+## 界面预览
+
+> 以下截图来自本地运行实例：mock 医院 MCP、527 条种子文档、真实 DeepSeek V4.1 Flash 与 SiliconFlow Qwen3-8B（向量/重排）。
+
+| 问诊首页 | 分诊报告 |
+|---|---|
+| ![问诊首页](docs/screenshots/01-chat-home.png) | ![分诊报告](docs/screenshots/02-chat-report.png) |
+
+| 证据溯源 | 挂号选号 |
+|---|---|
+| ![证据溯源](docs/screenshots/03-evidence.png) | ![挂号选号](docs/screenshots/04-booking.png) |
+
+| 支付成功（HITL） | 运营后台 |
+|---|---|
+| ![支付成功](docs/screenshots/05-booking-paid.png) | ![运营后台](docs/screenshots/06-admin.png) |
+
+| 登录页 |
+|---|
+| ![登录页](docs/screenshots/07-login.png) |
+
+---
+
 ## 目录
 
+- [界面预览](#界面预览)
 - [1. 从 v1 到 v2 改了什么](#1-从-v1-到-v2-改了什么)
 - [2. 架构](#2-架构)
 - [3. 模型与外部依赖](#3-模型与外部依赖)
@@ -294,7 +317,7 @@ data: [DONE]
 
 | 项目 | 结果 | 说明 |
 |---|---|---|
-| 检索冒烟 | Recall@5 **1.0**，MRR@5 **0.9**（n=20） | **in-corpus**：query 取文档标题，答案就在同一索引内；不是留出集 |
+| 检索冒烟 | Recall@5 **1.0**，MRR@5 **0.86**（n=30） | **in-corpus**：query 取文档标题，答案就在同一索引内；不是留出集 |
 | 危机检测 | precision **1.0**，recall **1.0**（n=500） | 关键词表使用了这份 benchmark 的失败样本做扩充，**in-sample**，不是盲测 |
 | 后端测试 | **15 passed** | `backend/tests` |
 | 前端构建 | **通过** | Next.js 16.4.5 生产构建 |
