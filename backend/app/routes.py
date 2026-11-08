@@ -1261,39 +1261,39 @@ async def interpret_report(
     upload_dir.mkdir(parents=True, exist_ok=True)
     report_id = "rep_" + uuid.uuid4().hex[:12]
     image_path = upload_dir / f"{report_id}{suffix}"
-    image_path.write_bytes(data)
+    committed = False
     try:
-        b64 = base64.b64encode(data).decode("ascii")
-        is_skin = kind == "skin"
-        result = await state.gateway.chat(
-            [
-                {"role": "system", "content": SKIN_SYSTEM if is_skin else REPORT_SYSTEM},
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "请观察这张皮肤照片，按系统要求的 JSON 输出。" if is_skin else "请解读这份检查/检验报告，按系统要求的 JSON 输出。",
-                        },
-                        {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
-                    ],
-                },
-            ],
-            task="diagnosis",
-            temperature=0.1,
-            max_tokens=2200,
-            reasoning_effort="high",
-            session_id=f"report-{report_id}",
-        )
-    except Exception as exc:
-        image_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=502, detail="报告解读服务暂不可用，请稍后再试") from exc
-    parsed = _parse_json_text(result.content) or {}
-    summary = str(parsed.get("summary") or result.content or "报告已上传，但模型未返回可读摘要。")
-    abnormal = parsed.get("abnormal_values") or []
-    questions = parsed.get("questions") or []
-    report_title = title.strip() or (("皮肤照片" if is_skin else file.filename) or "检查报告")
-    try:
+        image_path.write_bytes(data)
+        try:
+            b64 = base64.b64encode(data).decode("ascii")
+            is_skin = kind == "skin"
+            result = await state.gateway.chat(
+                [
+                    {"role": "system", "content": SKIN_SYSTEM if is_skin else REPORT_SYSTEM},
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "请观察这张皮肤照片，按系统要求的 JSON 输出。" if is_skin else "请解读这份检查/检验报告，按系统要求的 JSON 输出。",
+                            },
+                            {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+                        ],
+                    },
+                ],
+                task="diagnosis",
+                temperature=0.1,
+                max_tokens=2200,
+                reasoning_effort="high",
+                session_id=f"report-{report_id}",
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail="报告解读服务暂不可用，请稍后再试") from exc
+        parsed = _parse_json_text(result.content) or {}
+        summary = str(parsed.get("summary") or result.content or "报告已上传，但模型未返回可读摘要。")
+        abnormal = parsed.get("abnormal_values") or []
+        questions = parsed.get("questions") or []
+        report_title = title.strip() or (("皮肤照片" if is_skin else file.filename) or "检查报告")
         async with state.db.transaction() as conn:
             row = await conn.fetchrow(
                 """
@@ -1319,9 +1319,13 @@ async def interpret_report(
                 f"报告解读 · {report_title}",
                 {"report_id": report_id, "summary": summary[:160], "abnormal_count": len(abnormal)},
             )
-    except Exception:
-        image_path.unlink(missing_ok=True)
-        raise
+        committed = True
+    finally:
+        if not committed:
+            try:
+                image_path.unlink(missing_ok=True)
+            except OSError:
+                pass
     return {
         "report": _report_json(settings, row) if row else None,
         "model": {"provider": result.provider, "model": result.model},
@@ -1397,7 +1401,7 @@ async def delete_report(
             user_id,
             report_id,
         )
-    remove_report_image(state.settings, row.get("image_path"))
+    file_removed = remove_report_image(state.settings, row.get("image_path"))
     await state.sessions.audit(
         request_id=getattr(request.state, "request_id", uuid.uuid4().hex),
         session_id=user_id,
@@ -1405,7 +1409,7 @@ async def delete_report(
         action="report.delete",
         detail={"report_id": report_id},
     )
-    return {"ok": True}
+    return {"ok": True, "file_removed": file_removed}
 
 
 # -------------------------------------------------------- account export/delete
@@ -1450,7 +1454,7 @@ async def export_me(
         for row in report_rows:
             path = resolve_report_image(state.settings, row["image_path"])
             if path is not None and path.is_file():
-                bundle.write(path, f"reports/{path.name}")
+                bundle.write(path, f"uploads/reports/{path.name}")
     return Response(
         content=buffer.getvalue(),
         media_type="application/zip",
@@ -1486,9 +1490,11 @@ async def delete_me(
         if remaining == 0:
             raise HTTPException(status_code=400, detail="cannot delete the last enabled admin")
     tag = "deleted-" + hashlib.sha256(user_id.encode("utf-8")).hexdigest()[:12]
-    report_rows = await db.fetch("SELECT image_path FROM reports WHERE user_id=$1", user_id)
-    session_ids = [item["id"] for item in await db.fetch("SELECT id FROM sessions WHERE user_id=$1", user_id)]
     async with db.transaction() as conn:
+        report_rows = await conn.fetch("SELECT image_path FROM reports WHERE user_id=$1", user_id)
+        session_ids = [
+            item["id"] for item in await conn.fetch("SELECT id FROM sessions WHERE user_id=$1", user_id)
+        ]
         if session_ids:
             await conn.execute("DELETE FROM events WHERE session_id = ANY($1::text[])", session_ids)
             await conn.execute(
@@ -1510,7 +1516,11 @@ async def delete_me(
         await conn.execute("DELETE FROM review_requests WHERE user_id=$1", user_id)
         await conn.execute("DELETE FROM family_members WHERE user_id=$1", user_id)
         await conn.execute("DELETE FROM users WHERE id=$1", user_id)
-        await conn.execute("UPDATE audit_log SET actor=$2 WHERE actor=$1", user_id, tag)
+        await conn.execute(
+            "UPDATE audit_log SET actor=$2, session_id=$2 WHERE actor=$1 OR session_id=$1",
+            user_id,
+            tag,
+        )
         await conn.execute("UPDATE analytics_events SET user_id=$2 WHERE user_id=$1", user_id, tag)
         await conn.execute(
             """
@@ -1521,9 +1531,8 @@ async def delete_me(
             tag,
             json.dumps({"deleted_user": tag}, ensure_ascii=False),
         )
-    for item in report_rows:
-        remove_report_image(state.settings, item["image_path"])
-    return {"ok": True}
+    files_removed = all([remove_report_image(state.settings, item["image_path"]) for item in report_rows])
+    return {"ok": True, "file_removed": files_removed}
 
 
 # ----------------------------------------------------------------- followup

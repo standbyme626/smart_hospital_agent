@@ -209,9 +209,23 @@ def test_report_image_rejects_traversal_and_missing_file(client):
         str(_uploads(client) / "reports" / "does_not_exist.jpg"),
     )
 
+    legacy = _uploads(client) / "reports" / "legacy.gif"
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    legacy.write_bytes(b"GIF89a")
+    _sql(
+        client,
+        "INSERT INTO reports (id, user_id, title, image_path) VALUES ($1,$2,$3,$4)",
+        "rep_legacy",
+        "patient",
+        "旧格式图片",
+        str(legacy),
+    )
+
     assert client.get("/api/v1/reports/rep_traversal/image", headers=patient).status_code == 404
     missing = client.get("/api/v1/reports/rep_missing/image", headers=patient)
     assert missing.status_code == 404
+    assert client.get("/api/v1/reports/rep_legacy/image", headers=patient).status_code == 404
+    assert client.get("/api/v1/reports/rep_legacy", headers=patient).json()["report"]["has_image"] is False
 
     detail = client.get("/api/v1/reports/rep_missing", headers=patient)
     assert detail.status_code == 200
@@ -237,7 +251,7 @@ def test_delete_report_removes_row_file_and_event(client):
 
     deleted = client.delete("/api/v1/reports/rep_delete", headers=patient)
     assert deleted.status_code == 200, deleted.text
-    assert deleted.json() == {"ok": True}
+    assert deleted.json() == {"ok": True, "file_removed": True}
     assert not path.exists()
     assert _fetchval(client, "SELECT count(*) FROM reports WHERE id='rep_delete'") == 0
     assert (
@@ -333,9 +347,9 @@ def test_export_zip_contains_only_own_data(client):
     archive = zipfile.ZipFile(io.BytesIO(response.content))
     names = set(archive.namelist())
     assert "data.json" in names
-    assert "reports/rep_a.jpg" in names
-    assert "reports/rep_b.jpg" not in names
-    assert archive.read("reports/rep_a.jpg") == b"\xff\xd8alpha"
+    assert "uploads/reports/rep_a.jpg" in names
+    assert "uploads/reports/rep_b.jpg" not in names
+    assert archive.read("uploads/reports/rep_a.jpg") == b"\xff\xd8alpha"
 
     data = json.loads(archive.read("data.json"))
     assert data["user"]["id"] == USER_A
@@ -425,6 +439,13 @@ def test_delete_account_removes_data_and_invalidates_token(client):
     )
     _sql(
         client,
+        "INSERT INTO audit_log (actor, session_id, action) VALUES ($1,$2,$3)",
+        "system",
+        USER_A,
+        "chat.stream",
+    )
+    _sql(
+        client,
         "INSERT INTO model_calls (session_id, provider, model) VALUES ($1,$2,$3)",
         "sess_del",
         "fake-reports",
@@ -442,7 +463,7 @@ def test_delete_account_removes_data_and_invalidates_token(client):
         headers=headers,
     )
     assert deleted.status_code == 200, deleted.text
-    assert deleted.json() == {"ok": True}
+    assert deleted.json() == {"ok": True, "file_removed": True}
 
     assert client.get("/api/v1/auth/me", headers=_auth(auth_token)).status_code == 401
     assert _fetchval(client, "SELECT count(*) FROM users WHERE id=$1", USER_A) == 0
@@ -460,6 +481,10 @@ def test_delete_account_removes_data_and_invalidates_token(client):
 
     anonymized_actor = _fetchval(client, "SELECT actor FROM audit_log WHERE action='report.delete'")
     assert anonymized_actor.startswith("deleted-") and USER_A not in anonymized_actor
+    assert (
+        _fetchval(client, "SELECT count(*) FROM audit_log WHERE actor=$1 OR session_id=$1", USER_A)
+        == 0
+    )
     anonymized_analytics = _fetchval(client, "SELECT user_id FROM analytics_events WHERE name='report_view'")
     assert anonymized_analytics.startswith("deleted-") and USER_A not in anonymized_analytics
     anonymized_model = _fetchval(client, "SELECT session_id FROM model_calls WHERE provider='fake-reports'")

@@ -31,6 +31,8 @@ export default function ReportsPage() {
   const [reports, setReports] = useState<ReportRecord[]>([]);
   const [selected, setSelected] = useState<ReportRecord | null>(null);
   const [detailImage, setDetailImage] = useState<string | null>(null);
+  const [detailImageError, setDetailImageError] = useState(false);
+  const [detailRetry, setDetailRetry] = useState(0);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -49,6 +51,7 @@ export default function ReportsPage() {
     let objectUrl: string | null = null;
     let cancelled = false;
     setDetailImage(null);
+    setDetailImageError(false);
     if (selected?.has_image) {
       getReportImage(selected.id)
         .then((blob) => {
@@ -57,14 +60,17 @@ export default function ReportsPage() {
           setDetailImage(objectUrl);
         })
         .catch(() => {
-          if (!cancelled) setDetailImage(null);
+          if (!cancelled) {
+            setDetailImage(null);
+            setDetailImageError(true);
+          }
         });
     }
     return () => {
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [selected?.id, selected?.has_image]);
+  }, [selected?.id, selected?.has_image, detailRetry]);
 
   useEffect(() => {
     return () => {
@@ -243,6 +249,14 @@ export default function ReportsPage() {
                   <button onClick={() => openViewer(selected)} className="block w-full" aria-label="查看报告大图">
                     <img src={detailImage} alt="报告原图" className="max-h-[360px] w-full object-contain" />
                   </button>
+                ) : detailImageError ? (
+                  <div className="flex h-32 items-center justify-center gap-2 text-[12px] text-muted">
+                    <AlertTriangle size={15} className="shrink-0" />
+                    图片加载失败
+                    <button onClick={() => setDetailRetry((count) => count + 1)} className="text-primary">
+                      重试
+                    </button>
+                  </div>
                 ) : (
                   <div className="flex h-32 items-center justify-center gap-2 text-[12px] text-muted">
                     <Loader2 size={15} className="animate-spin" />

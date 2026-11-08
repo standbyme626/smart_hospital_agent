@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
 import mimetypes
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 REPORT_IMAGE_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".webp"})
 
@@ -32,11 +35,19 @@ def report_image_media_type(path: Path) -> str:
     return mimetypes.guess_type(path.name)[0] or "application/octet-stream"
 
 
-def remove_report_image(settings: Any, image_path: str | None) -> None:
+def remove_report_image(settings: Any, image_path: str | None) -> bool:
+    """Delete a report image; return False when it could not be removed."""
+    if not image_path:
+        return True
     path = resolve_report_image(settings, image_path)
     if path is None:
-        return
+        logger.warning("refusing to delete report image outside uploads: %s", image_path)
+        return False
     try:
         path.unlink(missing_ok=True)
+    except FileNotFoundError:
+        return True
     except OSError:
-        pass
+        logger.warning("failed to delete report image %s", path, exc_info=True)
+        return False
+    return True
