@@ -100,7 +100,7 @@ export default function ReportsPage() {
           <p className="mt-1 text-[12px] leading-5 text-muted">
             {mode === "skin"
               ? "拍一张清晰的皮肤照片，大医会客观描述可见表现，并给出就医建议。不诊断、不推荐处方药。"
-              : "支持化验单、检查报告、出院小结等。图片只用于本次解读，可随时删除。"}
+              : "支持化验单、检查报告、出院小结等。演示环境：数据保留用于展示；导出/删除功能见设置页（若已上线）。"}
           </p>
 
           <div className="mt-4 grid gap-4 sm:grid-cols-[1.1fr_0.9fr]">

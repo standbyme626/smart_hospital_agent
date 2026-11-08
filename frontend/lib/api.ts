@@ -250,14 +250,6 @@ export async function createOrder(lockId: string, patientId = "P001"): Promise<B
   return data.order;
 }
 
-export async function payOrder(orderId: string, confirmToken: string): Promise<BookingOrder> {
-  const data = await apiFetch<{ order: BookingOrder }>(`/api/v1/booking/orders/${orderId}/pay`, {
-    method: "POST",
-    body: JSON.stringify({ confirm_token: confirmToken, method: "mock" }),
-  });
-  return data.order;
-}
-
 export async function getOrder(orderId: string): Promise<BookingOrder> {
   const data = await apiFetch<{ order: BookingOrder }>(`/api/v1/booking/orders/${orderId}`);
   return data.order;

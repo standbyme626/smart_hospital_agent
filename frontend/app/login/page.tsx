@@ -58,9 +58,9 @@ export default function LoginPage() {
             从症状到科室，从报告到用药，从挂号到就诊指引。每条建议都可以查看医学依据，危机情况直接走急诊通道。
           </p>
           <div className="mt-8 grid gap-3 text-[13px] text-white/85">
-            <p className="flex items-center gap-2"><ShieldCheck size={15} /> 健康数据加密存储，可随时导出或删除</p>
+            <p className="flex items-center gap-2"><ShieldCheck size={15} /> 演示环境：数据保留用于展示；导出/删除功能见设置页（若已上线）</p>
             <p className="flex items-center gap-2"><ShieldCheck size={15} /> AI 不确诊、不开处方，危机情况转人工/急诊</p>
-            <p className="flex items-center gap-2"><ShieldCheck size={15} /> 挂号支付走医院 MCP，支付前需人工确认</p>
+            <p className="flex items-center gap-2"><ShieldCheck size={15} /> 挂号服务当前为演示流程，支付审核功能即将上线</p>
           </div>
         </div>
         <p className="text-[11px] text-white/50">Smart Hospital Agent v3 · 2026 H2</p>

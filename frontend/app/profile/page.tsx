@@ -189,13 +189,12 @@ export default function ProfilePage() {
         <section className="card p-5">
           <div className="flex items-center gap-2"><ShieldCheck size={17} className="text-primary" /><h2 className="section-title">隐私与数据</h2></div>
           <p className="mt-2 text-[12px] leading-6 text-muted">
-            健康数据仅用于问诊、报告解读、用药检查和就医服务。家庭成员档案需要你授权后使用。
-            如需导出或删除数据，请联系管理员；当前演示环境保留最近记录用于展示。
+            演示环境：数据保留用于展示；导出/删除功能见设置页（若已上线）。
+            家庭成员档案需要你授权后使用。
           </p>
           <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-muted">
-            <span className="chip">数据加密存储</span>
+            <span className="chip">演示环境</span>
             <span className="chip">最小化采集</span>
-            <span className="chip">可撤回授权</span>
           </div>
         </section>
 

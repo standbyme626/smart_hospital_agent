@@ -126,7 +126,7 @@ export default function HomePage() {
                   <button type="button" onClick={() => router.push("/reports/")} className="flex h-9 w-9 items-center justify-center rounded-full text-muted hover:bg-white hover:text-primary" aria-label="上传报告">
                     <Camera size={17} />
                   </button>
-                  <button type="button" onClick={startVoice} className="flex h-9 w-9 items-center justify-center rounded-full text-muted hover:bg-white hover:text-primary" aria-label="语音输入">
+                  <button type="button" onClick={startVoice} className="flex h-9 w-9 items-center justify-center rounded-full text-muted hover:bg-white hover:text-primary" aria-label="浏览器语音输入">
                     <Mic size={17} />
                   </button>
                 </div>
@@ -161,9 +161,8 @@ export default function HomePage() {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <TaskCard href="/consult/" icon={Stethoscope} title="AI 诊室" description="描述症状，得到分诊与就医方向" />
             <TaskCard href="/reports/" icon={FileText} title="报告解读" description="上传化验/检查报告，看懂异常指标" tone="amber" />
-            <TaskCard href="/reports/" icon={Camera} title="拍照识别" description="皮肤、药盒、报告拍照上传" tone="rose" />
             <TaskCard href="/meds/" icon={Pill} title="药管家" description="用药清单与相互作用检查" tone="emerald" />
-            <TaskCard href="/services/" icon={CalendarClock} title="挂号陪诊" description="选科室、医生与号源，支付后给就诊指引" tone="sky" />
+            <TaskCard href="/services/" icon={CalendarClock} title="挂号服务" description="选科室、医生与号源，支付审核即将上线" tone="sky" />
             <TaskCard href="/health/" icon={HeartPulse} title="健康档案" description="报告、用药、就诊与随访时间线" tone="violet" />
           </div>
         </section>
@@ -250,7 +249,7 @@ export default function HomePage() {
           {[
             { icon: ShieldCheck, title: "证据可追溯", text: "每条建议都有医学来源" },
             { icon: Users, title: "家庭档案", text: "为老人孩子分别建档" },
-            { icon: CalendarClock, title: "服务闭环", text: "分诊 → 挂号 → 支付 → 就诊指引" },
+            { icon: CalendarClock, title: "服务闭环", text: "分诊 → 挂号 → 健康档案" },
           ].map((item) => (
             <div key={item.title} className="flex items-center gap-3 rounded-2xl border border-line bg-card p-3">
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-soft text-primary"><item.icon size={16} /></span>

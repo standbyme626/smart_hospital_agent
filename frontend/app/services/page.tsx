@@ -7,7 +7,6 @@ import {
   CreditCard,
   Loader2,
   Lock,
-  MapPin,
   ShieldCheck,
   Star,
   Stethoscope,
@@ -20,12 +19,10 @@ import {
   getDepartments,
   getDoctors,
   getSchedules,
-  getVisitGuide,
   lockSlot,
-  payOrder,
   track,
 } from "@/lib/api";
-import type { BookingOrder, Doctor, ScheduleSlot, VisitGuide } from "@/lib/types";
+import type { BookingOrder, Doctor, ScheduleSlot } from "@/lib/types";
 
 export default function ServicesPage() {
   const { activeMember, showToast } = useApp();
@@ -38,8 +35,6 @@ export default function ServicesPage() {
   const [selected, setSelected] = useState<ScheduleSlot | null>(null);
   const [lock, setLock] = useState<{ lock_id: string; slot_id: string; expires_in: number } | null>(null);
   const [order, setOrder] = useState<BookingOrder | null>(null);
-  const [guide, setGuide] = useState<VisitGuide | null>(null);
-  const [confirmToken, setConfirmToken] = useState("wasd1234");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -67,7 +62,6 @@ export default function ServicesPage() {
     setSelected(null);
     setLock(null);
     setOrder(null);
-    setGuide(null);
     try {
       const [doctorList, slotList] = await Promise.all([
         getDoctors(department),
@@ -93,7 +87,7 @@ export default function ServicesPage() {
     return Array.from(map.entries()).slice(0, 4);
   }, [slots, doctor]);
 
-  const step = guide ? 4 : order?.payment_status === "paid" ? 3 : order ? 2 : lock ? 1 : 0;
+  const step = order?.payment_status === "paid" ? 4 : order ? 2 : lock ? 1 : 0;
 
   async function doLock() {
     if (!selected) return;
@@ -121,34 +115,17 @@ export default function ServicesPage() {
     }
   }
 
-  async function doPay() {
-    if (!order) return;
-    setLoading(true);
-    try {
-      const paid = await payOrder(order.order_id, confirmToken);
-      setOrder(paid);
-      const visit = await getVisitGuide(order.order_id);
-      setGuide(visit);
-      showToast("支付成功，已生成就诊指引");
-      track("booking_paid", { order_id: order.order_id, amount: paid.amount });
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : "支付失败");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   return (
-    <AppShell title="挂号服务" subtitle="选科室、医生与号源，支付后生成就诊指引">
+    <AppShell title="挂号服务" subtitle="选科室、医生与号源；支付审核功能即将上线">
       <div className="mx-auto max-w-4xl space-y-4">
         <div className="flex flex-wrap items-center gap-2">
-          {["选号", "锁号", "订单", "支付", "指引"].map((label, index) => (
+          {["选号", "锁号", "订单", "支付审核"].map((label, index) => (
             <div key={label} className="flex items-center gap-2">
               <span className={clsx("flex h-6 w-6 items-center justify-center rounded-full text-[11px]", index < step ? "bg-emerald-100 text-emerald-600" : index === step ? "bg-primary text-white" : "bg-canvas text-muted")}>
                 {index < step ? <CheckCircle2 size={13} /> : index + 1}
               </span>
               <span className={clsx("text-[12px]", index <= step ? "text-ink" : "text-muted")}>{label}</span>
-              {index < 4 ? <span className="hidden h-px w-4 bg-line sm:block" /> : null}
+              {index < 3 ? <span className="hidden h-px w-4 bg-line sm:block" /> : null}
             </div>
           ))}
         </div>
@@ -212,7 +189,7 @@ export default function ServicesPage() {
                       <button
                         key={slot.slot_id}
                         disabled={!slot.available}
-                        onClick={() => { setSelected(slot); setLock(null); setOrder(null); setGuide(null); }}
+                        onClick={() => { setSelected(slot); setLock(null); setOrder(null); }}
                         className={clsx(
                           "rounded-2xl border px-3 py-2.5 text-left text-[12px] transition",
                           selected?.slot_id === slot.slot_id ? "border-primary bg-primary-soft text-primary" : "border-line bg-white text-ink hover:border-primary/30",
@@ -235,17 +212,11 @@ export default function ServicesPage() {
           <div className="flex flex-wrap gap-2">
             <button onClick={doLock} disabled={!selected || Boolean(lock) || loading} className="btn-ghost"><Lock size={15} />锁定号源</button>
             <button onClick={doOrder} disabled={!lock || Boolean(order) || loading} className="btn-ghost"><Stethoscope size={15} />创建订单</button>
-            <button onClick={doPay} disabled={!order || order.payment_status === "paid" || loading} className="btn-primary"><CreditCard size={15} />确认支付</button>
+            <button type="button" disabled className="btn-primary opacity-60" title="支付审核功能即将上线"><CreditCard size={15} />支付审核功能即将上线</button>
           </div>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-2xl bg-canvas p-3 text-[11px] text-muted">
-              <p className="font-medium text-ink">当前锁定</p>
-              <p className="mt-1 break-all">{lock ? lock.lock_id : "尚未锁定号源"}</p>
-            </div>
-            <div className="rounded-2xl bg-canvas p-3 text-[11px] text-muted">
-              <p className="font-medium text-ink">支付确认（HITL）</p>
-              <input className="input mt-1.5 !py-2 text-[12px]" value={confirmToken} onChange={(event) => setConfirmToken(event.target.value)} placeholder="wasd1234" />
-            </div>
+          <div className="mt-3 rounded-2xl bg-canvas p-3 text-[11px] text-muted">
+            <p className="font-medium text-ink">当前锁定</p>
+            <p className="mt-1 break-all">{lock ? lock.lock_id : "尚未锁定号源"}</p>
           </div>
         </section>
 
@@ -261,25 +232,12 @@ export default function ServicesPage() {
               </span>
             </div>
             <p className="mt-2 text-[12px] text-muted">{order.slot_id} · ¥{order.amount}</p>
-            {order.payment_status === "paid" && !guide ? (
-              <p className="mt-3 flex items-center gap-1.5 text-[12px] text-primary"><Loader2 size={13} className="animate-spin" />正在生成就诊指引…</p>
-            ) : null}
-            {guide ? (
-              <div className="mt-3 rounded-2xl bg-primary-soft p-4 text-[12px] leading-6 text-primary">
-                <p className="flex items-center gap-1.5 font-medium"><MapPin size={14} />{guide.hospital} · {guide.floor}</p>
-                <p className="mt-1">{guide.address} · {guide.checkin}</p>
-                <p className="mt-2 font-medium">携带：</p>
-                <div className="mt-1 flex flex-wrap gap-1.5">
-                  {guide.items.map((item) => <span key={item} className="rounded-full bg-white/70 px-2 py-0.5 text-[11px]">{item}</span>)}
-                </div>
-              </div>
-            ) : null}
           </section>
         ) : null}
 
         <div className="flex items-start gap-2 rounded-2xl border border-line bg-card p-3 text-[11px] leading-5 text-muted">
           <ShieldCheck size={14} className="mt-0.5 shrink-0 text-primary" />
-          支付前需要人工确认；当前为 mock 医院 MCP，真实环境将替换为医院系统。支付成功后可在健康时间线查看挂号记录与随访待办。
+          支付审核功能即将上线，当前不会发起真实支付；当前为 mock 医院 MCP，真实环境将替换为医院系统。
         </div>
       </div>
     </AppShell>
