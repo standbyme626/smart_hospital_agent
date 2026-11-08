@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -20,8 +20,8 @@ import { AppShell } from "@/components/AppShell";
 import { ResultView } from "@/components/ResultView";
 import { useApp } from "@/lib/app-context";
 import { getSession, streamChat, track } from "@/lib/api";
-import type { ChatMessage, Citation, Report, Safety, StreamEvent, Triage } from "@/lib/types";
-import { bodyAreas, durationOptions, redFlagOptions, symptomOptions } from "@/lib/format";
+import { memberMismatch } from "@/lib/session-guard";
+import type { ChatMessage, Citation, Report, Safety, StreamEvent, Triage } from "@/lib/types";import { bodyAreas, durationOptions, redFlagOptions, symptomOptions } from "@/lib/format";
 
 type Step = 0 | 1 | 2;
 type SymptomStep = 0 | 1 | 2 | 3 | 4;
@@ -57,10 +57,10 @@ export default function ConsultPage() {
   const [safety, setSafety] = useState<Safety | undefined>();
   const [triage, setTriage] = useState<Triage | undefined>();
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionMemberId, setSessionMemberId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [followup, setFollowup] = useState("");
   const [restoring, setRestoring] = useState(false);
-  const restoreStarted = useRef(false);
 
   useEffect(() => {
     const saved = window.sessionStorage.getItem("consult_draft");
@@ -71,8 +71,7 @@ export default function ConsultPage() {
   }, []);
 
   useEffect(() => {
-    if (!authReady || restoreStarted.current) return;
-    restoreStarted.current = true;
+    if (!authReady) return;
     const existing = new URLSearchParams(window.location.search).get("session");
     if (!existing) return;
     let cancelled = false;
@@ -81,12 +80,13 @@ export default function ConsultPage() {
       try {
         const detail = await getSession(existing);
         if (cancelled) return;
-        if (detail.session.member_id && activeMember?.id && detail.session.member_id !== activeMember.id) {
-          window.history.replaceState(null, "", "/consult/");
-          showToast("该会话属于其他就诊人，已为你开启新会话");
+        if (memberMismatch(detail.session.member_id, activeMember?.id)) {
+          reset();
+          showToast("当前会话属于其他成员，已停止恢复，请重新开始");
           return;
         }
         setSessionId(detail.session.id);
+        setSessionMemberId(detail.session.member_id || null);
         if (detail.session.member_id) {
           setMemberId(detail.session.member_id);
           setActiveMemberId(detail.session.member_id);
@@ -199,6 +199,7 @@ export default function ConsultPage() {
       draft ? `补充描述：${draft}` : "",
     ].filter(Boolean);
     const message = [...memberBits, "", ...symptomBits].join("\n");
+    setSessionMemberId(memberId || null);
     setMessages((prev) => [...prev, { role: "user", content: message }]);
     try {
       for await (const event of streamChat({ message, session_id: sessionId || undefined, member_id: memberId || undefined })) {
@@ -214,6 +215,10 @@ export default function ConsultPage() {
   async function sendFollowup() {
     const text = followup.trim();
     if (!text || submitting || !sessionId) return;
+    if (memberMismatch(sessionMemberId, activeMember?.id)) {
+      showToast("当前会话属于其他成员，已停止追问；请重新开始会话");
+      return;
+    }
     setFollowup("");
     setMessages((prev) => [...prev, { role: "user", content: text }]);
     setSubmitting(true);
@@ -247,6 +252,7 @@ export default function ConsultPage() {
     setMessages([]);
     setFollowup("");
     setSessionId(null);
+    setSessionMemberId(null);
     window.history.replaceState(null, "", "/consult/");
   }
 

@@ -1,5 +1,8 @@
+import asyncio
 import json
+import os
 
+import asyncpg
 from fastapi.testclient import TestClient
 
 from app.conversation import trim_history
@@ -8,6 +11,16 @@ from app.model_gateway import ChatResult
 
 PATIENT_PASSWORD = "patient123456"
 ADMIN_PASSWORD = "admin123456"
+TEST_DATABASE_URL = os.environ["DATABASE_URL"]
+
+
+class ReportlessAgent:
+    def __init__(self, data: dict) -> None:
+        self.data = data
+
+    async def stream(self, **kwargs):
+        yield {"seq": 1, "type": "final", "data": self.data}
+
 
 
 class RecordingGateway:
@@ -151,3 +164,40 @@ def test_trim_history_drops_oldest_first():
     ]
     trimmed = trim_history(messages, max_chars=12000)
     assert [item["content"][0] for item in trimmed] == ["b", "c"]
+
+
+def test_reportless_final_still_stores_assistant_message():
+    with TestClient(app) as client:
+        client.app.state.agent = ReportlessAgent({"summary": "已完成分诊，请多休息。"})
+        assert _stream(client, "头痛", "sess-reportless").status_code == 200
+        detail = client.get("/api/v1/sessions/sess-reportless").json()
+        assert [item["role"] for item in detail["messages"]] == ["user", "assistant"]
+        assert detail["messages"][1]["content"] == "已完成分诊，请多休息。"
+
+        client.app.state.agent = ReportlessAgent({})
+        assert _stream(client, "头痛", "sess-reportless-empty").status_code == 200
+        detail = client.get("/api/v1/sessions/sess-reportless-empty").json()
+        assert detail["messages"][1]["content"] == "已完成"
+
+
+async def _seed_messages(session_id: str, count: int) -> None:
+    conn = await asyncpg.connect(TEST_DATABASE_URL)
+    try:
+        await conn.execute("INSERT INTO sessions (id, user_id) VALUES ($1, 'dev')", session_id)
+        await conn.executemany(
+            "INSERT INTO messages (session_id, user_id, role, content) VALUES ($1, 'dev', 'user', $2)",
+            [(session_id, f"m{index}") for index in range(count)],
+        )
+    finally:
+        await conn.close()
+
+
+def test_session_detail_caps_messages_to_latest_200():
+    session_id = "sess-cap"
+    with TestClient(app) as client:
+        asyncio.run(_seed_messages(session_id, 250))
+        detail = client.get(f"/api/v1/sessions/{session_id}").json()
+        assert len(detail["messages"]) == 200
+        assert detail["messages"][0]["content"] == "m50"
+        assert detail["messages"][-1]["content"] == "m249"
+

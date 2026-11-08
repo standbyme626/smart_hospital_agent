@@ -298,8 +298,14 @@ async def chat_stream(
                 if event.get("type") == "final":
                     final_data = event.get("data")
                 yield _sse(event)
-            if final_data and final_data.get("report"):
-                report = final_data["report"]
+            if final_data is not None:
+                report = final_data.get("report") or {}
+                content = (
+                    str(report.get("summary") or "").strip()
+                    or str(final_data.get("summary") or "").strip()
+                    or str(final_data.get("content") or "").strip()
+                    or "已完成"
+                )
                 try:
                     await append_message(
                         state.db,
@@ -307,20 +313,21 @@ async def chat_stream(
                         user_id=user_id,
                         member_id=member.get("id"),
                         role="assistant",
-                        content=str(report.get("summary") or ""),
+                        content=content,
                     )
-                    await _add_event(
-                    state.db,
-                    user_id,
-                    member.get("id"),
-                    "consult",
-                    f"问诊 · {report.get('department', '分诊')}",
-                        {
-                            "summary": str(report.get("summary", ""))[:300],
-                            "urgency": report.get("urgency"),
-                            "citations": report.get("citations", []),
-                        },
-                    )
+                    if report:
+                        await _add_event(
+                        state.db,
+                        user_id,
+                        member.get("id"),
+                        "consult",
+                        f"问诊 · {report.get('department', '分诊')}",
+                            {
+                                "summary": str(report.get("summary", ""))[:300],
+                                "urgency": report.get("urgency"),
+                                "citations": report.get("citations", []),
+                            },
+                        )
                 except Exception:
                     pass
         except Exception as exc:
@@ -362,7 +369,16 @@ async def session_detail(
     db = _state(request).db
     session = await _owned_session(db, session_id, str(user["sub"]))
     rows = await db.fetch(
-        "SELECT id, role, content, created_at FROM messages WHERE session_id=$1 ORDER BY id ASC",
+        """
+        SELECT id, role, content, created_at FROM (
+            SELECT id, role, content, created_at
+            FROM messages
+            WHERE session_id=$1
+            ORDER BY id DESC
+            LIMIT 200
+        ) recent
+        ORDER BY id ASC
+        """,
         session_id,
     )
     latest = await db.fetchrow(

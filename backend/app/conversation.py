@@ -12,21 +12,22 @@ async def append_message(
     role: str,
     content: str,
 ) -> None:
-    await db.execute(
-        """
-        INSERT INTO messages (session_id, user_id, member_id, role, content)
-        VALUES ($1, $2, $3, $4, $5)
-        """,
-        session_id,
-        user_id,
-        member_id,
-        role,
-        content,
-    )
-    await db.execute(
-        "UPDATE sessions SET last_message_at = now(), updated_at = now() WHERE id = $1",
-        session_id,
-    )
+    async with db.transaction() as conn:
+        await conn.execute(
+            """
+            INSERT INTO messages (session_id, user_id, member_id, role, content)
+            VALUES ($1, $2, $3, $4, $5)
+            """,
+            session_id,
+            user_id,
+            member_id,
+            role,
+            content,
+        )
+        await conn.execute(
+            "UPDATE sessions SET last_message_at = now(), updated_at = now() WHERE id = $1",
+            session_id,
+        )
 
 
 async def load_history(db: Any, session_id: str, limit: int = 20) -> list[dict[str, Any]]:
