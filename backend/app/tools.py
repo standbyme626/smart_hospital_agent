@@ -130,23 +130,11 @@ class ToolRegistry:
             return {"ok": False, "error": result["text"]}
         return {"ok": True, "data": result["data"]}
 
-    async def lock_slot(self, args: dict[str, Any], context: ToolContext) -> dict[str, Any]:
-        result = await self.mcp.call_tool(
-            "lock_slot",
-            {"slot_id": args.get("slot_id"), "patient_id": context.user_id},
-        )
-        if result["is_error"]:
-            return {"ok": False, "error": result["text"]}
-        return {"ok": True, "data": result["data"]}
-
-    async def create_order(self, args: dict[str, Any], context: ToolContext) -> dict[str, Any]:
-        idempotency_key = f"chat:{context.session_id}:{args.get('lock_id')}"
-        member_id = context.member_id or None
-        hospital_patient_id = None
-        if member_id:
+    async def _patient_ref(self, context: ToolContext) -> tuple[str, str | None]:
+        if context.member_id:
             member = await self.db.fetchrow(
                 "SELECT id, hospital_patient_id FROM family_members WHERE id=$1 AND user_id=$2",
-                member_id,
+                context.member_id,
                 context.user_id,
             )
             if member:
@@ -154,14 +142,29 @@ class ToolRegistry:
                 if not member["hospital_patient_id"]:
                     await self.db.execute(
                         "UPDATE family_members SET hospital_patient_id=$2 WHERE id=$1",
-                        member_id,
+                        member["id"],
                         hospital_patient_id,
                     )
-            else:
-                member_id = None
+                return hospital_patient_id, member["id"]
+        return context.user_id, None
+
+    async def lock_slot(self, args: dict[str, Any], context: ToolContext) -> dict[str, Any]:
+        patient_id, _ = await self._patient_ref(context)
+        result = await self.mcp.call_tool(
+            "lock_slot",
+            {"slot_id": args.get("slot_id"), "patient_id": patient_id},
+        )
+        if result["is_error"]:
+            return {"ok": False, "error": result["text"]}
+        return {"ok": True, "data": result["data"]}
+
+    async def create_order(self, args: dict[str, Any], context: ToolContext) -> dict[str, Any]:
+        idempotency_key = f"chat:{context.session_id}:{args.get('lock_id')}"
+        patient_id, member_id = await self._patient_ref(context)
+        hospital_patient_id = patient_id if member_id else None
         result = await self.mcp.call_tool(
             "create_order",
-            {"lock_id": args.get("lock_id"), "patient_id": context.user_id},
+            {"lock_id": args.get("lock_id"), "patient_id": patient_id},
             idempotency_key=idempotency_key,
         )
         if result["is_error"]:

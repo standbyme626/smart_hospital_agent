@@ -456,3 +456,44 @@ def test_cascade_logs_unremovable_report_images(client, caplog):
     assert response.status_code == 200, response.text
     assert "left report images on disk" in caplog.text
     assert outside.exists()
+
+
+def test_delete_member_rejects_reviews_and_cancels_unpaid_booking(client):
+    headers = _patient(client)
+    admin = _admin(client)
+    child = client.post(
+        "/api/v1/family", json={"name": "王小明", "relation": "child"}, headers=headers
+    ).json()["member"]
+    ordered = client.post(
+        "/api/v1/booking/orders",
+        json={"lock_id": "lock_delete", "member_id": child["id"]},
+        headers=headers,
+    )
+    assert ordered.status_code == 200, ordered.text
+    order_id = ordered.json()["order"]["order_id"]
+    review = client.post(
+        f"/api/v1/booking/orders/{order_id}/request-payment", headers=headers
+    ).json()["review"]
+    _run(
+        client,
+        "UPDATE review_requests SET status='processing', updated_at=now() WHERE id=$1",
+        review["id"],
+        fetch=False,
+    )
+
+    deleted = client.delete(f"/api/v1/family/{child['id']}", headers=headers)
+    assert deleted.status_code == 200, deleted.text
+
+    booking = asyncio.run(_booking_row(client, order_id))
+    assert booking["status"] == "cancelled"
+    assert booking["payment_status"] == "unpaid"
+    assert (
+        _run(client, "SELECT status FROM review_requests WHERE id=$1", review["id"])
+        == "rejected"
+    )
+
+    approved = client.post(f"/api/v1/admin/reviews/{review['id']}/approve", headers=admin)
+    assert approved.status_code == 409
+    booking = asyncio.run(_booking_row(client, order_id))
+    assert booking["status"] == "cancelled"
+    assert booking["payment_status"] == "unpaid"

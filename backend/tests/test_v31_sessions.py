@@ -201,3 +201,58 @@ def test_session_detail_caps_messages_to_latest_200():
         assert detail["messages"][0]["content"] == "m50"
         assert detail["messages"][-1]["content"] == "m249"
 
+
+
+def test_session_ensure_cannot_hijack_existing_session():
+    from app.db import Database
+    from app.session_store import SessionStore
+
+    async def run():
+        db = Database(app.state.settings)
+        await db.connect()
+        try:
+            store = SessionStore(db)
+            await store.ensure("sess_hijack", "owner", title="first")
+            await store.ensure("sess_hijack", "attacker", title="second", member_id="mem_attacker")
+            return await db.fetchrow(
+                "SELECT user_id, member_id, title FROM sessions WHERE id='sess_hijack'"
+            )
+        finally:
+            await db.close()
+
+    with TestClient(app):
+        row = asyncio.run(run())
+    assert row["user_id"] == "owner"
+    assert row["member_id"] is None
+    assert row["title"] == "first"
+
+
+def test_chat_stream_foreign_member_id_returns_404_before_sse():
+    with TestClient(app) as client:
+        client.app.state.settings.AUTH_ENABLED = True
+        try:
+            patient = client.post(
+                "/api/v1/auth/login",
+                json={"username": "patient", "password": PATIENT_PASSWORD},
+            ).json()["access_token"]
+            admin = client.post(
+                "/api/v1/auth/login",
+                json={"username": "admin", "password": ADMIN_PASSWORD},
+            ).json()["access_token"]
+            patient_headers = {"Authorization": f"Bearer {patient}"}
+            admin_headers = {"Authorization": f"Bearer {admin}"}
+            member = client.post(
+                "/api/v1/family",
+                json={"name": "王小明", "relation": "child"},
+                headers=patient_headers,
+            ).json()["member"]
+
+            response = client.post(
+                "/api/v1/chat/stream",
+                json={"message": "头痛", "member_id": member["id"]},
+                headers=admin_headers,
+            )
+            assert response.status_code == 404
+            assert "text/event-stream" not in response.headers.get("content-type", "")
+        finally:
+            client.app.state.settings.AUTH_ENABLED = False

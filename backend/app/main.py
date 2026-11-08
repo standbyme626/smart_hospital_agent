@@ -63,7 +63,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Smart Hospital Agent",
-    version="2.0.0",
+    version="3.1.0",
     description="Medical triage agent with hybrid retrieval, MCP booking/payment and SSE.",
     lifespan=lifespan,
 )
@@ -135,7 +135,7 @@ app.include_router(router)
 async def root() -> dict:
     return {
         "app": "smart-hospital-agent",
-        "version": "2.0.0",
+        "version": "3.1.0",
         "docs": "/docs",
         "health": "/health",
         "chat": "/api/v1/chat/stream",

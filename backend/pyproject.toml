@@ -1,6 +1,6 @@
 [project]
 name = "smart-hospital-agent"
-version = "2.0.0"
+version = "3.1.0"
 description = "Medical triage agent: single-agent loop, hybrid retrieval, MCP booking/payment, SSE."
 requires-python = ">=3.12"
 dependencies = [

@@ -518,3 +518,141 @@ def test_orders_survive_api_restart(client):
         assert response.status_code == 200, response.text
         ids = [item["id"] for item in response.json()["orders"]]
         assert "order_persist" in ids
+
+
+def test_http_booking_mcp_receives_hospital_patient_id(client):
+    headers = {"Authorization": f"Bearer {_token(client, 'patient', PATIENT_PASSWORD)}"}
+    member = client.post(
+        "/api/v1/family", json={"name": "王小明", "relation": "child"}, headers=headers
+    ).json()["member"]
+    fake: CaptureMCP = client.app.state.mcp
+
+    locked = client.post(
+        "/api/v1/booking/lock", json={"slot_id": SLOT_ID, "member_id": member["id"]}, headers=headers
+    )
+    assert locked.status_code == 200, locked.text
+    assert fake.calls[-1][1]["patient_id"] == f"HP-{member['id']}"
+    assert fake.calls[-1][1]["patient_id"] != "patient"
+
+    ordered = client.post(
+        "/api/v1/booking/orders", json={"lock_id": "lock_x", "member_id": member["id"]}, headers=headers
+    )
+    assert ordered.status_code == 200, ordered.text
+    create_call = next(call for call in fake.calls if call[0] == "create_order")
+    assert create_call[1]["patient_id"] == f"HP-{member['id']}"
+    assert create_call[1]["patient_id"] != "patient"
+
+    self_member = next(
+        item
+        for item in client.get("/api/v1/family", headers=headers).json()["members"]
+        if item["is_self"]
+    )
+    locked_self = client.post("/api/v1/booking/lock", json={"slot_id": SLOT_ID}, headers=headers)
+    assert locked_self.status_code == 200, locked_self.text
+    assert fake.calls[-1][1]["patient_id"] == f"HP-{self_member['id']}"
+
+
+def test_chat_tools_send_hospital_patient_id(client):
+    from app.db import Database
+    from app.tools import ToolContext, ToolRegistry
+
+    headers = {"Authorization": f"Bearer {_token(client, 'patient', PATIENT_PASSWORD)}"}
+    member = client.post(
+        "/api/v1/family", json={"name": "王小明", "relation": "child"}, headers=headers
+    ).json()["member"]
+
+    async def run():
+        db = Database(client.app.state.settings)
+        await db.connect()
+        try:
+            fake = CaptureMCP()
+            tools = ToolRegistry(None, fake, db)
+            context = ToolContext(
+                session_id="sess_tool",
+                request_id="req_tool",
+                user_id="patient",
+                member_id=member["id"],
+            )
+
+            locked = await tools.execute("lock_slot", {"slot_id": SLOT_ID}, context)
+            assert locked["ok"] is True
+            assert fake.calls[-1][1]["patient_id"] == f"HP-{member['id']}"
+            assert fake.calls[-1][1]["patient_id"] != "patient"
+
+            ordered = await tools.execute("create_order", {"lock_id": "lock_x"}, context)
+            assert ordered["ok"] is True
+            assert fake.calls[-1][1]["patient_id"] == f"HP-{member['id']}"
+
+            anonymous = ToolContext(
+                session_id="sess_tool_2", request_id="req_tool_2", user_id="patient"
+            )
+            await tools.execute("lock_slot", {"slot_id": SLOT_ID}, anonymous)
+            assert fake.calls[-1][1]["patient_id"] == "patient"
+        finally:
+            await db.close()
+
+    asyncio.run(run())
+
+
+async def test_mock_pay_rejects_cancelled_order():
+    lock = _payload(await mock._call("lock_slot", {"slot_id": SLOT_ID, "patient_id": "u_mock"}))
+    order = _payload(await mock._call("create_order", {"lock_id": lock["lock_id"]}))
+    await mock._call("cancel_order", {"order_id": order["order_id"]})
+
+    denied = await mock._call(
+        "pay_order",
+        {
+            "order_id": order["order_id"],
+            "confirm_token": os.getenv("HITL_CONFIRM_TOKEN", "confirm-demo"),
+            "method": "mock",
+        },
+    )
+    assert denied["isError"] is True
+    assert "cancelled" in json.loads(denied["content"][0]["text"])["error"]
+    assert await _count("SELECT count(*) FROM mcp_booked WHERE order_id=$1", order["order_id"]) == 0
+
+
+def test_legacy_booking_backfill_prefers_session_owner_then_session_id(client):
+    from app.db import MIGRATIONS
+
+    headers = {"Authorization": f"Bearer {_token(client, 'patient', PATIENT_PASSWORD)}"}
+
+    async def seed():
+        conn = await asyncpg.connect(os.environ["DATABASE_URL"])
+        try:
+            await conn.execute("INSERT INTO sessions (id, user_id) VALUES ('sess_legacy', 'patient')")
+            await conn.execute(
+                """
+                INSERT INTO bookings (id, session_id, patient_id, department, status, payment_status, amount)
+                VALUES ('bk_legacy', 'sess_legacy', 'patient', '心血管内科', 'created', 'unpaid', 50)
+                """
+            )
+            await conn.execute(
+                """
+                INSERT INTO bookings (id, session_id, patient_id, department, status, payment_status, amount)
+                VALUES ('bk_fallback', 'patient', 'patient', '心血管内科', 'created', 'unpaid', 50)
+                """
+            )
+            for statement in MIGRATIONS:
+                await conn.execute(statement)
+        finally:
+            await conn.close()
+
+    asyncio.run(seed())
+
+    assert client.get("/api/v1/booking/orders/bk_legacy", headers=headers).status_code == 200
+    assert client.get("/api/v1/booking/orders/bk_fallback", headers=headers).status_code == 200
+
+    async def owners():
+        conn = await asyncpg.connect(os.environ["DATABASE_URL"])
+        try:
+            return {
+                row["id"]: row["user_id"]
+                for row in await conn.fetch(
+                    "SELECT id, user_id FROM bookings WHERE id IN ('bk_legacy', 'bk_fallback')"
+                )
+            }
+        finally:
+            await conn.close()
+
+    assert asyncio.run(owners()) == {"bk_legacy": "patient", "bk_fallback": "patient"}

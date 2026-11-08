@@ -39,6 +39,7 @@ class SessionStore:
             ON CONFLICT (id) DO UPDATE
                 SET updated_at = now(),
                     member_id = COALESCE(sessions.member_id, EXCLUDED.member_id)
+                WHERE sessions.user_id = EXCLUDED.user_id
             """,
             session_id,
             user_id,

@@ -259,6 +259,7 @@ export type ModelCall = {
   provider: string;
   model: string;
   task: string;
+  user_id?: string | null;
   calls: number;
   prompt_tokens: number;
   completion_tokens: number;

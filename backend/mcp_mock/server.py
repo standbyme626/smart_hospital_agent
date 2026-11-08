@@ -321,6 +321,8 @@ async def _call(name: str, args: dict[str, Any]) -> dict[str, Any]:
             row = await conn.fetchrow("SELECT * FROM mcp_orders WHERE order_id=$1", order_id)
             if not row:
                 return _error("order not found")
+            if row["status"] == "cancelled":
+                return _error("cancelled order cannot be paid")
             if row["payment_status"] == "paid":
                 return _text(_order_json(row))
             expected = os.getenv("HITL_CONFIRM_TOKEN", "confirm-demo")

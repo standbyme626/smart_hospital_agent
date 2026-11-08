@@ -200,6 +200,22 @@ async def _member_row(db: Any, member_id: str | None, user_id: str) -> dict[str,
     return await _ensure_self_member(db, user_id)
 
 
+async def _hospital_patient_id(db: Any, member: dict[str, Any], fallback: str) -> str:
+    hospital_patient_id = member.get("hospital_patient_id")
+    if hospital_patient_id:
+        return str(hospital_patient_id)
+    member_id = member.get("id")
+    if not member_id:
+        return fallback
+    hospital_patient_id = f"HP-{member_id}"
+    await db.execute(
+        "UPDATE family_members SET hospital_patient_id=$2 WHERE id=$1",
+        member_id,
+        hospital_patient_id,
+    )
+    return hospital_patient_id
+
+
 async def _add_event(db: Any, user_id: str, member_id: str | None, kind: str, title: str, detail: dict[str, Any]) -> None:
     await db.execute(
         """
@@ -303,10 +319,7 @@ async def chat_stream(
                 status_code=429,
                 detail=f"今日问诊次数已达上限（{daily_limit} 次/天），请明天再试或联系管理员",
             )
-    try:
-        member = await _member_row(state.db, payload.member_id, user_id)
-    except Exception:
-        member = {"id": None, "name": "本人", "relation": "self"}
+    member = await _member_row(state.db, payload.member_id, user_id)
     member_bits = [f"就诊人：{member.get('name', '本人')}（{member.get('relation', 'self')}）"]
     if member.get("gender"):
         member_bits.append(f"性别：{member['gender']}")
@@ -551,12 +564,13 @@ async def booking_lock(
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     state = _state(request)
-    if payload.member_id:
-        await _owned_member(state.db, payload.member_id, str(user["sub"]))
+    user_id = str(user["sub"])
+    member = await _member_row(state.db, payload.member_id, user_id)
+    patient_id = await _hospital_patient_id(state.db, member, user_id)
     data = await _mcp(
         state,
         "lock_slot",
-        {"slot_id": payload.slot_id, "patient_id": str(user["sub"])},
+        {"slot_id": payload.slot_id, "patient_id": patient_id},
     )
     expires_at = datetime.now(UTC) + timedelta(seconds=int(data.get("expires_in") or 600))
     return {"lock": {**data, "expires_at": expires_at.isoformat()}}
@@ -597,17 +611,11 @@ async def booking_order(
     user_id = str(user["sub"])
     member = await _member_row(state.db, payload.member_id, user_id)
     member_id = member["id"]
-    hospital_patient_id = member.get("hospital_patient_id") or f"HP-{member_id}"
-    if not member.get("hospital_patient_id"):
-        await state.db.execute(
-            "UPDATE family_members SET hospital_patient_id=$2 WHERE id=$1",
-            member_id,
-            hospital_patient_id,
-        )
+    hospital_patient_id = await _hospital_patient_id(state.db, member, user_id)
     idempotency_key = f"order:{user_id}:{payload.lock_id}"
     result = await state.mcp.call_tool(
         "create_order",
-        {"lock_id": payload.lock_id, "patient_id": user_id},
+        {"lock_id": payload.lock_id, "patient_id": hospital_patient_id},
         idempotency_key=idempotency_key,
     )
     if result["is_error"]:
@@ -927,11 +935,12 @@ async def model_calls(
 ) -> dict[str, Any]:
     rows = await _state(request).db.fetch(
         """
-        SELECT provider, model, task, count(*) AS calls, sum(prompt_tokens) AS prompt_tokens,
+        SELECT provider, model, task, user_id, count(*) AS calls,
+               sum(prompt_tokens) AS prompt_tokens,
                sum(completion_tokens) AS completion_tokens, sum(cost) AS cost,
                round(avg(latency_ms)) AS avg_latency_ms
         FROM model_calls
-        GROUP BY provider, model, task
+        GROUP BY provider, model, task, user_id
         ORDER BY calls DESC
         LIMIT 50
         """
@@ -1133,6 +1142,34 @@ async def delete_family_member(
                     user_id,
                     report_ids,
                 )
+            await conn.execute(
+                """
+                UPDATE review_requests
+                SET status='rejected',
+                    decision_note=COALESCE(decision_note, '成员已删除'),
+                    decided_at=COALESCE(decided_at, now()),
+                    updated_at=now()
+                WHERE kind='payment'
+                  AND status IN ('pending', 'processing')
+                  AND (
+                      member_id=$2
+                      OR ref_id IN (SELECT id FROM bookings WHERE user_id=$1 AND member_id=$2)
+                  )
+                """,
+                user_id,
+                member_id,
+            )
+            await conn.execute(
+                """
+                UPDATE bookings
+                SET status='cancelled', updated_at=now()
+                WHERE user_id=$1 AND member_id=$2
+                  AND payment_status <> 'paid'
+                  AND status NOT IN ('booked', 'paid', 'cancelled')
+                """,
+                user_id,
+                member_id,
+            )
             await conn.execute(
                 "DELETE FROM family_members WHERE id=$1 AND user_id=$2", member_id, user_id
             )

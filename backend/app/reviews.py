@@ -178,20 +178,36 @@ async def approve_review(
             }
         if review["status"] not in {"pending", "processing"}:
             raise HTTPException(status_code=409, detail=f"review is {review['status']}")
-        review = await conn.fetchrow(
-            "UPDATE review_requests SET status='processing', updated_at=now() WHERE id=$1 RETURNING *",
-            review_id,
+        member_missing = bool(
+            review["member_id"]
+            and not await conn.fetchval(
+                "SELECT 1 FROM family_members WHERE id=$1 AND user_id=$2",
+                review["member_id"],
+                review["user_id"],
+            )
         )
-        booking = await _booking(conn, review["ref_id"])
-        if not booking:
-            raise HTTPException(status_code=409, detail="booking not found for review")
-        cancelled = booking.get("status") == "cancelled"
-        if cancelled:
+        if member_missing:
             await conn.execute(
-                "UPDATE review_requests SET status='failed', decision_note='order cancelled', updated_at=now() WHERE id=$1",
+                "UPDATE review_requests SET status='failed', decision_note='member deleted', updated_at=now() WHERE id=$1",
                 review_id,
             )
+        else:
+            review = await conn.fetchrow(
+                "UPDATE review_requests SET status='processing', updated_at=now() WHERE id=$1 RETURNING *",
+                review_id,
+            )
+            booking = await _booking(conn, review["ref_id"])
+            if not booking:
+                raise HTTPException(status_code=409, detail="booking not found for review")
+            cancelled = booking.get("status") == "cancelled"
+            if cancelled:
+                await conn.execute(
+                    "UPDATE review_requests SET status='failed', decision_note='order cancelled', updated_at=now() WHERE id=$1",
+                    review_id,
+                )
 
+    if member_missing:
+        raise HTTPException(status_code=409, detail="member deleted")
     if cancelled:
         raise HTTPException(status_code=409, detail="order cancelled")
 
@@ -225,6 +241,7 @@ async def approve_review(
         raise HTTPException(status_code=502, detail=f"payment failed: {note}")
 
     paid = result.get("data") or {}
+    aborted: dict[str, Any] | None = None
     async with db.transaction() as conn:
         current = await conn.fetchrow("SELECT * FROM review_requests WHERE id=$1 FOR UPDATE", review_id)
         if current["status"] == "approved":
@@ -233,35 +250,69 @@ async def approve_review(
                 "order": await _booking(conn, current["ref_id"]),
                 "mcp_called": False,
             }
-        review = await conn.fetchrow(
-            """
-            UPDATE review_requests SET status='approved', decided_by=$2, decided_at=now(), updated_at=now()
-            WHERE id=$1 RETURNING *
-            """,
-            review_id,
-            admin_id,
+        current_booking = await conn.fetchrow(
+            "SELECT * FROM bookings WHERE id=$1 FOR UPDATE", current["ref_id"]
         )
-        booking = await conn.fetchrow(
-            """
-            UPDATE bookings SET status=$2, payment_status=$3, updated_at=now()
-            WHERE id=$1 RETURNING *
-            """,
-            review["ref_id"],
-            paid.get("status") or "booked",
-            paid.get("payment_status") or "paid",
+        member_gone = bool(
+            current["member_id"]
+            and not await conn.fetchval(
+                "SELECT 1 FROM family_members WHERE id=$1 AND user_id=$2",
+                current["member_id"],
+                current["user_id"],
+            )
         )
-        if booking:
-            await _ensure_followup(conn, booking)
-        await _audit(
-            conn,
-            admin_id,
-            "payment.approve",
-            {
-                "review_id": review_id,
-                "order_id": order_id,
-                "amount": float(booking["amount"] or 0) if booking else None,
-            },
-        )
+        if (
+            current["status"] != "processing"
+            or current_booking is None
+            or current_booking["status"] == "cancelled"
+            or member_gone
+        ):
+            note = "member deleted" if member_gone else "order cancelled or review changed during approval"
+            review = await conn.fetchrow(
+                """
+                UPDATE review_requests SET status='failed', decision_note=$2, updated_at=now()
+                WHERE id=$1 RETURNING *
+                """,
+                review_id,
+                note,
+            )
+            aborted = {
+                "review": review_json(review),
+                "order": booking_json(current_booking) if current_booking else None,
+                "note": note,
+            }
+        else:
+            review = await conn.fetchrow(
+                """
+                UPDATE review_requests SET status='approved', decided_by=$2, decided_at=now(), updated_at=now()
+                WHERE id=$1 RETURNING *
+                """,
+                review_id,
+                admin_id,
+            )
+            booking = await conn.fetchrow(
+                """
+                UPDATE bookings SET status=$2, payment_status=$3, updated_at=now()
+                WHERE id=$1 RETURNING *
+                """,
+                review["ref_id"],
+                paid.get("status") or "booked",
+                paid.get("payment_status") or "paid",
+            )
+            if booking:
+                await _ensure_followup(conn, booking)
+            await _audit(
+                conn,
+                admin_id,
+                "payment.approve",
+                {
+                    "review_id": review_id,
+                    "order_id": order_id,
+                    "amount": float(booking["amount"] or 0) if booking else None,
+                },
+            )
+    if aborted is not None:
+        raise HTTPException(status_code=409, detail=aborted["note"])
     return {
         "review": review_json(review),
         "order": booking_json(booking) if booking else None,

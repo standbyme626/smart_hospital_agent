@@ -594,3 +594,25 @@ def test_model_calls_persist_user_id(client):
     assert rows
     assert {row["task"] for row in rows} == {"triage", "diagnosis"}
     assert {row["user_id"] for row in rows} == {"patient"}
+
+
+def test_admin_model_calls_expose_user_id(client):
+    dsn = client.app.state.settings.DATABASE_URL
+    for user_id, cost in (("patient", 0.01), ("admin", 0.02)):
+        _sql(
+            dsn,
+            """
+            INSERT INTO model_calls
+                (provider, model, task, prompt_tokens, completion_tokens, cost, latency_ms, user_id)
+            VALUES ('fake', 'fake-model', 'diagnosis', 10, 5, $1, 100, $2)
+            """,
+            cost,
+            user_id,
+        )
+
+    response = client.get("/api/v1/admin/model-calls", headers=_admin_headers(client))
+    assert response.status_code == 200, response.text
+    rows = {row["user_id"]: row for row in response.json()["calls"]}
+    assert set(rows) == {"patient", "admin"}
+    assert rows["patient"]["calls"] == 1
+    assert float(rows["admin"]["cost"]) == 0.02

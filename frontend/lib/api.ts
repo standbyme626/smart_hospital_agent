@@ -450,7 +450,16 @@ export async function* streamChat(payload: {
     clearToken();
     throw new UnauthorizedError();
   }
-  if (!response.ok || !response.body) throw new Error(`chat failed: HTTP ${response.status}`);
+  if (!response.ok || !response.body) {
+    let detail = "";
+    try {
+      const body = (await response.json()) as { detail?: unknown };
+      if (typeof body?.detail === "string") detail = body.detail;
+    } catch {
+      // non-JSON error body
+    }
+    throw new Error(detail || `chat failed: HTTP ${response.status}`);
+  }
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";

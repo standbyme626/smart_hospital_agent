@@ -66,8 +66,9 @@ curl -fsS http://127.0.0.1:8020/api/health
 
 - FastAPI lifespan 中 `db.init_schema()` 自动执行全部迁移，**不需要手工 SQL**。
 - 迁移幂等：建表 `CREATE TABLE IF NOT EXISTS`；加列 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`；索引 `CREATE INDEX IF NOT EXISTS`；回填 `UPDATE ... WHERE ... IS NULL`。重复启动/重试安全。
-- v3.0 数据保留：只增表/列，不删旧列；`bookings.user_id` 为空时从 `session_id` 回填。
+- v3.0 数据保留：只增表/列，不删旧列；`bookings.user_id` 为空时先按 `bookings.session_id = sessions.id` 回填 `sessions.user_id`，无匹配会话的旧行再回退到 `session_id`。
 - `bootstrap_users` 仅在 `users` 表为空且 `app_meta` 无 bootstrap marker 时创建 `ADMIN_USER` / `PATIENT_USER`；不会覆盖已有用户，账号删除后也不会自动重建。已有用户改密码用 `cd backend && .venv/bin/python -m scripts.set_password <username>`。
+- **首次启动 v3.1 API 前必须先处理初始密码**：bootstrap 读取环境变量 `ADMIN_PASSWORD` / `PATIENT_PASSWORD`。若尚未启动过，先把新的强密码写入 600 权限的 `.env` 再启动；若已经用弱密码启动过，重建账号需先删除 `users` 中的账号并删除 `app_meta` 的 `users_bootstrapped` 标记（或直接改密码），否则弱密码会保留。**本任务不轮换线上凭据**，以上操作需主人批准后执行。
 - 若日志出现 `[startup] database init failed`，不要继续前端发布；先查 DB 连接/权限，修复后重启 API（迁移可重跑）。
 
 ### 2.4 前端构建与发布

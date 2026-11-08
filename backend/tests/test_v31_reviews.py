@@ -423,3 +423,81 @@ def test_reject_audit_uses_mcp_order_id(client):
         detail = json.loads(detail)
     assert detail["order_id"] == "order_audit"
     assert detail["order_id"] != "bk_audit"
+
+
+class CancelDuringPayMCP(FakeMCP):
+    def __init__(self, settings, dsn: str):
+        super().__init__(settings)
+        self.dsn = dsn
+
+    async def call_tool(self, name, arguments=None, idempotency_key=None):
+        if name != "pay_order":
+            return await super().call_tool(name, arguments, idempotency_key)
+        args = dict(arguments or {})
+        self.calls.append((name, args))
+        conn = await asyncpg.connect(self.dsn)
+        try:
+            await conn.execute(
+                "UPDATE bookings SET status='cancelled', updated_at=now() WHERE id='order_rev1'"
+            )
+            await conn.execute(
+                "UPDATE review_requests SET status='rejected', decision_note='订单已取消', updated_at=now() "
+                "WHERE ref_id='order_rev1'"
+            )
+        finally:
+            await conn.close()
+        return self._ok(
+            {
+                "order_id": args["order_id"],
+                "slot_id": SLOT_ID,
+                "patient_id": "patient",
+                "amount": 50,
+                "status": "booked",
+                "payment_status": "paid",
+            }
+        )
+
+
+def test_approve_race_sees_cancelled_booking_and_does_not_mark_paid(client):
+    _create_booking(client)
+    patient = _patient(client)
+    admin = _admin(client)
+    review = client.post("/api/v1/booking/orders/order_rev1/request-payment", headers=patient).json()["review"]
+    client.app.state.mcp = CancelDuringPayMCP(
+        client.app.state.settings, client.app.state.settings.DATABASE_URL
+    )
+
+    response = client.post(f"/api/v1/admin/reviews/{review['id']}/approve", headers=admin)
+    assert response.status_code == 409
+    booking = _booking_row(client)
+    assert booking["status"] == "cancelled"
+    assert booking["payment_status"] == "unpaid"
+    assert _review_rows(client)[0]["status"] == "failed"
+    assert len(client.app.state.mcp.pay_calls()) == 1
+
+
+def test_approve_for_deleted_member_is_blocked(client):
+    patient = _patient(client)
+    admin = _admin(client)
+    member = client.post(
+        "/api/v1/family", json={"name": "王小明", "relation": "child"}, headers=patient
+    ).json()["member"]
+    ordered = client.post(
+        "/api/v1/booking/orders",
+        json={"lock_id": "lock_deleted", "member_id": member["id"]},
+        headers=patient,
+    )
+    assert ordered.status_code == 200, ordered.text
+    order_id = ordered.json()["order"]["order_id"]
+    review = client.post(
+        f"/api/v1/booking/orders/{order_id}/request-payment", headers=patient
+    ).json()["review"]
+    dsn = client.app.state.settings.DATABASE_URL
+    _sql(dsn, "DELETE FROM family_members WHERE id=$1", member["id"])
+
+    response = client.post(f"/api/v1/admin/reviews/{review['id']}/approve", headers=admin)
+    assert response.status_code == 409
+    assert response.json()["detail"] == "member deleted"
+    assert _review_rows(client, order_id)[0]["status"] == "failed"
+    assert _booking_row(client, order_id)["payment_status"] == "unpaid"
+    assert client.app.state.mcp.pay_calls() == []

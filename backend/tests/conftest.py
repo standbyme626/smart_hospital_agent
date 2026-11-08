@@ -13,6 +13,13 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 def _test_database_url() -> str:
     url = os.getenv("TEST_DATABASE_URL")
     if url:
+        database = urllib.parse.urlsplit(url).path
+        if not database.endswith("_test"):
+            raise RuntimeError(
+                f"Refusing to run tests against database {database!r}: "
+                "the test database name must end with '_test' "
+                "(production 'sha' is forbidden). Set TEST_DATABASE_URL to an isolated *_test database."
+            )
         return url
     env_file = REPO_ROOT / ".env"
     match = re.search(r"^DATABASE_URL=(.+)$", env_file.read_text(encoding="utf-8"), re.M)

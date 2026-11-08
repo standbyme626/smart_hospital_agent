@@ -83,6 +83,11 @@ test("report upload with fake vision and family member scoping", async ({ page }
   await expect(page.getByText(`${REPORT_MARKER}检查报告解读`).first()).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText("异常指标")).toBeVisible();
   await expect(page.getByText("白细胞计数")).toBeVisible();
+  const reportImage = page.getByAltText("报告原图");
+  await expect(reportImage).toBeVisible();
+  await expect
+    .poll(() => reportImage.evaluate((img) => (img as HTMLImageElement).naturalWidth))
+    .toBeGreaterThan(0);
 
   await open(page, "/profile/");
   await page.getByRole("button", { name: "添加", exact: true }).click();
@@ -124,6 +129,12 @@ test("booking lock, admin approval and visit guide", async ({ page, browser }) =
   await expect(adminPage.getByText("暂无待审核申请。")).toBeVisible({ timeout: 30_000 });
   await adminContext.close();
 
+  await expect(page.getByText("已支付", { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("就诊指引")).toBeVisible();
+  await expect(page.getByText(/示范医院/)).toBeVisible();
+
+  await page.reload();
+  await page.waitForLoadState("networkidle");
   await expect(page.getByText("已支付", { exact: true })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText("就诊指引")).toBeVisible();
   await expect(page.getByText(/示范医院/)).toBeVisible();

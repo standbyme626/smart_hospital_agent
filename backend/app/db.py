@@ -272,6 +272,12 @@ SCHEMA = [
 
 MIGRATIONS = [
     "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS user_id TEXT",
+    """
+    UPDATE bookings b
+    SET user_id = s.user_id
+    FROM sessions s
+    WHERE b.user_id IS NULL AND b.session_id = s.id
+    """,
     "UPDATE bookings SET user_id = session_id WHERE user_id IS NULL",
     "CREATE INDEX IF NOT EXISTS idx_bookings_user ON bookings (user_id)",
     "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS member_id TEXT",
