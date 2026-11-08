@@ -134,12 +134,13 @@ class SessionStore:
         completion_tokens: int,
         cost: float,
         latency_ms: int,
+        user_id: str | None = None,
     ) -> None:
         await self.db.execute(
             """
             INSERT INTO model_calls
-                (request_id, session_id, provider, model, task, prompt_tokens, completion_tokens, cost, latency_ms)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                (request_id, session_id, provider, model, task, prompt_tokens, completion_tokens, cost, latency_ms, user_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             """,
             request_id,
             session_id,
@@ -150,4 +151,5 @@ class SessionStore:
             completion_tokens,
             cost,
             latency_ms,
+            user_id,
         )

@@ -47,7 +47,7 @@ class MedicalAgent:
         await self.sessions.ensure(session_id, user_id, title=(title or message)[:40], member_id=member_id)
         yield await self._emit(session_id, "status", {"stage": "triage", "detail": "正在分诊"})
 
-        triage = await self._triage(message, request_id, session_id, history=history)
+        triage = await self._triage(message, request_id, session_id, history=history, user_id=user_id)
         yield await self._emit(session_id, "status", {"stage": "triage_done", "detail": triage})
         yield await self._emit(
             session_id,
@@ -92,7 +92,7 @@ class MedicalAgent:
                 session_id=session_id,
                 reasoning_effort="high",
             )
-            await self._record(result, request_id, session_id, "diagnosis")
+            await self._record(result, request_id, session_id, "diagnosis", user_id)
             if not result.tool_calls:
                 final_content = result.content or ""
                 break
@@ -240,6 +240,7 @@ class MedicalAgent:
         request_id: str,
         session_id: str,
         history: list[dict[str, Any]] | None = None,
+        user_id: str = "anonymous",
     ) -> dict[str, Any]:
         triage_messages: list[dict[str, Any]] = [{"role": "system", "content": TRIAGE_SYSTEM}]
         recent = trim_history(history or [], max_chars=2000)[-2:]
@@ -264,7 +265,7 @@ class MedicalAgent:
                 session_id=session_id,
                 reasoning_effort="low",
             )
-            await self._record(result, request_id, session_id, "triage")
+            await self._record(result, request_id, session_id, "triage", user_id)
             parsed = self._parse_json(result.content)
             if not parsed:
                 raise ValueError("triage json parse failed")
@@ -329,7 +330,14 @@ class MedicalAgent:
         seq = await self.sessions.append(session_id, event_type, data)
         return {"seq": seq, "type": event_type, "data": data}
 
-    async def _record(self, result: ChatResult, request_id: str, session_id: str, task: str) -> None:
+    async def _record(
+        self,
+        result: ChatResult,
+        request_id: str,
+        session_id: str,
+        task: str,
+        user_id: str = "anonymous",
+    ) -> None:
         await self.sessions.record_model_call(
             request_id=request_id,
             session_id=session_id,
@@ -340,6 +348,7 @@ class MedicalAgent:
             completion_tokens=result.completion_tokens,
             cost=result.cost,
             latency_ms=result.latency_ms,
+            user_id=user_id,
         )
 
     def _summarize(self, result: dict[str, Any]) -> str:

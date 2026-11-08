@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     PATIENT_PASSWORD: str = "patient123456"
     CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
     RATE_LIMIT_PER_MINUTE: int = 60
+    CHAT_DAILY_LIMIT: int = 60
 
     # Data
     DATABASE_URL: str = "postgresql://sha:sha_pwd@127.0.0.1:5434/sha"

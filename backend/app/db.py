@@ -286,6 +286,8 @@ MIGRATIONS = [
     "ALTER TABLE review_requests ALTER COLUMN updated_at SET DEFAULT now()",
     "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS member_id TEXT",
     "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS last_message_at TIMESTAMPTZ",
+    "ALTER TABLE model_calls ADD COLUMN IF NOT EXISTS user_id TEXT",
+    "CREATE INDEX IF NOT EXISTS idx_model_calls_user ON model_calls (user_id, created_at)",
 ]
 
 

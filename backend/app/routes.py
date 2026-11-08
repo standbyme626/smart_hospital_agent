@@ -289,6 +289,20 @@ async def chat_stream(
         )
         if existing and existing["user_id"] != user_id:
             raise HTTPException(status_code=404, detail="session not found")
+    daily_limit = int(state.settings.CHAT_DAILY_LIMIT)
+    if daily_limit > 0:
+        used_today = await state.db.fetchval(
+            """
+            SELECT count(*) FROM messages
+            WHERE user_id=$1 AND role='user' AND created_at >= date_trunc('day', now())
+            """,
+            user_id,
+        )
+        if int(used_today or 0) >= daily_limit:
+            raise HTTPException(
+                status_code=429,
+                detail=f"daily chat limit reached: {daily_limit} messages per day",
+            )
     try:
         member = await _member_row(state.db, payload.member_id, user_id)
     except Exception:

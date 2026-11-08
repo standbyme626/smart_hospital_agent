@@ -1,4 +1,5 @@
 import asyncio
+import json
 from types import SimpleNamespace
 
 import asyncpg
@@ -8,6 +9,7 @@ from fastapi.testclient import TestClient
 import app.security as security
 from app.api.deps import create_token
 from app.main import app
+from app.model_gateway import ChatResult
 
 ADMIN_PASSWORD = "admin123456"
 PATIENT_PASSWORD = "patient123456"
@@ -430,3 +432,120 @@ def test_load_user_returns_503_when_database_unavailable(client, monkeypatch):
     response = client.get("/api/v1/auth/me", headers=_auth(token))
     assert response.status_code == 503
     assert _login(client, "admin", ADMIN_PASSWORD).status_code == 503
+
+
+class FakeChatAgent:
+    async def stream(self, **kwargs):
+        yield {
+            "seq": 1,
+            "type": "final",
+            "data": {
+                "report": {"department": "全科", "urgency": "normal", "summary": "建议休息。"},
+                "summary": "建议休息。",
+            },
+        }
+
+
+class FakeGateway:
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    async def chat(self, messages, **kwargs) -> ChatResult:
+        task = kwargs.get("task", "diagnosis")
+        self.calls.append({"task": task})
+        if task == "triage":
+            content = json.dumps(
+                {
+                    "intent": "MEDICAL_CONSULT",
+                    "department": "全科",
+                    "urgency": "normal",
+                    "symptoms": "头痛",
+                    "confidence": 0.7,
+                },
+                ensure_ascii=False,
+            )
+        else:
+            content = "建议充分休息并观察。"
+        return ChatResult(content=content, provider="fake", model="fake")
+
+
+class FakeRetrieval:
+    async def search(self, query: str, **kwargs) -> list[dict]:
+        return []
+
+
+def _chat(client: TestClient, message: str, session_id: str, headers: dict[str, str]):
+    return client.post(
+        "/api/v1/chat/stream",
+        json={"message": message, "session_id": session_id},
+        headers=headers,
+    )
+
+
+def test_chat_quota(client):
+    headers = _auth(_token(client, "patient", PATIENT_PASSWORD))
+    client.app.state.agent = FakeChatAgent()
+    settings = client.app.state.settings
+    original_limit = settings.CHAT_DAILY_LIMIT
+    settings.CHAT_DAILY_LIMIT = 2
+    dsn = settings.DATABASE_URL
+    try:
+        assert _chat(client, "头痛", "sess_quota_1", headers).status_code == 200
+        assert _chat(client, "头痛", "sess_quota_2", headers).status_code == 200
+        used = _sql(
+            dsn,
+            "SELECT count(*) FROM messages WHERE user_id='patient' AND role='user'",
+            fetch=True,
+        )
+        assert used == 2
+
+        over = _chat(client, "头痛", "sess_quota_3", headers)
+        assert over.status_code == 429
+        assert "daily chat limit" in over.json()["detail"]
+        assert (
+            _sql(
+                dsn,
+                "SELECT count(*) FROM messages WHERE session_id='sess_quota_3'",
+                fetch=True,
+            )
+            == 0
+        )
+        assert (
+            _sql(
+                dsn,
+                "SELECT count(*) FROM messages WHERE user_id='patient' AND role='user'",
+                fetch=True,
+            )
+            == 2
+        )
+
+        other = _auth(_token(client, "admin", ADMIN_PASSWORD))
+        assert _chat(client, "头痛", "sess_quota_admin", other).status_code == 200
+    finally:
+        settings.CHAT_DAILY_LIMIT = original_limit
+
+
+def test_model_calls_persist_user_id(client):
+    headers = _auth(_token(client, "patient", PATIENT_PASSWORD))
+    gateway = FakeGateway()
+    client.app.state.agent.gateway = gateway
+    client.app.state.agent.retrieval = FakeRetrieval()
+    client.app.state.gateway = gateway
+    client.app.state.retrieval = client.app.state.agent.retrieval
+
+    response = _chat(client, "头痛两天了", "sess_model_calls", headers)
+    assert response.status_code == 200
+    assert "event: final" in response.text
+    assert {call["task"] for call in gateway.calls} == {"triage", "diagnosis"}
+
+    async def fetch_rows():
+        conn = await asyncpg.connect(client.app.state.settings.DATABASE_URL)
+        try:
+            return await conn.fetch("SELECT task, user_id FROM model_calls ORDER BY id")
+        finally:
+            await conn.close()
+
+    rows = asyncio.run(fetch_rows())
+    assert rows
+    assert {row["task"] for row in rows} == {"triage", "diagnosis"}
+    assert {row["user_id"] for row in rows} == {"patient"}
