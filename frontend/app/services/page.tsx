@@ -93,7 +93,7 @@ export default function ServicesPage() {
     if (!selected) return;
     setLoading(true);
     try {
-      setLock(await lockSlot(selected.slot_id, activeMember?.id || "P001"));
+      setLock(await lockSlot(selected.slot_id));
       track("booking_lock", { slot_id: selected.slot_id });
     } catch (err) {
       showToast(err instanceof Error ? err.message : "锁号失败");
@@ -106,7 +106,7 @@ export default function ServicesPage() {
     if (!lock) return;
     setLoading(true);
     try {
-      setOrder(await createOrder(lock.lock_id, activeMember?.id || "P001"));
+      setOrder(await createOrder(lock.lock_id));
       track("booking_order", { lock_id: lock.lock_id });
     } catch (err) {
       showToast(err instanceof Error ? err.message : "创建订单失败");

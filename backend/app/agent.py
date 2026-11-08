@@ -56,11 +56,11 @@ class MedicalAgent:
         )
 
         if triage["intent"] == "CRISIS" or triage["urgency"] == "critical":
-            async for event in self._crisis_flow(session_id, message, triage, request_id):
+            async for event in self._crisis_flow(session_id, message, triage, request_id, user_id):
                 yield event
             return
 
-        context = ToolContext(session_id=session_id, request_id=request_id, user_text=message)
+        context = ToolContext(session_id=session_id, request_id=request_id, user_id=user_id, user_text=message)
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": AGENT_SYSTEM},
             {
@@ -186,9 +186,10 @@ class MedicalAgent:
         message: str,
         triage: dict[str, Any],
         request_id: str,
+        user_id: str = "anonymous",
     ) -> AsyncGenerator[dict[str, Any], None]:
         evidence = await self.retrieval.search(message, top_k=3)
-        context = ToolContext(session_id=session_id, request_id=request_id, user_text=message)
+        context = ToolContext(session_id=session_id, request_id=request_id, user_id=user_id, user_text=message)
         context.citations = evidence
         report = {
             "department": "急诊科",
@@ -216,7 +217,7 @@ class MedicalAgent:
         await self.sessions.audit(
             request_id=request_id,
             session_id=session_id,
-            actor="anonymous",
+            actor=user_id,
             action="chat.crisis",
             detail={"triage": triage, "report": report},
         )

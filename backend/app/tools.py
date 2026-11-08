@@ -17,6 +17,7 @@ ToolHandler = Callable[[dict[str, Any], "ToolContext"], Awaitable[dict[str, Any]
 class ToolContext:
     session_id: str
     request_id: str
+    user_id: str = "anonymous"
     user_text: str = ""
     citations: list[dict[str, Any]] = field(default_factory=list)
     drug_result: dict[str, Any] | None = None
@@ -127,7 +128,7 @@ class ToolRegistry:
     async def lock_slot(self, args: dict[str, Any], context: ToolContext) -> dict[str, Any]:
         result = await self.mcp.call_tool(
             "lock_slot",
-            {"slot_id": args.get("slot_id"), "patient_id": args.get("patient_id") or context.session_id},
+            {"slot_id": args.get("slot_id"), "patient_id": context.user_id},
         )
         if result["is_error"]:
             return {"ok": False, "error": result["text"]}
@@ -136,7 +137,7 @@ class ToolRegistry:
     async def create_order(self, args: dict[str, Any], context: ToolContext) -> dict[str, Any]:
         result = await self.mcp.call_tool(
             "create_order",
-            {"lock_id": args.get("lock_id"), "patient_id": args.get("patient_id") or context.session_id},
+            {"lock_id": args.get("lock_id"), "patient_id": context.user_id},
         )
         if result["is_error"]:
             return {"ok": False, "error": result["text"]}
@@ -144,13 +145,14 @@ class ToolRegistry:
         context.booking = order
         await self.db.execute(
             """
-            INSERT INTO bookings (id, session_id, patient_id, department, slot_id, order_id, status, payment_status, amount, detail)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
+            INSERT INTO bookings (id, session_id, patient_id, user_id, department, slot_id, order_id, status, payment_status, amount, detail)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
             ON CONFLICT (id) DO NOTHING
             """,
             order.get("order_id"),
             context.session_id,
-            order.get("patient_id"),
+            context.user_id,
+            context.user_id,
             (order.get("slot_id") or "").split("|")[0],
             order.get("slot_id"),
             order.get("order_id"),
