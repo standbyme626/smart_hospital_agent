@@ -87,7 +87,7 @@ export default function ServicesPage() {
     return Array.from(map.entries()).slice(0, 4);
   }, [slots, doctor]);
 
-  const step = order?.payment_status === "paid" ? 4 : order ? 2 : lock ? 1 : 0;
+  const step = order?.payment_status === "paid" ? 3 : order ? 2 : lock ? 1 : 0;
 
   async function doLock() {
     if (!selected) return;

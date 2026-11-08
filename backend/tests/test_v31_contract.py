@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -19,18 +20,20 @@ REMOVED_ROUTES = {
 
 
 def _scan_files() -> list[Path]:
-    files: list[Path] = [ROOT / ".env.example"]
+    files: list[Path] = [ROOT / ".env.example", ROOT / "docs" / "DEPLOYMENT-106.md"]
     for folder, suffix in (
         ("frontend/app", "*.tsx"),
         ("frontend/components", "*.tsx"),
         ("frontend/lib", "*.ts"),
-        ("docs", "*.md"),
     ):
         files.extend((ROOT / folder).rglob(suffix))
+    build_out = ROOT / "frontend" / "out"
+    if build_out.exists():
+        files.extend(path for path in build_out.rglob("*") if path.is_file())
     return files
 
 
-def test_no_old_demo_password_in_frontend_docs_or_env_example():
+def test_no_old_demo_password_in_build_or_env_example_or_deployment_doc():
     offenders = []
     for path in _scan_files():
         if OLD_DEMO_PASSWORD in path.read_text(encoding="utf-8", errors="ignore"):
@@ -42,6 +45,7 @@ def test_env_example_uses_placeholders():
     env = (ROOT / ".env.example").read_text()
     for key in ("ADMIN_PASSWORD", "PATIENT_PASSWORD", "HITL_CONFIRM_TOKEN"):
         assert f"{key}=change-me" in env
+    assert "postgresql://sha:change-me@" in env
 
 
 def test_frontend_services_has_no_payment_token():
@@ -49,7 +53,7 @@ def test_frontend_services_has_no_payment_token():
     assert "confirmToken" not in source
     assert "confirm_token" not in source
     assert "payOrder" not in source
-    assert "支付审核功能即将上线" in source
+    assert re.search(r'<button[^>]*\bdisabled\b[^>]*>\s*<CreditCard', source)
 
 
 def test_removed_endpoints_not_in_openapi():

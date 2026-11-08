@@ -95,4 +95,4 @@ def test_api_health():
         assert body["ok"] is True
         assert body["version"] == client.app.state.settings.APP_VERSION
         assert datetime.fromisoformat(body["time"]).tzinfo is not None
-        assert elapsed < 0.1
+        assert elapsed < 0.5

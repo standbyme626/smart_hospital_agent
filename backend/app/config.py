@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     )
 
     APP_NAME: str = "smart-hospital-agent"
-    APP_VERSION: str = "2.0.0"
+    APP_VERSION: str = "3.1.0"
     ENV: str = "dev"
     DEBUG: bool = False
 

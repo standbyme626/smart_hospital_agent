@@ -35,3 +35,9 @@ jobs:
         run: cd frontend && npm ci
       - name: Build (includes TypeScript)
         run: cd frontend && npm run build
+      - name: Secret gate (build output)
+        run: |
+          if grep -RIn "wasd1234" frontend/out .env.example docs/DEPLOYMENT-106.md; then
+            echo "::error::old demo password found in build output or shipped docs"
+            exit 1
+          fi
