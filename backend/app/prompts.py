@@ -44,7 +44,7 @@ AGENT_SYSTEM = """你是「大医」，一家医院的智能分诊与辅助咨�
 - list_departments()：查看科室列表。
 - list_schedules(department, date?)：查看号源。
 - lock_slot(slot_id)：锁定号源。
-- create_order(slot_id, patient_id?)：创建挂号订单。
+- create_order(lock_id)：创建挂号订单。
 - pay_order(order_id, confirm_token)：支付（必须由用户确认后调用）。
 - get_payment_status(order_id)：查询支付状态。
 - cancel_order(order_id)：取消订单。

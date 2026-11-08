@@ -1,9 +1,11 @@
 import asyncio
+from types import SimpleNamespace
 
 import asyncpg
 import pytest
 from fastapi.testclient import TestClient
 
+import app.security as security
 from app.api.deps import create_token
 from app.main import app
 
@@ -40,10 +42,15 @@ def _admin_headers(client: TestClient) -> dict[str, str]:
     return _auth(_token(client, "admin", ADMIN_PASSWORD))
 
 
-def _create_user(client: TestClient, username: str, password: str = USER_PASSWORD) -> dict:
+def _create_user(
+    client: TestClient,
+    username: str,
+    password: str = USER_PASSWORD,
+    role: str = "patient",
+) -> dict:
     response = client.post(
         "/api/v1/admin/users",
-        json={"username": username, "password": password, "role": "patient"},
+        json={"username": username, "password": password, "role": role},
         headers=_admin_headers(client),
     )
     assert response.status_code == 201, response.text
@@ -151,7 +158,7 @@ def test_admin_user_create_and_no_hash_leak(client):
     assert client.get("/api/v1/admin/users", headers=patient_headers).status_code == 403
 
 
-def test_bootstrap_idempotent_and_never_recreates_deleted_user():
+def test_bootstrap_idempotent_and_marker_prevents_reseed():
     with TestClient(app) as first:
         settings = first.app.state.settings
         settings.AUTH_ENABLED = True
@@ -159,20 +166,23 @@ def test_bootstrap_idempotent_and_never_recreates_deleted_user():
         users = first.get("/api/v1/admin/users", headers=headers).json()["users"]
         assert {item["username"] for item in users} == {"admin", "patient"}
         dsn = settings.DATABASE_URL
-        hash_before = _sql(dsn, "SELECT password_hash FROM users WHERE id='admin'", fetch=True)
+        hash_before = _sql(dsn, "SELECT password_hash FROM users WHERE username='admin'", fetch=True)
+        marker = _sql(dsn, "SELECT value FROM app_meta WHERE key='users_bootstrapped'", fetch=True)
+        assert marker == "true"
 
     with TestClient(app) as second:
         second.app.state.settings.AUTH_ENABLED = True
         assert _login(second, "admin", ADMIN_PASSWORD).status_code == 200
         assert _sql(dsn, "SELECT count(*) FROM users", fetch=True) == 2
-        assert _sql(dsn, "SELECT password_hash FROM users WHERE id='admin'", fetch=True) == hash_before
+        assert _sql(dsn, "SELECT password_hash FROM users WHERE username='admin'", fetch=True) == hash_before
 
-    _sql(dsn, "DELETE FROM users WHERE id='admin'")
+    _sql(dsn, "DELETE FROM users")
 
     with TestClient(app) as third:
         third.app.state.settings.AUTH_ENABLED = True
+        assert _sql(dsn, "SELECT count(*) FROM users", fetch=True) == 0
         assert _login(third, "admin", ADMIN_PASSWORD).status_code == 401
-        assert _login(third, "patient", PATIENT_PASSWORD).status_code == 200
+        assert _login(third, "patient", PATIENT_PASSWORD).status_code == 401
 
 
 def test_cross_user_isolation(client):
@@ -222,6 +232,13 @@ def test_cross_user_isolation(client):
         "user_a",
         "心血管内科",
     )
+    _sql(
+        dsn,
+        "INSERT INTO bookings (id, patient_id, department) VALUES ($1,$2,$3)",
+        "order_legacy_b",
+        "user_b",
+        "内科",
+    )
 
     assert client.get("/api/v1/sessions/sess_iso_a/events", headers=headers_a).status_code == 200
     assert client.get("/api/v1/sessions/sess_iso_a/events", headers=headers_b).status_code == 404
@@ -259,6 +276,7 @@ def test_cross_user_isolation(client):
     followups_b = client.get("/api/v1/followups", headers=headers_b).json()["followups"]
     assert followups_b == []
 
+    assert client.get("/api/v1/booking/orders/order_legacy_b", headers=headers_b).status_code == 404
     assert client.get("/api/v1/booking/orders/order_iso_a", headers=headers_b).status_code == 404
     assert client.post("/api/v1/booking/orders/order_iso_a/cancel", headers=headers_b).status_code == 404
     assert (
@@ -302,3 +320,113 @@ def test_cross_user_isolation(client):
         ).status_code
         == 422
     )
+
+
+def test_login_username_length_capped(client):
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"username": "a" * 65, "password": "x"},
+    )
+    assert response.status_code == 422
+
+
+def test_lockout_uses_username_only_ignoring_forwarded_for(client):
+    _create_user(client, "u_xff", "rightpass")
+    for index in range(5):
+        response = client.post(
+            "/api/v1/auth/login",
+            json={"username": "u_xff", "password": "badpass"},
+            headers={"X-Forwarded-For": f"203.0.113.{index}", "X-Real-IP": f"198.51.100.{index}"},
+        )
+    assert response.status_code == 423
+
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"username": "u_xff", "password": "rightpass"},
+        headers={"X-Forwarded-For": "192.0.2.55", "X-Real-IP": "192.0.2.55"},
+    )
+    assert response.status_code == 423
+
+
+def test_lockout_sliding_window_expires(client, monkeypatch):
+    clock = SimpleNamespace(now=1000.0)
+    monkeypatch.setattr(security, "time", SimpleNamespace(time=lambda: clock.now))
+    _create_user(client, "u_window", "rightpass")
+
+    for _ in range(4):
+        assert _login(client, "u_window", "badpass").status_code == 401
+    clock.now += security.LOCKOUT_SECONDS + 1
+
+    for _ in range(4):
+        assert _login(client, "u_window", "badpass").status_code == 401
+    assert _login(client, "u_window", "badpass").status_code == 423
+
+    clock.now += security.LOCKOUT_SECONDS + 1
+    assert _login(client, "u_window", "rightpass").status_code == 200
+
+
+def test_unknown_user_still_verifies_dummy_hash(client, monkeypatch):
+    import app.routes as routes_module
+
+    seen: list[str] = []
+    real_verify = routes_module.verify_password
+
+    def spy(password: str, encoded: str) -> bool:
+        seen.append(encoded)
+        return real_verify(password, encoded)
+
+    monkeypatch.setattr(routes_module, "verify_password", spy)
+
+    for _ in range(4):
+        assert _login(client, "no_such_user", "whatever123").status_code == 401
+    assert _login(client, "no_such_user", "whatever123").status_code == 423
+    assert len(seen) == 5
+    assert all(encoded == security.DUMMY_PASSWORD_HASH for encoded in seen)
+
+
+def test_admin_patch_role_password_and_empty_patch(client):
+    _create_user(client, "u_patch", "oldpass1")
+    headers = _admin_headers(client)
+
+    empty = client.patch("/api/v1/admin/users/u_patch", json={}, headers=headers)
+    assert empty.status_code == 400
+
+    promoted = client.patch("/api/v1/admin/users/u_patch", json={"role": "admin"}, headers=headers)
+    assert promoted.status_code == 200
+    assert promoted.json()["user"]["role"] == "admin"
+    assert "password_hash" not in promoted.json()["user"]
+
+    rotated = client.patch(
+        "/api/v1/admin/users/u_patch",
+        json={"password": "newpass1"},
+        headers=headers,
+    )
+    assert rotated.status_code == 200
+    assert "password_hash" not in rotated.json()["user"]
+
+    assert _login(client, "u_patch", "oldpass1").status_code == 401
+    assert _login(client, "u_patch", "newpass1").status_code == 200
+
+
+def test_last_enabled_admin_cannot_be_disabled_or_demoted(client):
+    headers = _admin_headers(client)
+    assert client.patch("/api/v1/admin/users/admin", json={"enabled": False}, headers=headers).status_code == 400
+    assert client.patch("/api/v1/admin/users/admin", json={"role": "patient"}, headers=headers).status_code == 400
+
+    _create_user(client, "u_second_admin", role="admin")
+    disabled = client.patch("/api/v1/admin/users/admin", json={"enabled": False}, headers=headers)
+    assert disabled.status_code == 200
+
+    headers2 = _auth(_token(client, "u_second_admin", USER_PASSWORD))
+    assert client.patch("/api/v1/admin/users/u_second_admin", json={"role": "patient"}, headers=headers2).status_code == 400
+    assert client.patch("/api/v1/admin/users/u_second_admin", json={"enabled": False}, headers=headers2).status_code == 400
+    assert client.get("/api/v1/auth/me", headers=headers).status_code == 401
+
+
+def test_load_user_returns_503_when_database_unavailable(client, monkeypatch):
+    token = _token(client, "admin", ADMIN_PASSWORD)
+    monkeypatch.setattr(client.app.state, "db", SimpleNamespace(pool=None))
+
+    response = client.get("/api/v1/auth/me", headers=_auth(token))
+    assert response.status_code == 503
+    assert _login(client, "admin", ADMIN_PASSWORD).status_code == 503

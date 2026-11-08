@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 import asyncpg
@@ -191,6 +193,12 @@ SCHEMA = [
     """,
     "CREATE INDEX IF NOT EXISTS idx_analytics_name ON analytics_events (name, created_at DESC)",
     """
+    CREATE TABLE IF NOT EXISTS app_meta (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
         username TEXT NOT NULL UNIQUE,
@@ -205,7 +213,7 @@ SCHEMA = [
 
 MIGRATIONS = [
     "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS user_id TEXT",
-    "UPDATE bookings SET user_id = patient_id WHERE user_id IS NULL",
+    "UPDATE bookings SET user_id = session_id WHERE user_id IS NULL",
     "CREATE INDEX IF NOT EXISTS idx_bookings_user ON bookings (user_id)",
 ]
 
@@ -237,6 +245,13 @@ class Database:
                 await conn.execute(statement)
             for statement in MIGRATIONS:
                 await conn.execute(statement)
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncIterator[asyncpg.Connection]:
+        assert self.pool is not None
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                yield conn
 
     async def fetch(self, query: str, *args: Any) -> list[asyncpg.Record]:
         assert self.pool is not None

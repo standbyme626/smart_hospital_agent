@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 import secrets
 import time
 from typing import Any
 
+import asyncpg
 import jwt
 from fastapi import HTTPException, Request
+
+logger = logging.getLogger(__name__)
 
 SCRYPT_N = 2**14
 SCRYPT_R = 8
@@ -17,6 +21,9 @@ _SALT_BYTES = 16
 
 LOCKOUT_MAX_FAILURES = 5
 LOCKOUT_SECONDS = 15 * 60
+_MAX_TRACKED_KEYS = 10_000
+
+BOOTSTRAP_MARKER = "users_bootstrapped"
 
 _login_failures: dict[str, list[float]] = {}
 _locked_until: dict[str, float] = {}
@@ -54,28 +61,63 @@ def verify_password(password: str, encoded: str) -> bool:
     return hmac.compare_digest(digest, expected)
 
 
-def login_key(username: str, client_ip: str) -> str:
-    return f"{username}|{client_ip}"
+DUMMY_PASSWORD_HASH = hash_password(secrets.token_hex(16))
 
 
-def _purge(key: str) -> None:
+def login_key(username: str) -> str:
+    return username
+
+
+def _prune(key: str, now: float) -> None:
     until = _locked_until.get(key)
-    if until is not None and until <= time.time():
-        _locked_until.pop(key, None)
+    if until is not None:
+        if until <= now:
+            _locked_until.pop(key, None)
+            _login_failures.pop(key, None)
+        return
+    failures = _login_failures.get(key)
+    if not failures:
+        return
+    cutoff = now - LOCKOUT_SECONDS
+    fresh = [stamp for stamp in failures if stamp > cutoff]
+    if fresh:
+        _login_failures[key] = fresh
+    else:
         _login_failures.pop(key, None)
 
 
+def _sweep(now: float) -> None:
+    for key in list(_login_failures):
+        _prune(key, now)
+    for key in list(_locked_until):
+        _prune(key, now)
+
+
+def _enforce_bound(now: float) -> None:
+    if len(_login_failures) + len(_locked_until) <= _MAX_TRACKED_KEYS:
+        return
+    _sweep(now)
+    overflow = len(_login_failures) - _MAX_TRACKED_KEYS
+    if overflow > 0:
+        oldest = sorted(_login_failures, key=lambda key: _login_failures[key][-1])[:overflow]
+        for key in oldest:
+            _login_failures.pop(key, None)
+
+
 def is_locked(key: str) -> bool:
-    _purge(key)
+    now = time.time()
+    _prune(key, now)
     return key in _locked_until
 
 
 def record_failure(key: str) -> bool:
-    _purge(key)
+    now = time.time()
+    _prune(key, now)
+    _enforce_bound(now)
     failures = _login_failures.setdefault(key, [])
-    failures.append(time.time())
+    failures.append(now)
     if len(failures) >= LOCKOUT_MAX_FAILURES:
-        _locked_until[key] = time.time() + LOCKOUT_SECONDS
+        _locked_until[key] = now + LOCKOUT_SECONDS
         _login_failures.pop(key, None)
         return True
     return False
@@ -92,28 +134,51 @@ def reset_lockout_state() -> None:
 
 
 async def bootstrap_users(settings: Any, db: Any) -> None:
+    if getattr(db, "pool", None) is None:
+        logger.error("bootstrap users skipped: database pool unavailable")
+        return
     try:
-        count = await db.fetchval("SELECT count(*) FROM users")
+        async with db.transaction() as conn:
+            marker = await conn.fetchval(
+                "SELECT value FROM app_meta WHERE key=$1",
+                BOOTSTRAP_MARKER,
+            )
+            if marker:
+                return
+            count = await conn.fetchval("SELECT count(*) FROM users")
+            if count == 0:
+                logger.info(
+                    "seeding bootstrap users: admin=%s patient=%s",
+                    settings.ADMIN_USER,
+                    settings.PATIENT_USER,
+                )
+                accounts = (
+                    (settings.ADMIN_USER, settings.ADMIN_PASSWORD, "admin"),
+                    (settings.PATIENT_USER, settings.PATIENT_PASSWORD, "patient"),
+                )
+                for username, password, role in accounts:
+                    await conn.execute(
+                        """
+                        INSERT INTO users (id, username, password_hash, role)
+                        VALUES ($1, $2, $3, $4)
+                        ON CONFLICT (id) DO NOTHING
+                        """,
+                        username,
+                        username,
+                        hash_password(password),
+                        role,
+                    )
+            else:
+                logger.info("users table already has %s rows; skipping bootstrap seed", count)
+            await conn.execute(
+                "INSERT INTO app_meta (key, value) VALUES ($1, $2) "
+                "ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value",
+                BOOTSTRAP_MARKER,
+                "true",
+            )
     except Exception:
-        return
-    if count:
-        return
-    accounts = (
-        (settings.ADMIN_USER, settings.ADMIN_PASSWORD, "admin"),
-        (settings.PATIENT_USER, settings.PATIENT_PASSWORD, "patient"),
-    )
-    for username, password, role in accounts:
-        await db.execute(
-            """
-            INSERT INTO users (id, username, password_hash, role)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (id) DO NOTHING
-            """,
-            username,
-            username,
-            hash_password(password),
-            role,
-        )
+        logger.exception("bootstrap users failed: users/app_meta query or seeding error")
+        raise
 
 
 async def load_user(request: Request, authorization: str | None) -> dict[str, Any]:
@@ -130,10 +195,16 @@ async def load_user(request: Request, authorization: str | None) -> dict[str, An
     subject = payload.get("sub")
     if not subject:
         raise HTTPException(status_code=401, detail="invalid token payload")
-    row = await request.app.state.db.fetchrow(
-        "SELECT id, username, role, enabled FROM users WHERE id=$1",
-        subject,
-    )
+    db = getattr(request.app.state, "db", None)
+    if db is None or getattr(db, "pool", None) is None:
+        raise HTTPException(status_code=503, detail="database unavailable")
+    try:
+        row = await db.fetchrow(
+            "SELECT id, username, role, enabled FROM users WHERE id=$1",
+            subject,
+        )
+    except (AssertionError, OSError, asyncpg.PostgresError) as exc:
+        raise HTTPException(status_code=503, detail="database unavailable") from exc
     if not row:
         raise HTTPException(status_code=401, detail="user not found")
     if not row["enabled"]:

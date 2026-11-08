@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import re
@@ -8,6 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import asyncpg
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
@@ -31,6 +33,7 @@ from .schemas import (
     PayRequest,
 )
 from .security import (
+    DUMMY_PASSWORD_HASH,
     clear_failures,
     hash_password,
     is_locked,
@@ -45,11 +48,6 @@ router = APIRouter()
 
 def _state(request: Request) -> Any:
     return request.app.state
-
-
-def _client_ip(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
-    return request.headers.get("x-real-ip") or forwarded or (request.client.host if request.client else "unknown")
 
 
 def _public_user(row: Any) -> dict[str, Any]:
@@ -140,7 +138,7 @@ async def _owned_report(db: Any, report_id: str, user_id: str) -> dict[str, Any]
 
 async def _owned_order(db: Any, order_id: str, user_id: str) -> dict[str, Any]:
     row = await db.fetchrow(
-        "SELECT * FROM bookings WHERE id=$1 AND (user_id=$2 OR patient_id=$2)",
+        "SELECT * FROM bookings WHERE id=$1 AND user_id=$2",
         order_id,
         user_id,
     )
@@ -189,14 +187,19 @@ async def login(payload: LoginRequest, request: Request) -> dict[str, Any]:
     state = _state(request)
     if not state.db or not getattr(state.db, "pool", None):
         raise HTTPException(status_code=503, detail="database unavailable")
-    key = login_key(payload.username, _client_ip(request))
+    key = login_key(payload.username)
     if is_locked(key):
         raise HTTPException(status_code=423, detail="account locked, try again later")
-    row = await state.db.fetchrow(
-        "SELECT id, username, role, enabled, password_hash FROM users WHERE username=$1",
-        payload.username,
-    )
-    if not row or not verify_password(payload.password, row["password_hash"]):
+    try:
+        row = await state.db.fetchrow(
+            "SELECT id, username, role, enabled, password_hash FROM users WHERE username=$1",
+            payload.username,
+        )
+    except (OSError, asyncpg.PostgresError) as exc:
+        raise HTTPException(status_code=503, detail="database unavailable") from exc
+    encoded = row["password_hash"] if row else DUMMY_PASSWORD_HASH
+    valid = await asyncio.to_thread(verify_password, payload.password, encoded)
+    if not row or not valid:
         if record_failure(key):
             raise HTTPException(status_code=423, detail="account locked, try again later")
         raise HTTPException(status_code=401, detail="invalid credentials")
@@ -468,7 +471,7 @@ async def booking_pay(
         {"order_id": order_id, "confirm_token": payload.confirm_token, "method": payload.method},
     )
     await state.db.execute(
-        "UPDATE bookings SET payment_status=$2, status=$3, updated_at=now() WHERE id=$1 AND (user_id=$4 OR patient_id=$4)",
+        "UPDATE bookings SET payment_status=$2, status=$3, updated_at=now() WHERE id=$1 AND user_id=$4",
         order_id,
         data.get("payment_status", "paid"),
         data.get("status", "booked"),
@@ -564,7 +567,7 @@ async def create_user(
         RETURNING id, username, role, enabled, created_at, updated_at
         """,
         payload.username,
-        hash_password(payload.password),
+        await asyncio.to_thread(hash_password, payload.password),
         payload.role,
         payload.enabled,
     )
@@ -581,24 +584,54 @@ async def update_user(
     user: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, Any]:
     db = _state(request).db
-    sets = ["updated_at = now()"]
-    args: list[Any] = [user_id]
-    if payload.enabled is not None:
-        args.append(payload.enabled)
-        sets.append(f"enabled = ${len(args)}")
-    if payload.role is not None:
-        args.append(payload.role)
-        sets.append(f"role = ${len(args)}")
-    if payload.password is not None:
-        args.append(hash_password(payload.password))
-        sets.append(f"password_hash = ${len(args)}")
-    row = await db.fetchrow(
-        f"UPDATE users SET {', '.join(sets)} WHERE id = $1 "
-        "RETURNING id, username, role, enabled, created_at, updated_at",
-        *args,
+    if payload.enabled is None and payload.role is None and payload.password is None:
+        raise HTTPException(status_code=400, detail="empty update")
+    new_hash = (
+        await asyncio.to_thread(hash_password, payload.password)
+        if payload.password is not None
+        else None
     )
-    if not row:
-        raise HTTPException(status_code=404, detail="user not found")
+    async with db.transaction() as conn:
+        target = await conn.fetchrow(
+            "SELECT id, role, enabled FROM users WHERE id=$1",
+            user_id,
+        )
+        if not target:
+            raise HTTPException(status_code=404, detail="user not found")
+        removing_admin = bool(
+            target["role"] == "admin"
+            and target["enabled"]
+            and (
+                payload.enabled is False
+                or (payload.role is not None and payload.role != "admin")
+            )
+        )
+        if removing_admin:
+            remaining = await conn.fetchval(
+                "SELECT count(*) FROM users WHERE role='admin' AND enabled=true AND id<>$1",
+                user_id,
+            )
+            if remaining == 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="cannot disable or demote the last enabled admin",
+                )
+        sets = ["updated_at = now()"]
+        args: list[Any] = [user_id]
+        if payload.enabled is not None:
+            args.append(payload.enabled)
+            sets.append(f"enabled = ${len(args)}")
+        if payload.role is not None:
+            args.append(payload.role)
+            sets.append(f"role = ${len(args)}")
+        if new_hash is not None:
+            args.append(new_hash)
+            sets.append(f"password_hash = ${len(args)}")
+        row = await conn.fetchrow(
+            f"UPDATE users SET {', '.join(sets)} WHERE id = $1 "
+            "RETURNING id, username, role, enabled, created_at, updated_at",
+            *args,
+        )
     return {"user": _public_user(row)}
 
 
