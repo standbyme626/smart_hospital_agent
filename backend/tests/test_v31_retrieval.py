@@ -57,6 +57,8 @@ def test_normalize_department_aliases():
     assert normalize_department("泌尿科") == "泌尿外科"
     assert normalize_department("心内科") == "心血管内科"
     assert normalize_department("心血管内科") == "心血管内科"
+    assert normalize_department("药物咨询") == "精准药剂科"
+    assert normalize_department(normalize_department("药物咨询")) == "精准药剂科"
     assert normalize_department(None) == "全科"
     assert normalize_department("不存在的科室") == "全科"
 
