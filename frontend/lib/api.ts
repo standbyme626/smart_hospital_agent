@@ -235,9 +235,12 @@ export async function deleteAccount(password: string): Promise<void> {
   await apiFetch("/api/v1/me", { method: "DELETE", body: JSON.stringify({ password }) });
 }
 
-export async function getFollowups(status?: string): Promise<Followup[]> {
-  const query = status ? `?status=${encodeURIComponent(status)}` : "";
-  const data = await apiFetch<{ followups: Followup[] }>(`/api/v1/followups${query}`);
+export async function getFollowups(status?: string, memberId?: string): Promise<Followup[]> {
+  const query = new URLSearchParams();
+  if (status) query.set("status", status);
+  if (memberId) query.set("member_id", memberId);
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  const data = await apiFetch<{ followups: Followup[] }>(`/api/v1/followups${suffix}`);
   return data.followups;
 }
 

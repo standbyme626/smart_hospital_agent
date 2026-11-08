@@ -114,12 +114,13 @@ async def _ensure_self_member(db: Any, user_id: str) -> dict[str, Any]:
     member_id = "mem_" + uuid.uuid4().hex[:10]
     row = await db.fetchrow(
         """
-        INSERT INTO family_members (id, user_id, name, relation, is_self)
-        VALUES ($1, $2, '本人', 'self', true)
+        INSERT INTO family_members (id, user_id, name, relation, is_self, hospital_patient_id)
+        VALUES ($1, $2, '本人', 'self', true, $3)
         RETURNING *
         """,
         member_id,
         user_id,
+        f"HP-{member_id}",
     )
     return dict(row) if row else {"id": member_id, "user_id": user_id, "name": "本人", "relation": "self", "is_self": True}
 
@@ -372,9 +373,12 @@ async def chat_stream(
 @router.get("/api/v1/sessions")
 async def list_sessions(
     request: Request,
+    member_id: str | None = Query(None),
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
-    sessions = await _state(request).sessions.list_sessions(str(user["sub"]))
+    sessions = await _state(request).sessions.list_sessions(
+        str(user["sub"]), member_id=member_id
+    )
     return {"sessions": sessions}
 
 
@@ -382,10 +386,13 @@ async def list_sessions(
 async def session_detail(
     session_id: str,
     request: Request,
+    member_id: str | None = Query(None),
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     db = _state(request).db
     session = await _owned_session(db, session_id, str(user["sub"]))
+    if member_id and session.get("member_id") != member_id:
+        raise HTTPException(status_code=404, detail="session not found")
     rows = await db.fetch(
         """
         SELECT id, role, content, created_at FROM (
@@ -946,8 +953,9 @@ async def create_family_member(
     row = await db.fetchrow(
         """
         INSERT INTO family_members
-            (id, user_id, name, relation, gender, birth_date, phone, allergies, conditions, is_self)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+            (id, user_id, name, relation, gender, birth_date, phone, allergies, conditions,
+             is_self, hospital_patient_id)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
         RETURNING *
         """,
         member_id,
@@ -960,6 +968,7 @@ async def create_family_member(
         payload.allergies,
         payload.conditions,
         payload.is_self,
+        f"HP-{member_id}",
     )
     return {"member": dict(row) if row else None}
 
@@ -1008,7 +1017,8 @@ async def delete_family_member(
     request: Request,
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
-    db = _state(request).db
+    state = _state(request)
+    db = state.db
     user_id = str(user["sub"])
     row = await db.fetchrow(
         "SELECT is_self FROM family_members WHERE id=$1 AND user_id=$2", member_id, user_id
@@ -1017,7 +1027,75 @@ async def delete_family_member(
         raise HTTPException(status_code=404, detail="member not found")
     if row["is_self"]:
         raise HTTPException(status_code=400, detail="cannot delete self member")
-    await db.execute("DELETE FROM family_members WHERE id=$1 AND user_id=$2", member_id, user_id)
+    report_rows = await db.fetch(
+        "SELECT id, image_path FROM reports WHERE user_id=$1 AND member_id=$2",
+        user_id,
+        member_id,
+    )
+    report_ids = [item["id"] for item in report_rows]
+    session_ids = [
+        item["id"]
+        for item in await db.fetch(
+            "SELECT id FROM sessions WHERE user_id=$1 AND member_id=$2",
+            user_id,
+            member_id,
+        )
+    ]
+    try:
+        async with db.transaction() as conn:
+            if session_ids:
+                await conn.execute(
+                    "DELETE FROM events WHERE session_id = ANY($1::text[])", session_ids
+                )
+            await conn.execute(
+                """
+                DELETE FROM messages
+                WHERE session_id = ANY($3::text[])
+                   OR (user_id=$1 AND member_id=$2)
+                """,
+                user_id,
+                member_id,
+                session_ids,
+            )
+            await conn.execute(
+                "DELETE FROM sessions WHERE user_id=$1 AND member_id=$2", user_id, member_id
+            )
+            await conn.execute(
+                "DELETE FROM followups WHERE user_id=$1 AND member_id=$2", user_id, member_id
+            )
+            await conn.execute(
+                "DELETE FROM medications WHERE user_id=$1 AND member_id=$2", user_id, member_id
+            )
+            await conn.execute(
+                "DELETE FROM reports WHERE user_id=$1 AND member_id=$2", user_id, member_id
+            )
+            await conn.execute(
+                "DELETE FROM health_events WHERE user_id=$1 AND member_id=$2", user_id, member_id
+            )
+            if report_ids:
+                await conn.execute(
+                    "DELETE FROM health_events WHERE user_id=$1 AND detail->>'report_id' = ANY($2::text[])",
+                    user_id,
+                    report_ids,
+                )
+            await conn.execute(
+                "DELETE FROM family_members WHERE id=$1 AND user_id=$2", member_id, user_id
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"failed to delete member data: {exc}"
+        ) from exc
+    for item in report_rows:
+        remove_report_image(state.settings, item["image_path"])
+    await state.sessions.audit(
+        request_id=getattr(request.state, "request_id", uuid.uuid4().hex),
+        session_id=user_id,
+        actor=user_id,
+        action="family.delete",
+        detail={"member_id": member_id},
+    )
     return {"ok": True}
 
 
@@ -1453,20 +1531,33 @@ async def delete_me(
 async def list_followups(
     request: Request,
     status: str | None = Query(None),
+    member_id: str | None = Query(None),
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     db = _state(request).db
     user_id = str(user["sub"])
+    if member_id:
+        await _owned_member(db, member_id, user_id)
     if status:
         rows = await db.fetch(
-            "SELECT * FROM followups WHERE user_id=$1 AND status=$2 ORDER BY due_date NULLS LAST, created_at DESC LIMIT 50",
+            """
+            SELECT * FROM followups
+            WHERE user_id=$1 AND status=$2 AND ($3::text IS NULL OR member_id=$3)
+            ORDER BY due_date NULLS LAST, created_at DESC LIMIT 50
+            """,
             user_id,
             status,
+            member_id,
         )
     else:
         rows = await db.fetch(
-            "SELECT * FROM followups WHERE user_id=$1 ORDER BY status, due_date NULLS LAST, created_at DESC LIMIT 50",
+            """
+            SELECT * FROM followups
+            WHERE user_id=$1 AND ($2::text IS NULL OR member_id=$2)
+            ORDER BY status, due_date NULLS LAST, created_at DESC LIMIT 50
+            """,
             user_id,
+            member_id,
         )
     return {"followups": [dict(row) for row in rows]}
 
@@ -1558,10 +1649,11 @@ async def home_summary(
     state = _state(request)
     user_id = str(user["sub"])
     member = await _member_row(state.db, member_id, user_id)
-    sessions = await state.sessions.list_sessions(user_id, limit=1)
+    sessions = await state.sessions.list_sessions(user_id, limit=1, member_id=member["id"])
     followups = await state.db.fetch(
-        "SELECT id, title, due_date, status FROM followups WHERE user_id=$1 AND status='pending' ORDER BY due_date NULLS LAST LIMIT 5",
+        "SELECT id, title, due_date, status FROM followups WHERE user_id=$1 AND member_id=$2 AND status='pending' ORDER BY due_date NULLS LAST LIMIT 5",
         user_id,
+        member["id"],
     )
     meds = await state.db.fetch(
         "SELECT id, name, dose, frequency FROM medications WHERE user_id=$1 AND member_id=$2 AND active=true ORDER BY created_at DESC LIMIT 6",

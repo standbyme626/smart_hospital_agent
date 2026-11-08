@@ -11,6 +11,7 @@ export type Member = {
   allergies?: string | null;
   conditions?: string | null;
   is_self: boolean;
+  hospital_patient_id?: string | null;
   created_at?: string;
   updated_at?: string;
 };

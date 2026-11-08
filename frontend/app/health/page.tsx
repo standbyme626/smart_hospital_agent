@@ -39,7 +39,7 @@ export default function HealthPage() {
       const [t, m, f, r] = await Promise.all([
         getTimeline(activeMember?.id),
         getMedications(activeMember?.id),
-        getFollowups("pending"),
+        getFollowups("pending", activeMember?.id),
         getReports(activeMember?.id),
       ]);
       setTimeline(t);

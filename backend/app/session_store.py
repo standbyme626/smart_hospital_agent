@@ -84,17 +84,20 @@ class SessionStore:
             for row in rows
         ]
 
-    async def list_sessions(self, user_id: str, limit: int = 30) -> list[dict[str, Any]]:
+    async def list_sessions(
+        self, user_id: str, limit: int = 30, member_id: str | None = None
+    ) -> list[dict[str, Any]]:
         rows = await self.db.fetch(
             """
             SELECT id, user_id, member_id, title, last_message_at, created_at, updated_at
             FROM sessions
-            WHERE user_id = $1
+            WHERE user_id = $1 AND ($3::text IS NULL OR member_id = $3)
             ORDER BY updated_at DESC
             LIMIT $2
             """,
             user_id,
             limit,
+            member_id,
         )
         return [dict(row) for row in rows]
 
