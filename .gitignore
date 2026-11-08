@@ -35,6 +35,7 @@ venv_bettafish/
 # v2 runtime / build artifacts
 frontend/node_modules/
 frontend/.next/
+frontend/.next-e2e/
 frontend/out/
 backend/.venv/
 backend/.pytest_cache/
@@ -47,3 +48,7 @@ backend/uploads/
 frontend-legacy/node_modules/
 frontend-legacy/.next/
 frontend-legacy/.env.local
+
+# playwright
+frontend/test-results/
+frontend/playwright-report/

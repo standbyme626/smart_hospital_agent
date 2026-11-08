@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -67,3 +68,55 @@ def test_removed_endpoints_return_404():
         assert client.post("/api/v1/local/analyze", json={"text": "x"}).status_code == 404
         assert client.post("/api/v1/doctor/consult", json={"message": "x"}).status_code == 404
         assert client.post("/api/v1/evolution/run", json={"name": "x", "limit": 10}).status_code == 404
+
+
+API_TS = ROOT / "frontend" / "lib" / "api.ts"
+API_PATH_RE = re.compile(r"/api/v1/[^\"'`\s]+")
+TEMPLATE_RE = re.compile(r"(\$\{[^}]*\})")
+
+
+def _frontend_api_paths() -> list[str]:
+    text = API_TS.read_text(encoding="utf-8")
+    paths = set()
+    for raw in API_PATH_RE.findall(text):
+        path = raw.split("?", 1)[0].rstrip(".,;")
+        path = re.sub(r"(?<!/)\$\{[^}]*\}", "", path)
+        if path:
+            paths.add(path)
+    return sorted(paths)
+
+
+def _call_pattern(path: str) -> re.Pattern[str]:
+    parts = TEMPLATE_RE.split(path)
+    pattern = "".join("[^/]+" if TEMPLATE_RE.fullmatch(part) else re.escape(part) for part in parts)
+    return re.compile(pattern)
+
+
+def test_frontend_api_calls_all_match_openapi_paths():
+    paths = _frontend_api_paths()
+    assert len(paths) >= 30, paths
+    openapi_paths = list(app.openapi()["paths"])
+    missing = [
+        path
+        for path in paths
+        if not any(_call_pattern(path).fullmatch(candidate) for candidate in openapi_paths)
+    ]
+    assert missing == [], f"frontend calls without backend route: {missing}"
+
+
+def test_frontend_api_calls_cover_v31_flows():
+    paths = set(_frontend_api_paths())
+    expected = {
+        "/api/v1/auth/login",
+        "/api/v1/chat/stream",
+        "/api/v1/sessions/{session_id}",
+        "/api/v1/reports/interpret",
+        "/api/v1/booking/lock",
+        "/api/v1/booking/orders",
+        "/api/v1/booking/orders/{order_id}/request-payment",
+        "/api/v1/admin/reviews/{review_id}/approve",
+        "/api/v1/family",
+        "/api/v1/services/visit-guide",
+    }
+    for path in expected:
+        assert any(_call_pattern(candidate).fullmatch(path) for candidate in paths), path
