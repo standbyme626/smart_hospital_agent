@@ -8,7 +8,7 @@ import json
 import re
 import uuid
 import zipfile
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -512,7 +512,33 @@ async def booking_lock(
         "lock_slot",
         {"slot_id": payload.slot_id, "patient_id": str(user["sub"])},
     )
-    return {"lock": data}
+    expires_at = datetime.now(UTC) + timedelta(seconds=int(data.get("expires_in") or 600))
+    return {"lock": {**data, "expires_at": expires_at.isoformat()}}
+
+
+@router.get("/api/v1/booking/orders")
+async def list_orders(
+    request: Request,
+    member_id: str | None = Query(None),
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    db = _state(request).db
+    user_id = str(user["sub"])
+    if member_id:
+        await _owned_member(db, member_id, user_id)
+    rows = await db.fetch(
+        """
+        SELECT id, order_id, department, slot_id, member_id, hospital_patient_id,
+               status, payment_status, amount, created_at, updated_at
+        FROM bookings
+        WHERE user_id=$1 AND ($2::text IS NULL OR member_id=$2)
+        ORDER BY created_at DESC, id DESC
+        LIMIT 50
+        """,
+        user_id,
+        member_id,
+    )
+    return {"orders": [jsonable(dict(row)) for row in rows]}
 
 
 @router.post("/api/v1/booking/orders")
@@ -523,18 +549,15 @@ async def booking_order(
 ) -> dict[str, Any]:
     state = _state(request)
     user_id = str(user["sub"])
-    member_id = None
-    hospital_patient_id = None
-    if payload.member_id:
-        member = await _owned_member(state.db, payload.member_id, user_id)
-        member_id = member["id"]
-        hospital_patient_id = member.get("hospital_patient_id") or f"HP-{member_id}"
-        if not member.get("hospital_patient_id"):
-            await state.db.execute(
-                "UPDATE family_members SET hospital_patient_id=$2 WHERE id=$1",
-                member_id,
-                hospital_patient_id,
-            )
+    member = await _member_row(state.db, payload.member_id, user_id)
+    member_id = member["id"]
+    hospital_patient_id = member.get("hospital_patient_id") or f"HP-{member_id}"
+    if not member.get("hospital_patient_id"):
+        await state.db.execute(
+            "UPDATE family_members SET hospital_patient_id=$2 WHERE id=$1",
+            member_id,
+            hospital_patient_id,
+        )
     idempotency_key = f"order:{user_id}:{payload.lock_id}"
     result = await state.mcp.call_tool(
         "create_order",
@@ -638,8 +661,39 @@ async def booking_cancel(
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     state = _state(request)
-    await _owned_order(state.db, order_id, str(user["sub"]))
+    user_id = str(user["sub"])
+    booking = await _owned_order(state.db, order_id, user_id)
+    if booking.get("payment_status") == "paid" or booking.get("status") in {"paid", "booked"}:
+        raise HTTPException(status_code=409, detail="paid order cannot be cancelled")
+    if booking.get("status") == "cancelled":
+        return {"order": jsonable(booking)}
+    if booking.get("status") not in {"created", "pending_review"}:
+        raise HTTPException(status_code=409, detail="order cannot be cancelled")
     data = await _mcp(state, "cancel_order", {"order_id": order_id})
+    async with state.db.transaction() as conn:
+        await conn.execute(
+            "UPDATE bookings SET status='cancelled', updated_at=now() WHERE id=$1 AND user_id=$2",
+            order_id,
+            user_id,
+        )
+        await conn.execute(
+            """
+            UPDATE review_requests
+            SET status='rejected',
+                decision_note=COALESCE(decision_note, '订单已取消'),
+                decided_at=COALESCE(decided_at, now()),
+                updated_at=now()
+            WHERE kind='payment' AND ref_id=$1 AND status IN ('pending', 'processing')
+            """,
+            order_id,
+        )
+    await state.sessions.audit(
+        request_id=getattr(request.state, "request_id", uuid.uuid4().hex),
+        session_id=user_id,
+        actor=user_id,
+        action="order.cancel",
+        detail={"order_id": order_id},
+    )
     return {"order": data}
 
 

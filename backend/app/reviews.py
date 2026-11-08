@@ -185,6 +185,15 @@ async def approve_review(
         booking = await _booking(conn, review["ref_id"])
         if not booking:
             raise HTTPException(status_code=409, detail="booking not found for review")
+        cancelled = booking.get("status") == "cancelled"
+        if cancelled:
+            await conn.execute(
+                "UPDATE review_requests SET status='failed', decision_note='order cancelled', updated_at=now() WHERE id=$1",
+                review_id,
+            )
+
+    if cancelled:
+        raise HTTPException(status_code=409, detail="order cancelled")
 
     order_id = booking.get("order_id") or booking["id"]
     token = _server_token(mcp, confirm_token)

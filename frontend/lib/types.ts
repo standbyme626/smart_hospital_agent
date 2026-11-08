@@ -183,6 +183,20 @@ export type BookingOrder = {
   method?: string;
 };
 
+export type OrderRecord = {
+  id: string;
+  order_id?: string | null;
+  department?: string | null;
+  slot_id?: string | null;
+  member_id?: string | null;
+  hospital_patient_id?: string | null;
+  status: string;
+  payment_status: string;
+  amount?: number;
+  created_at?: string;
+  updated_at?: string;
+};
+
 export type VisitGuide = {
   order: BookingOrder;
   hospital: string;

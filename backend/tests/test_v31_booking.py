@@ -23,6 +23,16 @@ class CaptureMCP:
 
     async def call_tool(self, name, arguments=None, idempotency_key=None):
         self.calls.append((name, dict(arguments or {}), idempotency_key))
+        if name == "lock_slot":
+            return {
+                "is_error": False,
+                "text": "",
+                "data": {
+                    "lock_id": "lock_fake",
+                    "slot_id": (arguments or {}).get("slot_id"),
+                    "expires_in": 600,
+                },
+            }
         if name == "create_order":
             order_id = self.order_ids.pop(0) if self.order_ids else "order_idem"
             return {
@@ -34,6 +44,19 @@ class CaptureMCP:
                     "patient_id": "patient",
                     "amount": 50,
                     "status": "created",
+                    "payment_status": "unpaid",
+                },
+            }
+        if name == "cancel_order":
+            return {
+                "is_error": False,
+                "text": "",
+                "data": {
+                    "order_id": (arguments or {}).get("order_id"),
+                    "slot_id": SLOT_ID,
+                    "patient_id": "patient",
+                    "amount": 50,
+                    "status": "cancelled",
                     "payment_status": "unpaid",
                 },
             }
@@ -235,3 +258,165 @@ def test_booking_insert_does_not_swallow_idempotency_conflict(client):
             await conn.close()
 
     assert asyncio.run(count()) == 1
+
+
+def _insert_booking(
+    booking_id: str,
+    *,
+    user_id: str = "patient",
+    status: str = "created",
+    payment_status: str = "unpaid",
+    age_minutes: int = 0,
+) -> None:
+    async def run():
+        conn = await asyncpg.connect(os.environ["DATABASE_URL"])
+        try:
+            await conn.execute(
+                """
+                INSERT INTO bookings
+                    (id, session_id, patient_id, user_id, department, slot_id, order_id,
+                     status, payment_status, amount, created_at)
+                VALUES ($1,$1,$2,$2,'心血管内科',$3,$1,$4,$5,50, now() - make_interval(mins => $6))
+                """,
+                booking_id,
+                user_id,
+                SLOT_ID,
+                status,
+                payment_status,
+                age_minutes,
+            )
+        finally:
+            await conn.close()
+
+    asyncio.run(run())
+
+
+def _insert_review(review_id: str, ref_id: str, status: str = "pending") -> None:
+    async def run():
+        conn = await asyncpg.connect(os.environ["DATABASE_URL"])
+        try:
+            await conn.execute(
+                """
+                INSERT INTO review_requests (id, kind, ref_id, user_id, status, payload)
+                VALUES ($1, 'payment', $2, 'patient', $3, '{}'::jsonb)
+                """,
+                review_id,
+                ref_id,
+                status,
+            )
+        finally:
+            await conn.close()
+
+    asyncio.run(run())
+
+
+def _booking_status(booking_id: str) -> str | None:
+    async def run():
+        conn = await asyncpg.connect(os.environ["DATABASE_URL"])
+        try:
+            return await conn.fetchval("SELECT status FROM bookings WHERE id=$1", booking_id)
+        finally:
+            await conn.close()
+
+    return asyncio.run(run())
+
+
+def test_order_list_owner_newest_first_and_detail_review(client):
+    headers = {"Authorization": f"Bearer {_token(client, 'patient', PATIENT_PASSWORD)}"}
+    _insert_booking("order_old", age_minutes=120)
+    _insert_booking("order_new", age_minutes=1)
+    _insert_booking("order_other", user_id="someone_else")
+    _insert_review("rev_latest", "order_new", status="pending")
+
+    listed = client.get("/api/v1/booking/orders", headers=headers)
+    assert listed.status_code == 200, listed.text
+    ids = [item["id"] for item in listed.json()["orders"]]
+    assert ids == ["order_new", "order_old"]
+
+    detail = client.get("/api/v1/booking/orders/order_new", headers=headers)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["review"]["id"] == "rev_latest"
+    assert detail.json()["review"]["status"] == "pending"
+
+    assert client.get("/api/v1/booking/orders/order_other", headers=headers).status_code == 404
+    assert (
+        client.post("/api/v1/booking/orders/order_other/cancel", headers=headers).status_code == 404
+    )
+
+
+def test_lock_returns_expires_at(client):
+    from datetime import UTC, datetime, timedelta
+
+    headers = {"Authorization": f"Bearer {_token(client, 'patient', PATIENT_PASSWORD)}"}
+    response = client.post(
+        "/api/v1/booking/lock", json={"slot_id": SLOT_ID}, headers=headers
+    )
+    assert response.status_code == 200, response.text
+    lock = response.json()["lock"]
+    assert lock["expires_in"] == 600
+    expires_at = datetime.fromisoformat(lock["expires_at"])
+    assert expires_at > datetime.now(UTC) + timedelta(minutes=9)
+
+
+def test_cancel_unpaid_updates_status_and_is_idempotent(client):
+    headers = {"Authorization": f"Bearer {_token(client, 'patient', PATIENT_PASSWORD)}"}
+    _insert_booking("order_cancel")
+
+    first = client.post("/api/v1/booking/orders/order_cancel/cancel", headers=headers)
+    assert first.status_code == 200, first.text
+    assert first.json()["order"]["status"] == "cancelled"
+    assert _booking_status("order_cancel") == "cancelled"
+    fake: CaptureMCP = client.app.state.mcp
+    assert [name for name, _, _ in fake.calls] == ["cancel_order"]
+
+    second = client.post("/api/v1/booking/orders/order_cancel/cancel", headers=headers)
+    assert second.status_code == 200, second.text
+    assert second.json()["order"]["status"] == "cancelled"
+    assert [name for name, _, _ in fake.calls] == ["cancel_order"]
+
+
+def test_cancel_pending_review_rejects_review(client):
+    headers = {"Authorization": f"Bearer {_token(client, 'patient', PATIENT_PASSWORD)}"}
+    _insert_booking("order_pending", status="pending_review")
+    _insert_review("rev_pending", "order_pending")
+
+    response = client.post("/api/v1/booking/orders/order_pending/cancel", headers=headers)
+    assert response.status_code == 200, response.text
+    assert _booking_status("order_pending") == "cancelled"
+
+    async def review_status():
+        conn = await asyncpg.connect(os.environ["DATABASE_URL"])
+        try:
+            return await conn.fetchval(
+                "SELECT status FROM review_requests WHERE id='rev_pending'"
+            )
+        finally:
+            await conn.close()
+
+    assert asyncio.run(review_status()) == "rejected"
+
+
+def test_cancel_paid_order_returns_409(client):
+    headers = {"Authorization": f"Bearer {_token(client, 'patient', PATIENT_PASSWORD)}"}
+    _insert_booking("order_paid", status="booked", payment_status="paid")
+
+    response = client.post("/api/v1/booking/orders/order_paid/cancel", headers=headers)
+    assert response.status_code == 409
+    assert _booking_status("order_paid") == "booked"
+    fake: CaptureMCP = client.app.state.mcp
+    assert fake.calls == []
+
+
+def test_orders_survive_api_restart(client):
+    _insert_booking("order_persist", status="pending_review")
+
+    with TestClient(app) as restarted:
+        restarted.app.state.settings.AUTH_ENABLED = True
+        restarted.app.state.mcp = CaptureMCP()
+        new_headers = {
+            "Authorization": f"Bearer {_token(restarted, 'patient', PATIENT_PASSWORD)}"
+        }
+        response = restarted.get("/api/v1/booking/orders", headers=new_headers)
+        assert response.status_code == 200, response.text
+        ids = [item["id"] for item in response.json()["orders"]]
+        assert "order_persist" in ids

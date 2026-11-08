@@ -8,18 +8,22 @@ import {
   Loader2,
   Lock,
   MapPin,
+  RotateCcw,
   ShieldCheck,
   Star,
   Stethoscope,
+  XCircle,
 } from "lucide-react";
 import clsx from "clsx";
 import { AppShell } from "@/components/AppShell";
 import { useApp } from "@/lib/app-context";
 import {
+  cancelOrder,
   createOrder,
   getDepartments,
   getDoctors,
   getOrder,
+  getOrders,
   getSchedules,
   getVisitGuide,
   lockSlot,
@@ -29,6 +33,9 @@ import {
 import type { BookingOrder, Doctor, ReviewRequest, ScheduleSlot, VisitGuide } from "@/lib/types";
 
 const STEPS = ["选号", "锁号", "订单", "支付审核", "完成"];
+const LOCK_STORAGE_KEY = "booking_lock";
+
+type LockInfo = { lock_id: string; slot_id: string; expires_in: number; expires_at?: string };
 
 export default function ServicesPage() {
   const { activeMember, showToast } = useApp();
@@ -39,10 +46,13 @@ export default function ServicesPage() {
   const [date, setDate] = useState("");
   const [slots, setSlots] = useState<ScheduleSlot[]>([]);
   const [selected, setSelected] = useState<ScheduleSlot | null>(null);
-  const [lock, setLock] = useState<{ lock_id: string; slot_id: string; expires_in: number } | null>(null);
+  const [lock, setLock] = useState<LockInfo | null>(null);
   const [order, setOrder] = useState<BookingOrder | null>(null);
   const [review, setReview] = useState<ReviewRequest | null>(null);
   const [guide, setGuide] = useState<VisitGuide | null>(null);
+  const [guideError, setGuideError] = useState<string | null>(null);
+  const [guideAttempt, setGuideAttempt] = useState(0);
+  const [clock, setClock] = useState(() => Date.now());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,6 +65,39 @@ export default function ServicesPage() {
     getDepartments()
       .then((items) => setDepartments(items))
       .catch(() => setDepartments([]));
+  }, []);
+
+  useEffect(() => {
+    const raw = window.sessionStorage.getItem(LOCK_STORAGE_KEY);
+    if (raw) {
+      try {
+        const saved = JSON.parse(raw) as LockInfo;
+        if (!saved.expires_at || new Date(saved.expires_at).getTime() > Date.now()) {
+          setLock(saved);
+        } else {
+          window.sessionStorage.removeItem(LOCK_STORAGE_KEY);
+        }
+      } catch {
+        window.sessionStorage.removeItem(LOCK_STORAGE_KEY);
+      }
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const orders = await getOrders();
+        const latest = orders.find((item) => item.status !== "cancelled");
+        if (!latest) return;
+        const detail = await getOrder(latest.order_id || latest.id);
+        if (cancelled) return;
+        setOrder(detail.order);
+        setReview(detail.review);
+      } catch {
+        // keep the selection step when restore fails
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -100,6 +143,13 @@ export default function ServicesPage() {
   const pendingReview = Boolean(review && ["pending", "processing"].includes(review.status));
   const paid = order?.payment_status === "paid";
   const step = paid ? 4 : pendingReview ? 3 : order ? 2 : lock ? 1 : 0;
+  const lockSeconds = lock?.expires_at
+    ? Math.max(0, Math.floor((new Date(lock.expires_at).getTime() - clock) / 1000))
+    : null;
+  const lockExpired = lockSeconds !== null && lockSeconds <= 0;
+  const lockLabel = lockSeconds === null
+    ? null
+    : `${String(Math.floor(lockSeconds / 60)).padStart(2, "0")}:${String(lockSeconds % 60).padStart(2, "0")}`;
 
   useEffect(() => {
     if (!order || !pendingReview) return;
@@ -119,17 +169,27 @@ export default function ServicesPage() {
 
   useEffect(() => {
     if (!order || order.payment_status !== "paid" || guide) return;
+    setGuideError(null);
     getVisitGuide(order.order_id)
       .then(setGuide)
-      .catch(() => setGuide(null));
+      .catch(() => setGuideError("已支付，指引加载失败"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [order?.order_id, order?.payment_status, guide]);
+  }, [order?.order_id, order?.payment_status, guide, guideAttempt]);
+
+  useEffect(() => {
+    if (!lock?.expires_at) return;
+    const timer = window.setInterval(() => setClock(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [lock?.expires_at]);
 
   async function doLock() {
     if (!selected) return;
     setLoading(true);
     try {
-      setLock(await lockSlot(selected.slot_id, activeMember?.id));
+      const result = await lockSlot(selected.slot_id, activeMember?.id);
+      setLock(result);
+      setClock(Date.now());
+      window.sessionStorage.setItem(LOCK_STORAGE_KEY, JSON.stringify(result));
       track("booking_lock", { slot_id: selected.slot_id });
     } catch (err) {
       showToast(err instanceof Error ? err.message : "锁号失败");
@@ -145,12 +205,36 @@ export default function ServicesPage() {
       setOrder(await createOrder(lock.lock_id, activeMember?.id));
       setReview(null);
       setGuide(null);
+      setGuideError(null);
       track("booking_order", { lock_id: lock.lock_id });
     } catch (err) {
       showToast(err instanceof Error ? err.message : "创建订单失败");
     } finally {
       setLoading(false);
     }
+  }
+
+  async function doCancel() {
+    if (!order) return;
+    if (!window.confirm("确定取消这个未支付订单？号源会被释放。")) return;
+    setLoading(true);
+    try {
+      await cancelOrder(order.order_id);
+      setOrder(null);
+      setReview(null);
+      setGuide(null);
+      setGuideError(null);
+      showToast("订单已取消");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "取消失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function retryGuide() {
+    setGuideError(null);
+    setGuideAttempt((value) => value + 1);
   }
 
   async function doRequestPayment() {
@@ -273,7 +357,7 @@ export default function ServicesPage() {
         <section className="card p-5">
           <div className="flex flex-wrap gap-2">
             <button onClick={doLock} disabled={!selected || Boolean(lock) || loading} className="btn-ghost"><Lock size={15} />锁定号源</button>
-            <button onClick={doOrder} disabled={!lock || Boolean(order) || loading} className="btn-ghost"><Stethoscope size={15} />创建订单</button>
+            <button onClick={doOrder} disabled={!lock || lockExpired || Boolean(order) || loading} className="btn-ghost"><Stethoscope size={15} />创建订单</button>
             <button
               onClick={doRequestPayment}
               disabled={!order || pendingReview || paid || loading}
@@ -281,10 +365,20 @@ export default function ServicesPage() {
             >
               <CreditCard size={15} />{review?.status === "rejected" ? "重新申请支付" : "申请支付"}
             </button>
+            {order && !paid ? (
+              <button onClick={doCancel} disabled={loading} className="btn-ghost text-rose-600">
+                <XCircle size={15} />取消订单
+              </button>
+            ) : null}
           </div>
           <div className="mt-3 rounded-2xl bg-canvas p-3 text-[11px] text-muted">
             <p className="font-medium text-ink">当前锁定</p>
             <p className="mt-1 break-all">{lock ? lock.lock_id : "尚未锁定号源"}</p>
+            {lock ? (
+              <p className={clsx("mt-1", lockExpired ? "text-rose-600" : "")}>
+                {lockExpired ? "锁号已过期，请重新锁号" : `剩余时间 ${lockLabel}`}
+              </p>
+            ) : null}
             {activeMember ? <p className="mt-1">就诊人：{activeMember.name}（{activeMember.relation}）</p> : null}
           </div>
         </section>
@@ -310,6 +404,15 @@ export default function ServicesPage() {
             {review?.status === "failed" ? (
               <p className="mt-2 text-[11px] text-rose-700">支付调用失败，请重新申请或联系管理员。</p>
             ) : null}
+          </section>
+        ) : null}
+
+        {guideError ? (
+          <section className="card flex flex-wrap items-center justify-between gap-2 p-5">
+            <p className="text-[12px] text-rose-700">{guideError}</p>
+            <button onClick={retryGuide} className="btn-ghost">
+              <RotateCcw size={15} />重试
+            </button>
           </section>
         ) : null}
 

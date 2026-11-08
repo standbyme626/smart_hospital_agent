@@ -10,6 +10,7 @@ import type {
   Medication,
   Member,
   ModelCall,
+  OrderRecord,
   RagStatus,
   ReportRecord,
   ReviewRequest,
@@ -272,11 +273,13 @@ export async function getSchedules(department: string, date?: string): Promise<S
 export async function lockSlot(
   slotId: string,
   memberId?: string,
-): Promise<{ lock_id: string; slot_id: string; expires_in: number }> {
-  const data = await apiFetch<{ lock: { lock_id: string; slot_id: string; expires_in: number } }>(
-    "/api/v1/booking/lock",
-    { method: "POST", body: JSON.stringify({ slot_id: slotId, member_id: memberId }) },
-  );
+): Promise<{ lock_id: string; slot_id: string; expires_in: number; expires_at: string }> {
+  const data = await apiFetch<{
+    lock: { lock_id: string; slot_id: string; expires_in: number; expires_at: string };
+  }>("/api/v1/booking/lock", {
+    method: "POST",
+    body: JSON.stringify({ slot_id: slotId, member_id: memberId }),
+  });
   return data.lock;
 }
 
@@ -286,6 +289,16 @@ export async function createOrder(lockId: string, memberId?: string): Promise<Bo
     body: JSON.stringify({ lock_id: lockId, member_id: memberId }),
   });
   return data.order;
+}
+
+export async function getOrders(memberId?: string): Promise<OrderRecord[]> {
+  const query = memberId ? `?member_id=${encodeURIComponent(memberId)}` : "";
+  const data = await apiFetch<{ orders: OrderRecord[] }>(`/api/v1/booking/orders${query}`);
+  return data.orders;
+}
+
+export async function cancelOrder(orderId: string): Promise<{ order: BookingOrder | OrderRecord }> {
+  return apiFetch(`/api/v1/booking/orders/${encodeURIComponent(orderId)}/cancel`, { method: "POST" });
 }
 
 export async function getOrder(orderId: string): Promise<{ order: BookingOrder; review: ReviewRequest | null }> {
