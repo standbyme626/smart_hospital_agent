@@ -173,6 +173,46 @@ export type VisitGuide = {
   support: string;
 };
 
+export type ReviewRequest = {
+  id: string;
+  kind: string;
+  ref_id: string;
+  user_id: string;
+  member_id?: string | null;
+  status: "pending" | "processing" | "approved" | "rejected" | "failed" | string;
+  payload: Record<string, unknown>;
+  decision_note?: string | null;
+  decided_by?: string | null;
+  decided_at?: string | null;
+  created_at: string;
+  department?: string | null;
+  amount?: number | null;
+  slot_id?: string | null;
+  payment_status?: string | null;
+  booking_status?: string | null;
+  order_id?: string | null;
+  username?: string | null;
+  member_name?: string | null;
+};
+
+export type AdminUser = {
+  id: string;
+  username: string;
+  role: "admin" | "patient" | string;
+  enabled: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type AuditEntry = {
+  request_id?: string | null;
+  session_id?: string | null;
+  actor?: string | null;
+  action: string;
+  detail: Record<string, unknown>;
+  created_at: string;
+};
+
 export type RagStatus = {
   documents: number;
   departments: { department: string; count: number }[];

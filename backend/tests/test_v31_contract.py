@@ -1,4 +1,3 @@
-import re
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -53,7 +52,7 @@ def test_frontend_services_has_no_payment_token():
     assert "confirmToken" not in source
     assert "confirm_token" not in source
     assert "payOrder" not in source
-    assert re.search(r'<button[^>]*\bdisabled\b[^>]*>\s*<CreditCard', source)
+    assert "requestPayment" in source
 
 
 def test_removed_endpoints_not_in_openapi():

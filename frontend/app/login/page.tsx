@@ -60,7 +60,7 @@ export default function LoginPage() {
           <div className="mt-8 grid gap-3 text-[13px] text-white/85">
             <p className="flex items-center gap-2"><ShieldCheck size={15} /> 演示环境：数据保留用于展示；导出/删除功能见设置页（若已上线）</p>
             <p className="flex items-center gap-2"><ShieldCheck size={15} /> AI 不确诊、不开处方，危机情况转人工/急诊</p>
-            <p className="flex items-center gap-2"><ShieldCheck size={15} /> 挂号服务当前为演示流程，支付审核功能即将上线</p>
+            <p className="flex items-center gap-2"><ShieldCheck size={15} /> 挂号支付由管理员人工审核后生效，批准前不会扣款</p>
           </div>
         </div>
         <p className="text-[11px] text-white/50">Smart Hospital Agent v3 · 2026 H2</p>

@@ -1,4 +1,6 @@
 import type {
+  AdminUser,
+  AuditEntry,
   BookingOrder,
   Doctor,
   DocumentDetail,
@@ -10,6 +12,7 @@ import type {
   ModelCall,
   RagStatus,
   ReportRecord,
+  ReviewRequest,
   ScheduleSlot,
   Session,
   StreamEvent,
@@ -251,9 +254,14 @@ export async function createOrder(lockId: string): Promise<BookingOrder> {
   return data.order;
 }
 
-export async function getOrder(orderId: string): Promise<BookingOrder> {
-  const data = await apiFetch<{ order: BookingOrder }>(`/api/v1/booking/orders/${orderId}`);
-  return data.order;
+export async function getOrder(orderId: string): Promise<{ order: BookingOrder; review: ReviewRequest | null }> {
+  return apiFetch(`/api/v1/booking/orders/${orderId}`);
+}
+
+export async function requestPayment(
+  orderId: string,
+): Promise<{ review: ReviewRequest; order: BookingOrder; duplicate?: boolean }> {
+  return apiFetch(`/api/v1/booking/orders/${orderId}/request-payment`, { method: "POST" });
 }
 
 export async function getVisitGuide(orderId: string): Promise<VisitGuide> {
@@ -277,6 +285,62 @@ export async function getRagStatus(): Promise<RagStatus> {
 
 export async function getDocument(docKey: string): Promise<DocumentDetail> {
   return apiFetch(`/api/v1/rag/documents/${encodeURIComponent(docKey)}`);
+}
+
+export async function getReviews(status = "pending"): Promise<ReviewRequest[]> {
+  const data = await apiFetch<{ reviews: ReviewRequest[] }>(
+    `/api/v1/admin/reviews?status=${encodeURIComponent(status)}`,
+  );
+  return data.reviews;
+}
+
+export async function approveReview(
+  reviewId: string,
+): Promise<{ review: ReviewRequest; mcp_called: boolean }> {
+  return apiFetch(`/api/v1/admin/reviews/${reviewId}/approve`, { method: "POST" });
+}
+
+export async function rejectReview(
+  reviewId: string,
+  note: string,
+): Promise<{ review: ReviewRequest }> {
+  return apiFetch(`/api/v1/admin/reviews/${reviewId}/reject`, {
+    method: "POST",
+    body: JSON.stringify({ note }),
+  });
+}
+
+export async function getUsers(): Promise<AdminUser[]> {
+  const data = await apiFetch<{ users: AdminUser[] }>("/api/v1/admin/users");
+  return data.users;
+}
+
+export async function createUser(payload: {
+  username: string;
+  password: string;
+  role?: "admin" | "patient";
+}): Promise<AdminUser> {
+  const data = await apiFetch<{ user: AdminUser }>("/api/v1/admin/users", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return data.user;
+}
+
+export async function updateUser(
+  userId: string,
+  payload: { enabled?: boolean; password?: string; role?: "admin" | "patient" },
+): Promise<AdminUser> {
+  const data = await apiFetch<{ user: AdminUser }>(`/api/v1/admin/users/${userId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return data.user;
+}
+
+export async function getAudit(): Promise<AuditEntry[]> {
+  const data = await apiFetch<{ audit: AuditEntry[] }>("/api/v1/admin/audit");
+  return data.audit;
 }
 
 export async function getModelCalls(): Promise<ModelCall[]> {

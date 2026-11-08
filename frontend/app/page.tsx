@@ -162,7 +162,7 @@ export default function HomePage() {
             <TaskCard href="/consult/" icon={Stethoscope} title="AI 诊室" description="描述症状，得到分诊与就医方向" />
             <TaskCard href="/reports/" icon={FileText} title="报告解读" description="上传化验/检查报告，看懂异常指标" tone="amber" />
             <TaskCard href="/meds/" icon={Pill} title="药管家" description="用药清单与相互作用检查" tone="emerald" />
-            <TaskCard href="/services/" icon={CalendarClock} title="挂号服务" description="选科室、医生与号源，支付审核即将上线" tone="sky" />
+            <TaskCard href="/services/" icon={CalendarClock} title="挂号服务" description="选科室、医生与号源，支付由管理员审核" tone="sky" />
             <TaskCard href="/health/" icon={HeartPulse} title="健康档案" description="报告、用药、就诊与随访时间线" tone="violet" />
           </div>
         </section>
