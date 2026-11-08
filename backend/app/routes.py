@@ -16,6 +16,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from .api.deps import create_token, get_current_user, require_admin
 from .policy import DEPARTMENT_NAMES, DRUG_CHECKER
+from .reviews import approve_review, create_payment_review, reject_review, review_json
 from .schemas import (
     AdminUserCreateRequest,
     AdminUserUpdateRequest,
@@ -31,6 +32,7 @@ from .schemas import (
     MedicationRequest,
     OrderRequest,
     PayRequest,
+    ReviewRejectRequest,
 )
 from .security import (
     DUMMY_PASSWORD_HASH,
@@ -454,66 +456,45 @@ async def booking_order(
     return {"order": data}
 
 
-@router.post("/api/v1/booking/orders/{order_id}/pay")
-async def booking_pay(
+@router.post("/api/v1/booking/orders/{order_id}/request-payment")
+async def booking_request_payment(
     order_id: str,
-    payload: PayRequest,
     request: Request,
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     state = _state(request)
-    await _owned_order(state.db, order_id, str(user["sub"]))
-    if payload.confirm_token != state.settings.HITL_CONFIRM_TOKEN:
-        raise HTTPException(status_code=403, detail="invalid confirmation token")
-    data = await _mcp(
-        state,
-        "pay_order",
-        {"order_id": order_id, "confirm_token": payload.confirm_token, "method": payload.method},
-    )
-    await state.db.execute(
-        "UPDATE bookings SET payment_status=$2, status=$3, updated_at=now() WHERE id=$1 AND user_id=$4",
-        order_id,
-        data.get("payment_status", "paid"),
-        data.get("status", "booked"),
-        str(user["sub"]),
+    user_id = str(user["sub"])
+    booking = await _owned_order(state.db, order_id, user_id)
+    result = await create_payment_review(
+        state.db,
+        user_id=user_id,
+        member_id=booking.get("member_id"),
+        booking_id=order_id,
+        payload={"department": booking.get("department"), "slot_id": booking.get("slot_id")},
     )
     await state.sessions.audit(
         request_id=request.headers.get("X-Request-ID") or uuid.uuid4().hex,
-        session_id=str(user["sub"]),
-        actor=str(user["sub"]),
-        action="booking.pay",
-        detail=data,
+        session_id=user_id,
+        actor=user_id,
+        action="payment.request",
+        detail={"review_id": result["review"]["id"], "order_id": order_id, "duplicate": result.get("duplicate", False)},
     )
-    user_id = str(user["sub"])
-    member = await _ensure_self_member(state.db, user_id)
-    department = (data.get("slot_id") or "").split("|")[0]
-    await _add_event(
-        state.db,
-        user_id,
-        member["id"],
-        "booking",
-        f"挂号 · {department}",
-        {"order_id": order_id, "slot_id": data.get("slot_id"), "amount": data.get("amount")},
+    return result
+
+
+@router.post("/api/v1/booking/orders/{order_id}/pay")
+async def booking_pay(
+    order_id: str,
+    request: Request,
+    payload: PayRequest | None = None,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    state = _state(request)
+    await _owned_order(state.db, order_id, str(user["sub"]))
+    raise HTTPException(
+        status_code=403,
+        detail="patient payment is disabled; request admin review via /request-payment",
     )
-    exists = await state.db.fetchval(
-        "SELECT id FROM followups WHERE user_id=$1 AND booking_id=$2 LIMIT 1",
-        user_id,
-        order_id,
-    )
-    if not exists:
-        await state.db.execute(
-            """
-            INSERT INTO followups (id, user_id, member_id, booking_id, title, due_date, status, notes)
-            VALUES ($1,$2,$3,$4,$5,CURRENT_DATE + INTERVAL '7 days','pending',$6)
-            """,
-            "fu_" + uuid.uuid4().hex[:10],
-            user_id,
-            member["id"],
-            order_id,
-            f"诊后随访 · {department}",
-            "就诊后 7 天，记录症状变化与用药情况。",
-        )
-    return {"order": data}
 
 
 @router.get("/api/v1/booking/orders/{order_id}")
@@ -525,7 +506,11 @@ async def booking_status(
     state = _state(request)
     await _owned_order(state.db, order_id, str(user["sub"]))
     data = await _mcp(state, "get_payment_status", {"order_id": order_id})
-    return {"order": data}
+    review = await state.db.fetchrow(
+        "SELECT * FROM review_requests WHERE kind='payment' AND ref_id=$1 ORDER BY created_at DESC LIMIT 1",
+        order_id,
+    )
+    return {"order": data, "review": review_json(review) if review else None}
 
 
 @router.post("/api/v1/booking/orders/{order_id}/cancel")
@@ -633,6 +618,72 @@ async def update_user(
             *args,
         )
     return {"user": _public_user(row)}
+
+
+@router.get("/api/v1/admin/reviews")
+async def admin_reviews(
+    request: Request,
+    status: str | None = Query(None),
+    user: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    rows = await _state(request).db.fetch(
+        """
+        SELECT r.*, b.department, b.slot_id, b.amount, b.payment_status,
+               b.status AS booking_status, b.order_id,
+               u.username, fm.name AS member_name
+        FROM review_requests r
+        LEFT JOIN bookings b ON b.id = r.ref_id
+        LEFT JOIN users u ON u.id = r.user_id
+        LEFT JOIN family_members fm ON fm.id = r.member_id
+        WHERE ($1::text IS NULL OR r.status = $1)
+        ORDER BY r.created_at DESC
+        LIMIT 100
+        """,
+        status,
+    )
+    reviews: list[dict[str, Any]] = []
+    for row in rows:
+        item = review_json(row)
+        if item.get("amount") is not None:
+            item["amount"] = float(item["amount"])
+        reviews.append(item)
+    return {"reviews": reviews}
+
+
+@router.post("/api/v1/admin/reviews/{review_id}/approve")
+async def admin_approve_review(
+    review_id: str,
+    request: Request,
+    response: Response,
+    user: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    state = _state(request)
+    result = await approve_review(
+        state.db,
+        state.mcp,
+        review_id=review_id,
+        admin_id=str(user["sub"]),
+        confirm_token=state.settings.HITL_CONFIRM_TOKEN,
+    )
+    if not result.get("mcp_called") and result["review"]["status"] == "processing":
+        response.status_code = 202
+    return result
+
+
+@router.post("/api/v1/admin/reviews/{review_id}/reject")
+async def admin_reject_review(
+    review_id: str,
+    payload: ReviewRejectRequest,
+    request: Request,
+    user: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    result = await reject_review(
+        _state(request).db,
+        review_id=review_id,
+        admin_id=str(user["sub"]),
+        note=payload.note,
+    )
+    return result
 
 
 @router.get("/api/v1/admin/model-calls")

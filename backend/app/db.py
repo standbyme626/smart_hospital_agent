@@ -209,12 +209,63 @@ SCHEMA = [
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS review_requests (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL CHECK (kind IN ('payment')),
+        ref_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        member_id TEXT,
+        status TEXT NOT NULL DEFAULT 'pending'
+            CHECK (status IN ('pending', 'processing', 'approved', 'rejected', 'failed')),
+        payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+        decision_note TEXT,
+        decided_by TEXT,
+        decided_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_reviews_status ON review_requests (status, created_at)",
+    """
+    CREATE TABLE IF NOT EXISTS mcp_locks (
+        lock_id TEXT PRIMARY KEY,
+        slot_id TEXT NOT NULL,
+        patient_id TEXT NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS mcp_orders (
+        order_id TEXT PRIMARY KEY,
+        slot_id TEXT NOT NULL,
+        patient_id TEXT NOT NULL,
+        amount NUMERIC(10, 2) NOT NULL,
+        status TEXT NOT NULL,
+        payment_status TEXT NOT NULL,
+        idempotency_key TEXT UNIQUE,
+        payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS mcp_booked (
+        slot_id TEXT PRIMARY KEY,
+        order_id TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
 ]
 
 MIGRATIONS = [
     "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS user_id TEXT",
     "UPDATE bookings SET user_id = session_id WHERE user_id IS NULL",
     "CREATE INDEX IF NOT EXISTS idx_bookings_user ON bookings (user_id)",
+    "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS member_id TEXT",
+    "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS hospital_patient_id TEXT",
+    "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS review_id TEXT",
+    "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS idempotency_key TEXT",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_idem ON bookings (idempotency_key) WHERE idempotency_key IS NOT NULL",
 ]
 
 

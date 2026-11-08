@@ -36,8 +36,9 @@ os.environ.setdefault("ADMIN_PASSWORD", "admin123456")
 os.environ.setdefault("PATIENT_PASSWORD", "patient123456")
 
 _TRUNCATE_TABLES = (
-    "users, app_meta, sessions, events, audit_log, bookings, family_members, medications, "
-    "reports, followups, health_events, analytics_events"
+    "users, app_meta, sessions, events, audit_log, bookings, review_requests, family_members, "
+    "medications, reports, followups, health_events, analytics_events, "
+    "mcp_locks, mcp_orders, mcp_booked"
 )
 
 

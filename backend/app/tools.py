@@ -44,7 +44,6 @@ class ToolRegistry:
             "list_schedules": self.list_schedules,
             "lock_slot": self.lock_slot,
             "create_order": self.create_order,
-            "pay_order": self.pay_order,
             "get_payment_status": self.get_payment_status,
             "cancel_order": self.cancel_order,
             "submit_report": self.submit_report,
@@ -59,7 +58,6 @@ class ToolRegistry:
             _tool("list_schedules", "查询某科室的号源。", {"department": "string", "date": "string"}, required=["department"]),
             _tool("lock_slot", "锁定号源 10 分钟。", {"slot_id": "string"}, required=["slot_id"]),
             _tool("create_order", "从锁定的号源创建挂号订单。", {"lock_id": "string"}, required=["lock_id"]),
-            _tool("pay_order", "支付订单（必须由用户确认后调用）。", {"order_id": "string", "confirm_token": "string", "method": "string"}, required=["order_id", "confirm_token"]),
             _tool("get_payment_status", "查询订单支付状态。", {"order_id": "string"}, required=["order_id"]),
             _tool("cancel_order", "取消未支付订单。", {"order_id": "string"}, required=["order_id"]),
             _tool(
@@ -166,26 +164,6 @@ class ToolRegistry:
             order.get("payment_status", "unpaid"),
             order.get("amount", 50),
             json.dumps(order, ensure_ascii=False),
-        )
-        return {"ok": True, "data": order}
-
-    async def pay_order(self, args: dict[str, Any], context: ToolContext) -> dict[str, Any]:
-        result = await self.mcp.call_tool(
-            "pay_order",
-            {
-                "order_id": args.get("order_id"),
-                "confirm_token": args.get("confirm_token"),
-                "method": args.get("method") or "mock",
-            },
-        )
-        if result["is_error"]:
-            return {"ok": False, "error": result["text"], "requires_confirmation": "requires_confirmation" in result["text"]}
-        order = result["data"] or {}
-        await self.db.execute(
-            "UPDATE bookings SET payment_status=$2, status=$3, updated_at=now() WHERE id=$1",
-            order.get("order_id"),
-            order.get("payment_status", "paid"),
-            order.get("status", "booked"),
         )
         return {"ok": True, "data": order}
 

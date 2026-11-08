@@ -40,6 +40,10 @@ class PayRequest(BaseModel):
     method: str = "mock"
 
 
+class ReviewRejectRequest(BaseModel):
+    note: str = Field(default="", max_length=500)
+
+
 class EvalRequest(BaseModel):
     name: str = "smoke"
     limit: int = Field(100, ge=10, le=500)

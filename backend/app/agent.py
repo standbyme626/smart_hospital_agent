@@ -136,7 +136,7 @@ class MedicalAgent:
                             "interactions": tool_result.get("interactions", []),
                         },
                     )
-                if tool_result.get("data") and call.name in {"create_order", "pay_order", "lock_slot"}:
+                if tool_result.get("data") and call.name in {"create_order", "lock_slot"}:
                     yield await self._emit(session_id, "booking", {"data": tool_result["data"]})
                 if context.report:
                     break
