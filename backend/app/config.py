@@ -79,7 +79,7 @@ class Settings(BaseSettings):
     # Hospital MCP
     HOSPITAL_MCP_URL: str = "http://127.0.0.1:9100/mcp"
     HOSPITAL_MCP_TOKEN: str = ""
-    HITL_CONFIRM_TOKEN: str = "confirm-demo"
+    HITL_CONFIRM_TOKEN: str = "change-me"
     UPLOADS_DIR: str = str(BACKEND_DIR / "uploads")
     MAX_UPLOAD_MB: int = 8
 

@@ -67,7 +67,7 @@ curl -fsS http://127.0.0.1:8020/api/health
 - FastAPI lifespan 中 `db.init_schema()` 自动执行全部迁移，**不需要手工 SQL**。
 - 迁移幂等：建表 `CREATE TABLE IF NOT EXISTS`；加列 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`；索引 `CREATE INDEX IF NOT EXISTS`；回填 `UPDATE ... WHERE ... IS NULL`。重复启动/重试安全。
 - v3.0 数据保留：只增表/列，不删旧列；`bookings.user_id` 为空时从 `session_id` 回填。
-- `bootstrap_users` 仅在 `users` 表为空且 `app_meta` 无 bootstrap marker 时创建 `ADMIN_USER` / `PATIENT_USER`；不会覆盖已有用户，账号删除后也不会自动重建。已有用户改密码用 `backend/.venv/bin/python -m scripts.set_password <username>`。
+- `bootstrap_users` 仅在 `users` 表为空且 `app_meta` 无 bootstrap marker 时创建 `ADMIN_USER` / `PATIENT_USER`；不会覆盖已有用户，账号删除后也不会自动重建。已有用户改密码用 `cd backend && .venv/bin/python -m scripts.set_password <username>`。
 - 若日志出现 `[startup] database init failed`，不要继续前端发布；先查 DB 连接/权限，修复后重启 API（迁移可重跑）。
 
 ### 2.4 前端构建与发布
@@ -145,6 +145,8 @@ Type=simple
 User=root
 WorkingDirectory=/home/kkk/Project/smart_hospital_agent_v2/backend
 Environment=PYTHONPATH=/home/kkk/Project/smart_hospital_agent_v2/backend
+# Optional: pydantic-settings already loads repo .env; keep both in sync if added.
+EnvironmentFile=-/home/kkk/Project/smart_hospital_agent_v2/.env
 ExecStart=/home/kkk/Project/smart_hospital_agent_v2/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8020
 Restart=always
 RestartSec=3
@@ -310,7 +312,7 @@ MAX_UPLOAD_MB=8
 UPLOADS_DIR=/home/kkk/Project/smart_hospital_agent_v2/backend/uploads
 ```
 
-生产凭据只存服务器 `/root/.credentials/smart-hospital.env`（600），不提交仓库；`.env` 也只留占位符。**v3.1 部署本轮不轮换生产密码**；轮换需主人批准，并同步 `scripts/set_password.py` 更新 `users` 表哈希。
+生产凭据只存服务器 `/root/.credentials/smart-hospital.env`（600），不提交仓库。**`.env` 是家服务器真实运行时配置（600，gitignore，不是占位符）**；仓库里的 `.env.example` 才是占位符模板。API 的 pydantic-settings 会从仓库根目录读取 `.env`，即使 systemd 单元没有 `EnvironmentFile` 也会生效；可选在 API 单元里显式加 `EnvironmentFile=-/home/kkk/Project/smart_hospital_agent_v2/.env`（`-` 表示缺失也不阻止启动），但两处值必须一致。`HITL_CONFIRM_TOKEN` 不设置或保留 `change-me` 时，管理员批准支付会因 MCP token 不匹配而失败（不会静默支付），部署必须设置并与 MCP 侧一致。**v3.1 部署本轮不轮换生产密码**；轮换需主人批准，并执行 `cd backend && .venv/bin/python -m scripts.set_password <username>` 更新 `users` 表哈希。
 
 ## 8. 验证
 

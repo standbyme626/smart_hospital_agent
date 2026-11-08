@@ -176,12 +176,14 @@ cp .env.example .env
 chmod 600 .env
 ```
 
+`.env.example` 只是占位符模板；`.env` 是实际运行时配置（600，gitignore，不入库）。API 通过 pydantic-settings 自动读取仓库根目录 `.env`，即使 systemd 没有 `EnvironmentFile` 也生效。
+
 至少填写：
 
 - `OPENCODE_API_KEY`（或留空，从 `~/.local/share/opencode/auth.json` 读取）
 - `SILICONFLOW_API_KEY`
 - `JWT_SECRET`、`ADMIN_PASSWORD`、`PATIENT_PASSWORD`
-- `HITL_CONFIRM_TOKEN`（占位符 `change-me`，真实值只放服务器 600 凭据文件）
+- `HITL_CONFIRM_TOKEN`（默认 `change-me`，**必须显式设置**并与 MCP 侧一致；留默认值时管理员批准会因 token 不匹配而失败，不会静默支付）
 
 v3.1 相关变量：
 
@@ -193,10 +195,10 @@ v3.1 相关变量：
 | `RATE_LIMIT_PER_MINUTE` | `60` | 按真实 IP 的每分钟请求数 |
 | `MAX_UPLOAD_MB` | `8` | 报告/皮肤图片上传上限；nginx `client_max_body_size` 需不小于此值 |
 | `UPLOADS_DIR` | `backend/uploads` | 报告图片目录；必须与备份脚本覆盖范围一致 |
-| `HITL_CONFIRM_TOKEN` | `change-me` | 管理员批准支付时服务端调 MCP 的确认 token，不下发前端 |
+| `HITL_CONFIRM_TOKEN` | `change-me` | 管理员批准支付时服务端调 MCP 的确认 token，不下发前端；不设置/留默认会失败关闭 |
 | `ADMIN_USER` / `PATIENT_USER` | `admin` / `patient` | 首次启动且 `users` 表为空时 bootstrap；已有用户不会重建 |
 
-启动时 `db.init_schema()` 自动执行 `CREATE TABLE IF NOT EXISTS` + `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` 幂等迁移，无需手工 SQL。首次部署会用 `ADMIN_PASSWORD` / `PATIENT_PASSWORD` 创建 bootstrap 用户；之后改密码用 `backend/scripts/set_password.py`。
+启动时 `db.init_schema()` 自动执行 `CREATE TABLE IF NOT EXISTS` + `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` 幂等迁移，无需手工 SQL。首次部署会用 `ADMIN_PASSWORD` / `PATIENT_PASSWORD` 创建 bootstrap 用户；之后改密码用 `cd backend && .venv/bin/python -m scripts.set_password <username>`。
 
 ### 5.3 基础设施
 
@@ -296,6 +298,32 @@ https://hospital.kk.zhzepei.cn/
 - Let's Encrypt 证书：`/etc/letsencrypt/live/hospital.kk.zhzepei.cn/`，自动续期。
 
 **v3.1 部署状态**：截至 2026-11-09，线上仍为 v3.0；v3.1 仅在本地提交（分支 `v3.1`），未改 106 nginx、未重启生产服务、未轮换生产密码。v3.1 的部署顺序、迁移幂等、备份/回滚和剩余验收项见 [`docs/V3.1-RELEASE.md`](docs/V3.1-RELEASE.md) 与 [`docs/DEPLOYMENT-106.md`](docs/DEPLOYMENT-106.md)。
+
+### 6.1 回滚（v3.1 → v3.0）
+
+```bash
+# 1. 停写入
+systemctl stop smart-hospital-api.service smart-hospital-mcp.service smart-hospital-tunnel.service
+
+# 2. 代码回到 v3.0 tag / 部署前 commit
+cd /home/kkk/Project/smart_hospital_agent_v2
+git checkout v3.0.0          # 无 tag 时用部署前记录/ baseline 4ecb285
+# git checkout 4ecb285
+
+# 3. 恢复部署前 DB dump（自定义格式；先确认 dump 可读）
+docker exec -i sha_v2_db sh -c \
+  'pg_restore --clean --if-exists --no-owner --no-acl -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
+  < /home/data/backups/smart-hospital/db-<备份时间戳>.dump
+
+# 4. 静态前端回到上一版构建（106 上的备份目录）
+ssh tx106-friend 'rm -rf /var/www/hospital && cp -a /var/www/hospital.bak-<时间戳> /var/www/hospital'
+
+# 5. 重启并验证
+systemctl start smart-hospital-mcp.service smart-hospital-api.service smart-hospital-tunnel.service
+curl -fsS http://127.0.0.1:8020/api/health
+```
+
+备份 `uploads-<时间戳>.tar.gz` 可用 `tar -xzf ... -C /home/kkk/Project/smart_hospital_agent_v2` 恢复。回滚后如 v3.0 没有 `/api/health` 路由，404 属预期。
 
 ---
 
@@ -397,11 +425,11 @@ session → status → thought → citation → token → final → [DONE]
 docker compose up -d db
 
 # 后端测试库
-docker exec sha_v2_db psql -U sha -d postgres -c "CREATE DATABASE sha_test"
+docker exec sha_v2_db psql -U sha -d postgres -c "CREATE DATABASE sha_test" || true  # 已存在可忽略
 docker exec sha_v2_db psql -U sha -d sha_test -c "CREATE EXTENSION IF NOT EXISTS vector"
 
 # E2E 测试库
-docker exec sha_v2_db psql -U sha -d postgres -c "CREATE DATABASE sha_e2e"
+docker exec sha_v2_db psql -U sha -d postgres -c "CREATE DATABASE sha_e2e" || true  # 已存在可忽略
 docker exec sha_v2_db psql -U sha -d sha_e2e -c "CREATE EXTENSION IF NOT EXISTS vector"
 ```
 
@@ -411,7 +439,7 @@ docker exec sha_v2_db psql -U sha -d sha_e2e -c "CREATE EXTENSION IF NOT EXISTS 
 # 后端 lint + 96 个测试（不调用真实模型）
 cd backend
 .venv/bin/ruff check app mcp_mock tests
-TEST_DATABASE_URL=postgresql://sha:sha_pwd@127.0.0.1:5434/sha_test .venv/bin/pytest -q
+TEST_DATABASE_URL='postgresql://sha:CHANGE_ME@127.0.0.1:5434/sha_test' .venv/bin/pytest -q
 
 # 前端单测 + 构建
 cd frontend
@@ -421,11 +449,11 @@ NEXT_PUBLIC_API_BASE= npm run build
 
 # Playwright E2E（fake model + mock MCP + 独立 sha_e2e；默认端口 8020/3000）
 npx playwright install chromium
-E2E_DATABASE_URL=postgresql://sha:sha_pwd@127.0.0.1:5434/sha_e2e npm run test:e2e
+E2E_DATABASE_URL='postgresql://sha:CHANGE_ME@127.0.0.1:5434/sha_e2e' npm run test:e2e
 
 # 本机 8020/3000 已被占用时（例如生产 API / Grafana）
 E2E_BACKEND_PORT=8021 E2E_FRONTEND_PORT=3010 NEXT_DIST_DIR=.next-e2e \
-  E2E_DATABASE_URL=postgresql://sha:sha_pwd@127.0.0.1:5434/sha_e2e npm run test:e2e
+  E2E_DATABASE_URL='postgresql://sha:CHANGE_ME@127.0.0.1:5434/sha_e2e' npm run test:e2e
 ```
 
 全部测试使用 `backend/tests/fake_gateway.py`、`scripts/fake_model_server.py` 和本地 mock MCP，**不产生真实模型费用**。
