@@ -301,7 +301,7 @@ async def chat_stream(
         if int(used_today or 0) >= daily_limit:
             raise HTTPException(
                 status_code=429,
-                detail=f"daily chat limit reached: {daily_limit} messages per day",
+                detail=f"今日问诊次数已达上限（{daily_limit} 次/天），请明天再试或联系管理员",
             )
     try:
         member = await _member_row(state.db, payload.member_id, user_id)

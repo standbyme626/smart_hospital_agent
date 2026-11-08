@@ -288,6 +288,7 @@ MIGRATIONS = [
     "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS last_message_at TIMESTAMPTZ",
     "ALTER TABLE model_calls ADD COLUMN IF NOT EXISTS user_id TEXT",
     "CREATE INDEX IF NOT EXISTS idx_model_calls_user ON model_calls (user_id, created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_messages_user_day ON messages (user_id, created_at)",
 ]
 
 

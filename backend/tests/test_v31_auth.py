@@ -501,7 +501,7 @@ def test_chat_quota(client):
 
         over = _chat(client, "头痛", "sess_quota_3", headers)
         assert over.status_code == 429
-        assert "daily chat limit" in over.json()["detail"]
+        assert "今日问诊次数已达上限" in over.json()["detail"]
         assert (
             _sql(
                 dsn,
@@ -521,6 +521,51 @@ def test_chat_quota(client):
 
         other = _auth(_token(client, "admin", ADMIN_PASSWORD))
         assert _chat(client, "头痛", "sess_quota_admin", other).status_code == 200
+    finally:
+        settings.CHAT_DAILY_LIMIT = original_limit
+
+
+def test_chat_quota_kill_switch_when_zero(client):
+    headers = _auth(_token(client, "patient", PATIENT_PASSWORD))
+    client.app.state.agent = FakeChatAgent()
+    settings = client.app.state.settings
+    original_limit = settings.CHAT_DAILY_LIMIT
+    settings.CHAT_DAILY_LIMIT = 0
+    dsn = settings.DATABASE_URL
+    _sql(
+        dsn,
+        """
+        INSERT INTO messages (session_id, user_id, role, content)
+        SELECT 'sess_kill', 'patient', 'user', 'm'
+        FROM generate_series(1, 65)
+        """,
+    )
+    try:
+        assert _chat(client, "头痛", "sess_kill_1", headers).status_code == 200
+        assert _chat(client, "头痛", "sess_kill_2", headers).status_code == 200
+    finally:
+        settings.CHAT_DAILY_LIMIT = original_limit
+
+
+def test_chat_quota_ignores_previous_day_messages(client):
+    headers = _auth(_token(client, "patient", PATIENT_PASSWORD))
+    client.app.state.agent = FakeChatAgent()
+    settings = client.app.state.settings
+    original_limit = settings.CHAT_DAILY_LIMIT
+    settings.CHAT_DAILY_LIMIT = 1
+    dsn = settings.DATABASE_URL
+    _sql(
+        dsn,
+        """
+        INSERT INTO messages (session_id, user_id, role, content, created_at)
+        VALUES ('sess_old', 'patient', 'user', 'old', now() - interval '2 days')
+        """,
+    )
+    try:
+        assert _chat(client, "头痛", "sess_today_1", headers).status_code == 200
+        over = _chat(client, "头痛", "sess_today_2", headers)
+        assert over.status_code == 429
+        assert "今日问诊次数已达上限" in over.json()["detail"]
     finally:
         settings.CHAT_DAILY_LIMIT = original_limit
 

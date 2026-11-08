@@ -92,7 +92,7 @@ class MedicalAgent:
                 session_id=session_id,
                 reasoning_effort="high",
             )
-            await self._record(result, request_id, session_id, "diagnosis", user_id)
+            await self._record(result, request_id, session_id, "diagnosis", user_id=user_id)
             if not result.tool_calls:
                 final_content = result.content or ""
                 break
@@ -265,7 +265,7 @@ class MedicalAgent:
                 session_id=session_id,
                 reasoning_effort="low",
             )
-            await self._record(result, request_id, session_id, "triage", user_id)
+            await self._record(result, request_id, session_id, "triage", user_id=user_id)
             parsed = self._parse_json(result.content)
             if not parsed:
                 raise ValueError("triage json parse failed")
@@ -336,7 +336,8 @@ class MedicalAgent:
         request_id: str,
         session_id: str,
         task: str,
-        user_id: str = "anonymous",
+        *,
+        user_id: str,
     ) -> None:
         await self.sessions.record_model_call(
             request_id=request_id,
