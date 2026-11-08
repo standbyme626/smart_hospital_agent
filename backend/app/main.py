@@ -103,7 +103,7 @@ async def rate_limit(request: Request, call_next):
     if request.url.path in {"/health", "/metrics", "/docs", "/openapi.json"}:
         return await call_next(request)
     forwarded = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
-    client = forwarded or request.headers.get("x-real-ip") or (request.client.host if request.client else "unknown")
+    client = request.headers.get("x-real-ip") or forwarded or (request.client.host if request.client else "unknown")
     now = time.time()
     async with _rate_lock:
         bucket = _rate_buckets[client]
