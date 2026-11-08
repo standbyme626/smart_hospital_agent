@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from pathlib import Path
 
 import asyncpg
@@ -379,3 +380,79 @@ def test_delete_self_member_blocked(client):
     response = client.delete(f"/api/v1/family/{self_member['id']}", headers=headers)
     assert response.status_code == 400
     assert _run(client, "SELECT count(*) FROM family_members WHERE id=$1", self_member["id"]) == 1
+
+
+def test_order_list_filters_by_member(client):
+    headers = _patient(client)
+    members = client.get("/api/v1/family", headers=headers).json()["members"]
+    self_member = next(item for item in members if item["is_self"])
+    child = client.post(
+        "/api/v1/family", json={"name": "王小明", "relation": "child"}, headers=headers
+    ).json()["member"]
+
+    async def seed():
+        conn = await asyncpg.connect(_dsn(client))
+        try:
+            for booking_id, member_id in (
+                ("bk_child", child["id"]),
+                ("bk_self", self_member["id"]),
+            ):
+                await conn.execute(
+                    """
+                    INSERT INTO bookings
+                        (id, session_id, patient_id, user_id, department, slot_id, order_id,
+                         status, payment_status, amount, member_id)
+                    VALUES ($1,$1,'patient','patient','心血管内科',$2,$1,'created','unpaid',50,$3)
+                    """,
+                    booking_id,
+                    SLOT_ID,
+                    member_id,
+                )
+        finally:
+            await conn.close()
+
+    asyncio.run(seed())
+
+    listed = client.get(
+        "/api/v1/booking/orders", params={"member_id": child["id"]}, headers=headers
+    )
+    assert listed.status_code == 200, listed.text
+    assert [item["id"] for item in listed.json()["orders"]] == ["bk_child"]
+
+    assert (
+        client.get(
+            "/api/v1/booking/orders", params={"member_id": "mem_missing"}, headers=headers
+        ).status_code
+        == 404
+    )
+
+
+def test_cascade_logs_unremovable_report_images(client, caplog):
+    headers = _patient(client)
+    child = client.post(
+        "/api/v1/family", json={"name": "王小明", "relation": "child"}, headers=headers
+    ).json()["member"]
+    outside = Path(client.app.state.settings.UPLOADS_DIR).parent / "outside.jpg"
+    outside.write_bytes(b"x")
+
+    async def seed():
+        conn = await asyncpg.connect(_dsn(client))
+        try:
+            await conn.execute(
+                """
+                INSERT INTO reports (id, user_id, member_id, title, image_path, summary)
+                VALUES ('rep_outside', 'patient', $1, '越界图片', $2, 'ok')
+                """,
+                child["id"],
+                str(outside),
+            )
+        finally:
+            await conn.close()
+
+    asyncio.run(seed())
+
+    with caplog.at_level(logging.WARNING):
+        response = client.delete(f"/api/v1/family/{child['id']}", headers=headers)
+    assert response.status_code == 200, response.text
+    assert "left report images on disk" in caplog.text
+    assert outside.exists()

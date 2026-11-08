@@ -63,6 +63,14 @@ class CaptureMCP:
         return {"is_error": False, "text": "", "data": {}}
 
 
+class FailingCancelMCP(CaptureMCP):
+    async def call_tool(self, name, arguments=None, idempotency_key=None):
+        if name == "cancel_order":
+            self.calls.append((name, dict(arguments or {}), idempotency_key))
+            return {"is_error": True, "text": "upstream secret detail", "data": None}
+        return await super().call_tool(name, arguments, idempotency_key)
+
+
 @pytest.fixture()
 def client():
     with TestClient(app) as test_client:
@@ -89,6 +97,14 @@ async def _count(query: str, *args) -> int:
     conn = await asyncpg.connect(os.environ["DATABASE_URL"])
     try:
         return await conn.fetchval(query, *args)
+    finally:
+        await conn.close()
+
+
+async def _execute(query: str, *args) -> None:
+    conn = await asyncpg.connect(os.environ["DATABASE_URL"])
+    try:
+        await conn.execute(query, *args)
     finally:
         await conn.close()
 
@@ -144,9 +160,45 @@ async def test_mock_pay_requires_token_and_cancel_releases_slot():
     assert denied["isError"] is True
     assert "requires_confirmation" in json.loads(denied["content"][0]["text"])["error"]
 
+    await _execute(
+        "INSERT INTO mcp_booked (slot_id, order_id) VALUES ($1, $2) "
+        "ON CONFLICT (slot_id) DO UPDATE SET order_id=EXCLUDED.order_id",
+        SLOT_ID,
+        order["order_id"],
+    )
+    await _execute(
+        "INSERT INTO mcp_locks (lock_id, slot_id, patient_id, expires_at) "
+        "VALUES ('lock_stale', $1, 'u_mock', now() + interval '10 minutes') "
+        "ON CONFLICT (lock_id) DO NOTHING",
+        SLOT_ID,
+    )
+    assert await _count("SELECT count(*) FROM mcp_booked WHERE slot_id=$1", SLOT_ID) == 1
+    assert await _count("SELECT count(*) FROM mcp_locks WHERE slot_id=$1", SLOT_ID) == 1
+
     cancelled = _payload(await mock._call("cancel_order", {"order_id": order["order_id"]}))
     assert cancelled["status"] == "cancelled"
     assert await _count("SELECT count(*) FROM mcp_booked WHERE slot_id=$1", SLOT_ID) == 0
+    assert await _count("SELECT count(*) FROM mcp_locks WHERE slot_id=$1", SLOT_ID) == 0
+
+
+async def test_mock_cancel_releases_booked_and_lock_rows_for_slot():
+    lock = _payload(await mock._call("lock_slot", {"slot_id": SLOT_ID, "patient_id": "u_mock"}))
+    order = _payload(await mock._call("create_order", {"lock_id": lock["lock_id"]}))
+    await _execute(
+        "INSERT INTO mcp_booked (slot_id, order_id) VALUES ($1, $2)",
+        SLOT_ID,
+        order["order_id"],
+    )
+    await _execute(
+        "INSERT INTO mcp_locks (lock_id, slot_id, patient_id, expires_at) "
+        "VALUES ('lock_other', $1, 'u_mock', now() + interval '10 minutes')",
+        SLOT_ID,
+    )
+
+    await mock._call("cancel_order", {"order_id": order["order_id"]})
+
+    assert await _count("SELECT count(*) FROM mcp_booked WHERE slot_id=$1", SLOT_ID) == 0
+    assert await _count("SELECT count(*) FROM mcp_locks WHERE slot_id=$1", SLOT_ID) == 0
 
 
 async def test_client_passes_idempotency_key():
@@ -372,7 +424,25 @@ def test_cancel_unpaid_updates_status_and_is_idempotent(client):
     second = client.post("/api/v1/booking/orders/order_cancel/cancel", headers=headers)
     assert second.status_code == 200, second.text
     assert second.json()["order"]["status"] == "cancelled"
+    assert set(first.json()["order"]) == set(second.json()["order"])
     assert [name for name, _, _ in fake.calls] == ["cancel_order"]
+
+
+def test_cancel_mcp_error_is_generic_and_retryable(client):
+    headers = {"Authorization": f"Bearer {_token(client, 'patient', PATIENT_PASSWORD)}"}
+    _insert_booking("order_fail")
+    client.app.state.mcp = FailingCancelMCP()
+
+    failed = client.post("/api/v1/booking/orders/order_fail/cancel", headers=headers)
+    assert failed.status_code == 502
+    assert "upstream secret detail" not in failed.text
+    assert _booking_status("order_fail") == "created"
+
+    client.app.state.mcp = CaptureMCP()
+    retried = client.post("/api/v1/booking/orders/order_fail/cancel", headers=headers)
+    assert retried.status_code == 200, retried.text
+    assert retried.json()["order"]["status"] == "cancelled"
+    assert _booking_status("order_fail") == "cancelled"
 
 
 def test_cancel_pending_review_rejects_review(client):

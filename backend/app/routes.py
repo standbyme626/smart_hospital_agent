@@ -5,6 +5,7 @@ import base64
 import hashlib
 import io
 import json
+import logging
 import re
 import uuid
 import zipfile
@@ -57,6 +58,8 @@ from .security import (
 from .session_store import jsonable
 
 router = APIRouter()
+
+logger = logging.getLogger(__name__)
 
 
 def _state(request: Request) -> Any:
@@ -167,6 +170,28 @@ async def _owned_order(db: Any, order_id: str, user_id: str) -> dict[str, Any]:
     if not row:
         raise HTTPException(status_code=404, detail="order not found")
     return dict(row)
+
+
+def _order_view(row: Any) -> dict[str, Any]:
+    data = dict(row)
+    detail = data.get("detail")
+    if isinstance(detail, str):
+        try:
+            detail = json.loads(detail)
+        except json.JSONDecodeError:
+            detail = {}
+    view = dict(detail) if isinstance(detail, dict) else {}
+    view.update(
+        {
+            "order_id": data.get("order_id") or data.get("id"),
+            "slot_id": data.get("slot_id"),
+            "patient_id": data.get("patient_id"),
+            "amount": float(data["amount"]) if data.get("amount") is not None else 0,
+            "status": data.get("status"),
+            "payment_status": data.get("payment_status"),
+        }
+    )
+    return view
 
 
 async def _member_row(db: Any, member_id: str | None, user_id: str) -> dict[str, Any]:
@@ -669,17 +694,33 @@ async def booking_cancel(
 ) -> dict[str, Any]:
     state = _state(request)
     user_id = str(user["sub"])
-    booking = await _owned_order(state.db, order_id, user_id)
-    if booking.get("payment_status") == "paid" or booking.get("status") in {"paid", "booked"}:
-        raise HTTPException(status_code=409, detail="paid order cannot be cancelled")
-    if booking.get("status") == "cancelled":
-        return {"order": jsonable(booking)}
-    if booking.get("status") not in {"created", "pending_review"}:
-        raise HTTPException(status_code=409, detail="order cannot be cancelled")
-    data = await _mcp(state, "cancel_order", {"order_id": order_id})
     async with state.db.transaction() as conn:
-        await conn.execute(
-            "UPDATE bookings SET status='cancelled', updated_at=now() WHERE id=$1 AND user_id=$2",
+        row = await conn.fetchrow(
+            "SELECT * FROM bookings WHERE id=$1 AND user_id=$2 FOR UPDATE",
+            order_id,
+            user_id,
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail="order not found")
+        booking = dict(row)
+        if booking.get("payment_status") == "paid" or booking.get("status") in {"paid", "booked"}:
+            raise HTTPException(status_code=409, detail="paid order cannot be cancelled")
+        if booking.get("status") == "cancelled":
+            return {"order": _order_view(booking)}
+        if booking.get("status") not in {"created", "pending_review"}:
+            raise HTTPException(status_code=409, detail="order cannot be cancelled")
+        result = await state.mcp.call_tool("cancel_order", {"order_id": order_id})
+        if result.get("is_error"):
+            logger.warning(
+                "mcp cancel failed for order %s: %s", order_id, result.get("text")
+            )
+            raise HTTPException(status_code=502, detail="取消订单失败，请稍后重试")
+        updated = await conn.fetchrow(
+            """
+            UPDATE bookings SET status='cancelled', updated_at=now()
+            WHERE id=$1 AND user_id=$2
+            RETURNING *
+            """,
             order_id,
             user_id,
         )
@@ -701,7 +742,7 @@ async def booking_cancel(
         action="order.cancel",
         detail={"order_id": order_id},
     )
-    return {"order": data}
+    return {"order": _order_view(updated)}
 
 
 # ------------------------------------------------------------------- admin
@@ -1081,14 +1122,20 @@ async def delete_family_member(
             await conn.execute(
                 "DELETE FROM family_members WHERE id=$1 AND user_id=$2", member_id, user_id
             )
-    except HTTPException:
-        raise
     except Exception as exc:
-        raise HTTPException(
-            status_code=500, detail=f"failed to delete member data: {exc}"
-        ) from exc
-    for item in report_rows:
-        remove_report_image(state.settings, item["image_path"])
+        logger.exception("family delete failed for member %s", member_id)
+        raise HTTPException(status_code=500, detail="failed to delete member data") from exc
+    failed_images = [
+        str(item["image_path"])
+        for item in report_rows
+        if not remove_report_image(state.settings, item["image_path"])
+    ]
+    if failed_images:
+        logger.warning(
+            "family delete for member %s left report images on disk: %s",
+            member_id,
+            ", ".join(failed_images),
+        )
     await state.sessions.audit(
         request_id=getattr(request.state, "request_id", uuid.uuid4().hex),
         session_id=user_id,

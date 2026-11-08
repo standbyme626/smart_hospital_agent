@@ -190,6 +190,7 @@ export default function ProfilePage() {
                   <p className="mt-0.5 truncate text-[11px] text-muted">
                     {[member.gender, member.birth_date, member.allergies ? `过敏：${member.allergies}` : "", member.conditions ? `既往：${member.conditions}` : ""].filter(Boolean).join(" · ") || "暂无档案信息"}
                   </p>
+                  <p className="mt-0.5 text-[11px] text-muted">就诊人ID：{member.hospital_patient_id || "—"}</p>
                 </div>
                 <button onClick={() => startEdit(member)} className="text-muted hover:text-primary" aria-label="编辑"><Pencil size={15} /></button>
                 {!member.is_self ? (

@@ -31,14 +31,21 @@ import {
   track,
 } from "@/lib/api";
 import type { BookingOrder, Doctor, ReviewRequest, ScheduleSlot, VisitGuide } from "@/lib/types";
+import {
+  parseStoredLock,
+  pickRestorableOrder,
+  serializeStoredLock,
+  type StoredLock,
+} from "@/lib/booking-restore";
 
 const STEPS = ["选号", "锁号", "订单", "支付审核", "完成"];
 const LOCK_STORAGE_KEY = "booking_lock";
 
-type LockInfo = { lock_id: string; slot_id: string; expires_in: number; expires_at?: string };
+type LockInfo = StoredLock;
 
 export default function ServicesPage() {
-  const { activeMember, showToast } = useApp();
+  const { activeMember, authReady, showToast } = useApp();
+  const memberId = activeMember?.id || null;
   const [departments, setDepartments] = useState<string[]>([]);
   const [department, setDepartment] = useState("心血管内科");
   const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -68,24 +75,23 @@ export default function ServicesPage() {
   }, []);
 
   useEffect(() => {
-    const raw = window.sessionStorage.getItem(LOCK_STORAGE_KEY);
-    if (raw) {
-      try {
-        const saved = JSON.parse(raw) as LockInfo;
-        if (!saved.expires_at || new Date(saved.expires_at).getTime() > Date.now()) {
-          setLock(saved);
-        } else {
-          window.sessionStorage.removeItem(LOCK_STORAGE_KEY);
-        }
-      } catch {
-        window.sessionStorage.removeItem(LOCK_STORAGE_KEY);
-      }
-    }
+    if (!authReady) return;
+    setLock(null);
+    setOrder(null);
+    setReview(null);
+    setGuide(null);
+    setGuideError(null);
+    const savedLock = parseStoredLock(
+      window.sessionStorage.getItem(LOCK_STORAGE_KEY),
+      memberId,
+    );
+    if (savedLock) setLock(savedLock);
+    else window.sessionStorage.removeItem(LOCK_STORAGE_KEY);
     let cancelled = false;
     (async () => {
       try {
-        const orders = await getOrders();
-        const latest = orders.find((item) => item.status !== "cancelled");
+        const orders = await getOrders(memberId || undefined);
+        const latest = pickRestorableOrder(orders);
         if (!latest) return;
         const detail = await getOrder(latest.order_id || latest.id);
         if (cancelled) return;
@@ -98,7 +104,7 @@ export default function ServicesPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [authReady, memberId]);
 
   useEffect(() => {
     load();
@@ -110,11 +116,6 @@ export default function ServicesPage() {
     setLoading(true);
     setError(null);
     setDoctor(null);
-    setSelected(null);
-    setLock(null);
-    setOrder(null);
-    setReview(null);
-    setGuide(null);
     try {
       const [doctorList, slotList] = await Promise.all([
         getDoctors(department),
@@ -127,6 +128,30 @@ export default function ServicesPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function clearLockStorage() {
+    window.sessionStorage.removeItem(LOCK_STORAGE_KEY);
+  }
+
+  function resetBookingState() {
+    setSelected(null);
+    setLock(null);
+    setOrder(null);
+    setReview(null);
+    setGuide(null);
+    setGuideError(null);
+    clearLockStorage();
+  }
+
+  function changeDepartment(value: string) {
+    resetBookingState();
+    setDepartment(value);
+  }
+
+  function changeDate(value: string) {
+    resetBookingState();
+    setDate(value);
   }
 
   const grouped = useMemo(() => {
@@ -186,10 +211,10 @@ export default function ServicesPage() {
     if (!selected) return;
     setLoading(true);
     try {
-      const result = await lockSlot(selected.slot_id, activeMember?.id);
+      const result = await lockSlot(selected.slot_id, memberId || undefined);
       setLock(result);
       setClock(Date.now());
-      window.sessionStorage.setItem(LOCK_STORAGE_KEY, JSON.stringify(result));
+      window.sessionStorage.setItem(LOCK_STORAGE_KEY, serializeStoredLock(result, memberId));
       track("booking_lock", { slot_id: selected.slot_id });
     } catch (err) {
       showToast(err instanceof Error ? err.message : "锁号失败");
@@ -202,10 +227,12 @@ export default function ServicesPage() {
     if (!lock) return;
     setLoading(true);
     try {
-      setOrder(await createOrder(lock.lock_id, activeMember?.id));
+      setOrder(await createOrder(lock.lock_id, memberId || undefined));
       setReview(null);
       setGuide(null);
       setGuideError(null);
+      setLock(null);
+      clearLockStorage();
       track("booking_order", { lock_id: lock.lock_id });
     } catch (err) {
       showToast(err instanceof Error ? err.message : "创建订单失败");
@@ -224,6 +251,8 @@ export default function ServicesPage() {
       setReview(null);
       setGuide(null);
       setGuideError(null);
+      setLock(null);
+      clearLockStorage();
       showToast("订单已取消");
     } catch (err) {
       showToast(err instanceof Error ? err.message : "取消失败");
@@ -282,13 +311,13 @@ export default function ServicesPage() {
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block">
               <span className="label">科室</span>
-              <select className="input" value={department} onChange={(event) => setDepartment(event.target.value)}>
+              <select className="input" value={department} onChange={(event) => changeDepartment(event.target.value)}>
                 {departments.map((item) => <option key={item} value={item}>{item}</option>)}
               </select>
             </label>
             <label className="block">
               <span className="label">日期（可选）</span>
-              <input className="input" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+              <input className="input" type="date" value={date} onChange={(event) => changeDate(event.target.value)} />
             </label>
           </div>
 
@@ -335,7 +364,15 @@ export default function ServicesPage() {
                       <button
                         key={slot.slot_id}
                         disabled={!slot.available}
-                        onClick={() => { setSelected(slot); setLock(null); setOrder(null); setReview(null); setGuide(null); }}
+                        onClick={() => {
+                          setSelected(slot);
+                          setLock(null);
+                          clearLockStorage();
+                          setOrder(null);
+                          setReview(null);
+                          setGuide(null);
+                          setGuideError(null);
+                        }}
                         className={clsx(
                           "rounded-2xl border px-3 py-2.5 text-left text-[12px] transition",
                           selected?.slot_id === slot.slot_id ? "border-primary bg-primary-soft text-primary" : "border-line bg-white text-ink hover:border-primary/30",
