@@ -15,6 +15,7 @@ from fastapi.responses import Response, StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from .api.deps import create_token, get_current_user, require_admin
+from .conversation import append_message, load_history
 from .policy import DEPARTMENT_NAMES, DRUG_CHECKER
 from .reviews import approve_review, create_payment_review, reject_review, review_json
 from .schemas import (
@@ -270,12 +271,29 @@ async def chat_stream(
         )
         final_data: dict[str, Any] | None = None
         try:
+            await state.sessions.ensure(
+                session_id,
+                user_id,
+                title=payload.message[:40],
+                member_id=member.get("id"),
+            )
+            history = await load_history(state.db, session_id)
+            await append_message(
+                state.db,
+                session_id=session_id,
+                user_id=user_id,
+                member_id=member.get("id"),
+                role="user",
+                content=message,
+            )
             async for event in state.agent.stream(
                 session_id=session_id,
                 message=message,
                 user_id=user_id,
                 request_id=request_id,
                 title=payload.message,
+                member_id=member.get("id"),
+                history=history,
             ):
                 if event.get("type") == "final":
                     final_data = event.get("data")
@@ -283,6 +301,14 @@ async def chat_stream(
             if final_data and final_data.get("report"):
                 report = final_data["report"]
                 try:
+                    await append_message(
+                        state.db,
+                        session_id=session_id,
+                        user_id=user_id,
+                        member_id=member.get("id"),
+                        role="assistant",
+                        content=str(report.get("summary") or ""),
+                    )
                     await _add_event(
                     state.db,
                     user_id,
@@ -325,6 +351,35 @@ async def list_sessions(
 ) -> dict[str, Any]:
     sessions = await _state(request).sessions.list_sessions(str(user["sub"]))
     return {"sessions": sessions}
+
+
+@router.get("/api/v1/sessions/{session_id}")
+async def session_detail(
+    session_id: str,
+    request: Request,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    db = _state(request).db
+    session = await _owned_session(db, session_id, str(user["sub"]))
+    rows = await db.fetch(
+        "SELECT id, role, content, created_at FROM messages WHERE session_id=$1 ORDER BY id ASC",
+        session_id,
+    )
+    latest = await db.fetchrow(
+        "SELECT data FROM events WHERE session_id=$1 AND type='final' ORDER BY seq DESC LIMIT 1",
+        session_id,
+    )
+    latest_final = latest["data"] if latest else None
+    if isinstance(latest_final, str):
+        try:
+            latest_final = json.loads(latest_final)
+        except json.JSONDecodeError:
+            latest_final = None
+    return {
+        "session": jsonable(session),
+        "messages": jsonable([dict(row) for row in rows]),
+        "latest_final": jsonable(latest_final),
+    }
 
 
 @router.get("/api/v1/sessions/{session_id}/events")

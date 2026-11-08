@@ -255,6 +255,18 @@ SCHEMA = [
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS messages (
+        id BIGSERIAL PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        user_id TEXT NOT NULL DEFAULT 'anonymous',
+        member_id TEXT,
+        role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+        content TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_messages_session ON messages (session_id, id)",
 ]
 
 MIGRATIONS = [
@@ -266,6 +278,8 @@ MIGRATIONS = [
     "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS review_id TEXT",
     "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS idempotency_key TEXT",
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_idem ON bookings (idempotency_key) WHERE idempotency_key IS NOT NULL",
+    "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS member_id TEXT",
+    "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS last_message_at TIMESTAMPTZ",
 ]
 
 

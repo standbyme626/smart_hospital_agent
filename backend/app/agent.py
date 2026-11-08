@@ -6,6 +6,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 from .config import Settings
+from .conversation import trim_history
 from .model_gateway import ChatResult, ModelGateway
 from .policy import DEPARTMENT_NAMES, detect_crisis, normalize_department, rule_triage, safety_gate
 from .prompts import AGENT_SYSTEM, TRIAGE_SYSTEM
@@ -40,11 +41,13 @@ class MedicalAgent:
         user_id: str = "anonymous",
         request_id: str,
         title: str | None = None,
+        member_id: str | None = None,
+        history: list[dict[str, Any]] | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
-        await self.sessions.ensure(session_id, user_id, title=(title or message)[:40])
+        await self.sessions.ensure(session_id, user_id, title=(title or message)[:40], member_id=member_id)
         yield await self._emit(session_id, "status", {"stage": "triage", "detail": "正在分诊"})
 
-        triage = await self._triage(message, request_id, session_id)
+        triage = await self._triage(message, request_id, session_id, history=history)
         yield await self._emit(session_id, "status", {"stage": "triage_done", "detail": triage})
         yield await self._emit(
             session_id,
@@ -63,6 +66,7 @@ class MedicalAgent:
         context = ToolContext(session_id=session_id, request_id=request_id, user_id=user_id, user_text=message)
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": AGENT_SYSTEM},
+            *trim_history(history or []),
             {
                 "role": "user",
                 "content": (
@@ -224,13 +228,29 @@ class MedicalAgent:
             detail={"triage": triage, "report": report},
         )
 
-    async def _triage(self, message: str, request_id: str, session_id: str) -> dict[str, Any]:
+    async def _triage(
+        self,
+        message: str,
+        request_id: str,
+        session_id: str,
+        history: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        triage_messages: list[dict[str, Any]] = [{"role": "system", "content": TRIAGE_SYSTEM}]
+        recent = trim_history(history or [], max_chars=2000)[-2:]
+        if recent:
+            transcript = "\n".join(
+                f"{'用户' if item.get('role') == 'user' else '助手'}：{item.get('content', '')}" for item in recent
+            )
+            triage_messages.append(
+                {
+                    "role": "system",
+                    "content": f"最近对话（仅用于理解当前追问，分诊对象仍是最后一条用户输入）：\n{transcript}",
+                }
+            )
+        triage_messages.append({"role": "user", "content": message})
         try:
             result = await self.gateway.chat(
-                [
-                    {"role": "system", "content": TRIAGE_SYSTEM},
-                    {"role": "user", "content": message},
-                ],
+                triage_messages,
                 task="triage",
                 temperature=0.0,
                 max_tokens=800,

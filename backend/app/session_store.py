@@ -25,16 +25,25 @@ class SessionStore:
     def __init__(self, db: Database):
         self.db = db
 
-    async def ensure(self, session_id: str, user_id: str = "anonymous", title: str | None = None) -> None:
+    async def ensure(
+        self,
+        session_id: str,
+        user_id: str = "anonymous",
+        title: str | None = None,
+        member_id: str | None = None,
+    ) -> None:
         await self.db.execute(
             """
-            INSERT INTO sessions (id, user_id, title)
-            VALUES ($1, $2, $3)
-            ON CONFLICT (id) DO UPDATE SET updated_at = now()
+            INSERT INTO sessions (id, user_id, title, member_id)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (id) DO UPDATE
+                SET updated_at = now(),
+                    member_id = COALESCE(sessions.member_id, EXCLUDED.member_id)
             """,
             session_id,
             user_id,
             title,
+            member_id,
         )
 
     async def append(self, session_id: str, event_type: str, data: dict[str, Any]) -> int:
@@ -78,7 +87,7 @@ class SessionStore:
     async def list_sessions(self, user_id: str, limit: int = 30) -> list[dict[str, Any]]:
         rows = await self.db.fetch(
             """
-            SELECT id, user_id, title, created_at, updated_at
+            SELECT id, user_id, member_id, title, last_message_at, created_at, updated_at
             FROM sessions
             WHERE user_id = $1
             ORDER BY updated_at DESC
