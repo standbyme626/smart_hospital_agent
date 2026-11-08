@@ -1,449 +1,267 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
-  Activity,
-  AlertTriangle,
-  BookOpen,
+  ArrowRight,
   CalendarClock,
+  Camera,
   CheckCircle2,
   ChevronRight,
-  Loader2,
-  Menu,
-  Search,
-  Send,
+  Clock,
+  FileText,
+  HeartPulse,
+  Mic,
+  Pill,
   ShieldCheck,
   Sparkles,
   Stethoscope,
-  UserRound,
-  X,
+  Users,
 } from "lucide-react";
-import clsx from "clsx";
-import { Sidebar } from "@/components/Sidebar";
-import { ReportCard } from "@/components/ReportCard";
-import {
-  UnauthorizedError,
-  getMe,
-  getSessions,
-  streamChat,
-} from "@/lib/api";
-import type { ChatMessage, Citation, Session } from "@/lib/types";
+import { AppShell } from "@/components/AppShell";
+import { TaskCard } from "@/components/TaskCard";
+import { useApp } from "@/lib/app-context";
+import { completeFollowup, getHomeSummary, track } from "@/lib/api";
+import { formatDate, kindMeta, relativeTime } from "@/lib/format";
+import type { HomeSummary } from "@/lib/types";
 
-const examples = [
-  "头痛伴发热两天，该挂什么科？",
-  "高血压患者能吃阿司匹林吗？",
-  "孩子发烧 38.5 度，需要马上去医院吗？",
-  "我想挂心内科的号，最近总是心悸。",
-];
+export default function HomePage() {
+  const router = useRouter();
+  const { activeMember, showToast, refreshFamily } = useApp();
+  const [summary, setSummary] = useState<HomeSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [draft, setDraft] = useState("");
 
-function newId(): string {
-  return typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function statusText(data: Record<string, unknown>): string {
-  const stage = String(data.stage || "");
-  if (stage === "triage") return "正在分诊";
-  if (stage === "triage_done") {
-    const detail = data.detail as Record<string, unknown> | undefined;
-    if (detail) return `分诊完成 · ${detail.department || ""} · ${detail.urgency || ""}`;
-    return "分诊完成";
-  }
-  if (stage === "tool") return `工具 ${data.tool || ""} · ${data.ok ? "完成" : "失败"}`;
-  if (stage === "drug_check") return `药物检查 · ${data.highest_severity || "none"}`;
-  return stage || "处理中";
-}
-
-export default function ChatPage() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState("");
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [streaming, setStreaming] = useState(false);
-  const [statusLines, setStatusLines] = useState<string[]>([]);
-  const [citations, setCitations] = useState<Citation[]>([]);
-  const [selectedCitation, setSelectedCitation] = useState<Citation | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [authError, setAuthError] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const endRef = useRef<HTMLDivElement | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-
-  const refreshSessions = useCallback(async () => {
+  async function load() {
     try {
-      setSessions(await getSessions());
-    } catch (err) {
-      if (err instanceof UnauthorizedError) setAuthError(true);
+      const data = await getHomeSummary(activeMember?.id);
+      setSummary(data);
+    } catch {
+      setSummary(null);
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  }
 
   useEffect(() => {
-    getMe().catch((err) => {
-      if (err instanceof UnauthorizedError) setAuthError(true);
-    });
-    refreshSessions();
-  }, [refreshSessions]);
+    setLoading(true);
+    load();
+    track("home_view", { member_id: activeMember?.id || null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMember?.id]);
 
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, statusLines]);
+  function startConsult(text?: string) {
+    const value = (text ?? draft).trim();
+    if (value) window.sessionStorage.setItem("consult_draft", value);
+    track("consult_start", { from: "home", has_text: Boolean(value) });
+    router.push("/consult/");
+  }
 
-  const updateMessage = useCallback((id: string, patch: Partial<ChatMessage>) => {
-    setMessages((prev) => prev.map((message) => (message.id === id ? { ...message, ...patch } : message)));
-  }, []);
+  function startVoice() {
+    const SpeechRecognition = (window as unknown as { SpeechRecognition?: any; webkitSpeechRecognition?: any }).SpeechRecognition
+      || (window as unknown as { webkitSpeechRecognition?: any }).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      showToast("当前浏览器不支持语音输入，请先用文字描述");
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.lang = "zh-CN";
+    recognition.interimResults = false;
+    recognition.onresult = (event: any) => {
+      const text = event.results?.[0]?.[0]?.transcript || "";
+      if (text) setDraft((prev) => (prev ? `${prev} ${text}` : text));
+    };
+    recognition.onerror = () => showToast("没有听清，请再试一次");
+    recognition.start();
+  }
 
-  const send = useCallback(
-    async (raw?: string) => {
-      const text = (raw ?? input).trim();
-      if (!text || streaming) return;
-      setInput("");
-      setError(null);
-      setSidebarOpen(false);
-      setStatusLines([]);
-      setCitations([]);
-      setSelectedCitation(null);
-      const userMessage: ChatMessage = { id: newId(), role: "user", content: text };
-      const assistantId = newId();
-      const assistantMessage: ChatMessage = { id: assistantId, role: "assistant", content: "" };
-      setMessages((prev) => [...prev, userMessage, assistantMessage]);
-      setStreaming(true);
-      let streamed = "";
-      let streamedCitations: Citation[] = [];
-      try {
-        for await (const event of streamChat({ message: text, session_id: sessionId ?? undefined })) {
-          if (event.type === "session") {
-            const id = String(event.data.session_id || "");
-            if (id) setSessionId(id);
-          } else if (event.type === "status") {
-            setStatusLines((prev) => [...prev, statusText(event.data)]);
-          } else if (event.type === "thought") {
-            const thought = String(event.data.text || "").trim();
-            if (thought) setStatusLines((prev) => [...prev, thought]);
-          } else if (event.type === "citation") {
-            const citation = event.data as unknown as Citation;
-            if (!streamedCitations.some((item) => String(item.id) === String(citation.id))) {
-              streamedCitations = [...streamedCitations, citation];
-              setCitations(streamedCitations);
-              updateMessage(assistantId, { citations: streamedCitations });
-            }
-          } else if (event.type === "token") {
-            streamed += String(event.data.text || "");
-            updateMessage(assistantId, { content: streamed });
-          } else if (event.type === "final") {
-            const report = event.data.report as ChatMessage["report"];
-            const finalCitations = (event.data.citations as unknown as Citation[]) || streamedCitations;
-            const safety = event.data.safety as ChatMessage["safety"];
-            const triage = event.data.triage as ChatMessage["triage"];
-            updateMessage(assistantId, {
-              content: report?.summary || streamed,
-              report,
-              citations: finalCitations,
-              safety,
-              triage,
-            });
-            setCitations(finalCitations);
-            setStatusLines((prev) => [...prev, "报告已生成"]);
-            refreshSessions();
-          } else if (event.type === "error") {
-            const message = String(event.data.message || "服务异常");
-            setError(message);
-            updateMessage(assistantId, { error: message });
-          }
-        }
-      } catch (err) {
-        if (err instanceof UnauthorizedError) {
-          setAuthError(true);
-        } else {
-          const message = err instanceof Error ? err.message : "请求失败";
-          setError(message);
-          updateMessage(assistantId, { error: message });
-        }
-      } finally {
-        setStreaming(false);
-        textareaRef.current?.focus();
-      }
-    },
-    [input, streaming, sessionId, refreshSessions, updateMessage],
-  );
+  async function finishFollowup(id: string) {
+    try {
+      await completeFollowup(id);
+      showToast("已完成随访");
+      load();
+    } catch {
+      showToast("操作失败，请稍后再试");
+    }
+  }
 
-  const newChat = useCallback(() => {
-    setMessages([]);
-    setSessionId(null);
-    setStatusLines([]);
-    setCitations([]);
-    setSelectedCitation(null);
-    setError(null);
-    setSidebarOpen(false);
-    textareaRef.current?.focus();
-  }, []);
-
-  const lastCitations = useMemo(() => citations.slice(0, 8), [citations]);
-  const showEmpty = messages.length === 0;
+  const hour = new Date().getHours();
+  const greeting = hour < 11 ? "早上好" : hour < 18 ? "下午好" : "晚上好";
+  const memberName = activeMember?.name || "本人";
 
   return (
-    <div className="flex h-dvh overflow-hidden">
-      <Sidebar
-        sessions={sessions}
-        activeSession={sessionId}
-        open={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        onNew={newChat}
-        onSelect={(id) => {
-          setSessionId(id);
-          setMessages([]);
-          setStatusLines([]);
-          setCitations([]);
-        }}
-      />
-
-      <div className="flex min-w-0 flex-1">
-        <main className="flex min-w-0 flex-1 flex-col">
-          <header className="flex items-center gap-3 border-b border-line bg-panel/70 px-4 py-3 backdrop-blur">
-            <button className="btn-ghost h-9 w-9 p-0 lg:hidden" onClick={() => setSidebarOpen(true)} aria-label="打开侧栏">
-              <Menu size={16} />
-            </button>
-            <div className="min-w-0 flex-1">
-              <h1 className="truncate text-sm font-semibold text-white">智能分诊与就医咨询</h1>
-              <p className="truncate text-[11px] text-slate-400">DeepSeek V4.1 Flash · Qwen3-8B 向量/重排 · 证据可追溯</p>
-            </div>
-            <span className="hidden items-center gap-1.5 rounded-full border border-mint/30 bg-mint/10 px-2.5 py-1 text-[11px] text-mint sm:inline-flex">
-              <span className="h-1.5 w-1.5 rounded-full bg-mint pulse-dot" />
-              服务在线
-            </span>
-          </header>
-
-          {authError ? (
-            <div className="border-b border-amber/30 bg-amber/10 px-4 py-2.5 text-xs text-amber">
-              需要登录后才能使用。请前往 <a className="underline" href="/login">登录页</a>。
-            </div>
-          ) : null}
-          {error ? (
-            <div className="flex items-center gap-2 border-b border-rose/30 bg-rose/10 px-4 py-2.5 text-xs text-rose">
-              <AlertTriangle size={14} />
-              {error}
-            </div>
-          ) : null}
-
-          <div className="scrollbar-thin flex-1 overflow-y-auto px-4 py-6">
-            <div className="mx-auto max-w-3xl space-y-5">
-              {showEmpty ? (
-                <div className="py-10">
-                  <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs text-primary">
-                    <Sparkles size={13} />
-                    分子医学 · 循证分诊
-                  </div>
-                  <h2 className="mt-5 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-                    先说症状，<span className="text-primary">再决定挂什么科。</span>
-                  </h2>
-                  <p className="mt-3 max-w-xl text-sm leading-6 text-slate-400">
-                    大医会先做分诊与危机识别，再检索医学证据、检查药物相互作用，最后给出可追溯的就医建议。
-                    需要挂号时，可以继续完成号源锁定与支付。
-                  </p>
-                  <div className="mt-6 grid gap-2 sm:grid-cols-2">
-                    {examples.map((example) => (
-                      <button
-                        key={example}
-                        className="surface-2 group flex items-center justify-between px-3.5 py-3 text-left text-sm text-slate-300 transition hover:border-primary/40 hover:text-white"
-                        onClick={() => send(example)}
-                      >
-                        <span>{example}</span>
-                        <ChevronRight size={15} className="text-slate-500 group-hover:text-primary" />
-                      </button>
-                    ))}
-                  </div>
-                  <div className="mt-6 flex flex-wrap gap-2 text-[11px] text-slate-500">
-                    <span className="chip"><ShieldCheck size={12} /> 危机快车道</span>
-                    <span className="chip"><PillIcon /> 药物相互作用</span>
-                    <span className="chip"><BookOpen size={12} /> 证据引用</span>
-                    <span className="chip"><CalendarClock size={12} /> MCP 挂号支付</span>
-                  </div>
-                </div>
-              ) : null}
-
-              {messages.map((message) => (
-                <div key={message.id}>
-                  {message.role === "user" ? (
-                    <div className="flex justify-end gap-3">
-                      <div className="max-w-[85%] rounded-2xl rounded-tr-md bg-primary px-4 py-3 text-sm leading-6 text-slate-950">
-                        {message.content}
-                      </div>
-                      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-panel2 text-slate-300">
-                        <UserRound size={15} />
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex gap-3">
-                      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary2 text-slate-950">
-                        <Stethoscope size={15} />
-                      </div>
-                      <div className="min-w-0 flex-1 space-y-3">
-                        {message.report ? (
-                          <ReportCard
-                            report={message.report}
-                            citations={message.citations || []}
-                            safety={message.safety}
-                            onCitation={setSelectedCitation}
-                          />
-                        ) : (
-                          <div className="surface px-4 py-3">
-                            {message.content ? (
-                              <div className="markdown">
-                                <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-2 text-sm text-slate-400">
-                                <Loader2 size={15} className="animate-spin" />
-                                正在生成回答…
-                              </div>
-                            )}
-                            {message.error ? <p className="mt-2 text-xs text-rose">{message.error}</p> : null}
-                          </div>
-                        )}
-                        {message.triage ? (
-                          <div className="flex flex-wrap gap-2 text-[11px] text-slate-500">
-                            <span className="chip">分诊：{message.triage.department}</span>
-                            <span className="chip">紧急度：{message.triage.urgency}</span>
-                            <span className="chip">意图：{message.triage.intent}</span>
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-
-              {streaming ? (
-                <div className="flex items-center gap-2 text-xs text-slate-500">
-                  <Loader2 size={14} className="animate-spin text-primary" />
-                  {statusLines.length ? statusLines[statusLines.length - 1] : "正在处理…"}
-                </div>
-              ) : null}
-
-              {statusLines.length && !streaming ? (
-                <details className="surface-2 px-3 py-2 text-xs text-slate-400">
-                  <summary className="cursor-pointer select-none text-slate-300">执行过程（{statusLines.length} 步）</summary>
-                  <ul className="mt-2 space-y-1">
-                    {statusLines.map((line, index) => (
-                      <li key={index} className="flex items-start gap-2">
-                        <CheckCircle2 size={12} className="mt-0.5 shrink-0 text-mint" />
-                        <span>{line}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              ) : null}
-              <div ref={endRef} />
-            </div>
+    <AppShell
+      title={`${greeting}，${memberName}`}
+      subtitle="今天想先解决哪件事？"
+      actions={<span className="hidden rounded-full bg-primary-soft px-3 py-1 text-[11px] text-primary sm:inline-flex">AI 分诊 · 证据可查</span>}
+    >
+      <div className="space-y-5">
+        <section className="card overflow-hidden p-5 sm:p-7">
+          <div className="flex items-center gap-2 text-[12px] text-muted">
+            <Sparkles size={14} className="text-primary" />
+            为 {memberName} 咨询
+            <span className="text-line">·</span>
+            <span>不确定挂什么科？先说说哪里不舒服</span>
           </div>
-
-          <div className="border-t border-line bg-panel/70 px-4 py-3 backdrop-blur">
-            <div className="mx-auto max-w-3xl">
-              <div className="surface flex items-end gap-2 p-2">
-                <textarea
-                  ref={textareaRef}
-                  value={input}
-                  onChange={(event) => setInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
-                      event.preventDefault();
-                      send();
-                    }
-                  }}
-                  rows={1}
-                  placeholder="描述症状、持续时间、用药情况，或直接说要挂什么科…"
-                  className="max-h-40 min-h-[44px] flex-1 resize-none bg-transparent px-2 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-                />
-                <button
-                  className="btn-primary h-10 w-10 shrink-0 p-0"
-                  disabled={streaming || !input.trim()}
-                  onClick={() => send()}
-                  aria-label="发送"
-                >
-                  {streaming ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                </button>
-              </div>
-              <p className="mt-1.5 text-center text-[10px] text-slate-500">
-                Enter 发送 · Shift+Enter 换行 · 本产品不提供确诊与处方，危机情况请立即拨打 120
-              </p>
-            </div>
-          </div>
-        </main>
-
-        <aside className="hidden w-80 shrink-0 border-l border-line bg-panel/50 xl:flex xl:flex-col">
-          <div className="border-b border-line px-4 py-3">
-            <p className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-slate-400">
-              <BookOpen size={14} className="text-primary" />
-              证据面板
-            </p>
-          </div>
-          <div className="scrollbar-thin flex-1 overflow-y-auto p-4">
-            {selectedCitation ? (
-              <div className="surface p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-sm font-medium text-white">{selectedCitation.title}</p>
-                  <button className="text-slate-500 hover:text-white" onClick={() => setSelectedCitation(null)} aria-label="关闭">
-                    <X size={14} />
+          <h1 className="mt-3 text-[26px] font-semibold leading-tight text-ink sm:text-[32px]">
+            哪里不舒服？
+          </h1>
+          <form
+            className="mt-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              startConsult();
+            }}
+          >
+            <div className="rounded-2xl border border-line bg-canvas p-2 focus-within:border-primary/50 focus-within:ring-4 focus-within:ring-primary/10">
+              <textarea
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                rows={2}
+                placeholder="例如：头痛伴发热两天，吃了退烧药还是反复…"
+                className="min-h-[54px] w-full resize-none bg-transparent px-2 py-1.5 text-[15px] leading-6 text-ink outline-none placeholder:text-muted/70"
+              />
+              <div className="flex items-center justify-between px-1 pb-1">
+                <div className="flex items-center gap-1">
+                  <button type="button" onClick={() => router.push("/reports/")} className="flex h-9 w-9 items-center justify-center rounded-full text-muted hover:bg-white hover:text-primary" aria-label="上传报告">
+                    <Camera size={17} />
+                  </button>
+                  <button type="button" onClick={startVoice} className="flex h-9 w-9 items-center justify-center rounded-full text-muted hover:bg-white hover:text-primary" aria-label="语音输入">
+                    <Mic size={17} />
                   </button>
                 </div>
-                <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] text-slate-400">
-                  {selectedCitation.department ? <span className="chip">{selectedCitation.department}</span> : null}
-                  {selectedCitation.source ? <span className="chip">{selectedCitation.source}</span> : null}
-                  {typeof selectedCitation.score === "number" ? (
-                    <span className="chip">score {selectedCitation.score.toFixed(4)}</span>
-                  ) : null}
-                </div>
-                <p className="mt-3 whitespace-pre-wrap text-xs leading-5 text-slate-300">{selectedCitation.snippet}</p>
+                <button type="submit" className="btn-primary min-h-10 px-4">
+                  开始问诊
+                  <ArrowRight size={15} />
+                </button>
               </div>
+            </div>
+          </form>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {["头痛发热", "血压偏高", "孩子发烧", "体检报告解读"].map((item) => (
+              <button
+                key={item}
+                onClick={() => {
+                  if (item === "体检报告解读") router.push("/reports/");
+                  else startConsult(item);
+                }}
+                className="chip hover:border-primary/40 hover:text-primary"
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="section-title">我想…</h2>
+            <span className="text-[11px] text-muted">选一个入口，少走弯路</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <TaskCard href="/consult/" icon={Stethoscope} title="AI 诊室" description="描述症状，得到分诊与就医方向" />
+            <TaskCard href="/reports/" icon={FileText} title="报告解读" description="上传化验/检查报告，看懂异常指标" tone="amber" />
+            <TaskCard href="/reports/" icon={Camera} title="拍照识别" description="皮肤、药盒、报告拍照上传" tone="rose" />
+            <TaskCard href="/meds/" icon={Pill} title="药管家" description="用药清单与相互作用检查" tone="emerald" />
+            <TaskCard href="/services/" icon={CalendarClock} title="挂号陪诊" description="选科室、医生与号源，支付后给就诊指引" tone="sky" />
+            <TaskCard href="/health/" icon={HeartPulse} title="健康档案" description="报告、用药、就诊与随访时间线" tone="violet" />
+          </div>
+        </section>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <section className="card p-5">
+            <div className="flex items-center justify-between">
+              <h2 className="section-title">继续上次</h2>
+              {summary?.latest_session ? <span className="text-[11px] text-muted">{relativeTime(summary.latest_session.updated_at)}</span> : null}
+            </div>
+            {loading ? (
+              <div className="mt-4 h-16 animate-pulse rounded-2xl bg-canvas" />
+            ) : summary?.latest_session ? (
+              <button onClick={() => router.push("/health/")} className="mt-4 flex w-full items-center justify-between gap-3 rounded-2xl bg-canvas p-3 text-left">
+                <span className="min-w-0">
+                  <span className="block truncate text-[14px] font-medium text-ink">{summary.latest_session.title || "上次问诊"}</span>
+                  <span className="mt-1 block text-[11px] text-muted">查看健康时间线中的问诊记录</span>
+                </span>
+                <ChevronRight size={16} className="shrink-0 text-muted" />
+              </button>
             ) : (
-              <div className="space-y-2">
-                {lastCitations.length === 0 ? (
-                  <p className="text-xs leading-6 text-slate-500">
-                    检索到的医学证据会显示在这里。每条建议都可以点击引用编号回看原文片段。
-                  </p>
-                ) : (
-                  lastCitations.map((citation, index) => (
-                    <button
-                      key={`${citation.id}-${index}`}
-                      className="surface-2 w-full px-3 py-2.5 text-left transition hover:border-primary/40"
-                      onClick={() => setSelectedCitation(citation)}
-                    >
-                      <p className="line-clamp-2 text-xs text-slate-200">{citation.title}</p>
-                      <p className="mt-1 text-[10px] text-slate-500">
-                        {citation.department || "未知科室"} · {citation.source || "evidence"}
-                      </p>
-                    </button>
-                  ))
-                )}
+              <div className="mt-4 rounded-2xl bg-canvas p-4 text-[13px] text-muted">
+                还没有问诊记录。说说哪里不舒服，大医帮你先分诊。
               </div>
             )}
-          </div>
-          <div className="border-t border-line p-4 text-[10px] leading-5 text-slate-500">
-            <p className="flex items-center gap-1.5 text-slate-400">
-              <Search size={12} />
-              混合检索：向量 + BM25 + RRF
-            </p>
-            <p className="mt-1 flex items-center gap-1.5 text-slate-400">
-              <ShieldCheck size={12} />
-              药物相互作用与妊娠禁忌检查
-            </p>
-            <p className="mt-1 flex items-center gap-1.5 text-slate-400">
-              <Activity size={12} />
-              模型调用与成本写入审计
-            </p>
-          </div>
-        </aside>
-      </div>
-    </div>
-  );
-}
+          </section>
 
-function PillIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <rect x="3" y="8" width="18" height="8" rx="4" transform="rotate(-45 12 12)" />
-    </svg>
+          <section className="card p-5">
+            <div className="flex items-center justify-between">
+              <h2 className="section-title">今日待办</h2>
+              <span className="text-[11px] text-muted">{summary ? summary.followups.length + summary.medications.length : 0} 项</span>
+            </div>
+            <div className="mt-3 space-y-2">
+              {summary?.followups?.slice(0, 2).map((item) => (
+                <div key={item.id} className="flex items-center justify-between gap-2 rounded-2xl bg-canvas p-3">
+                  <span className="min-w-0">
+                    <span className="block truncate text-[13px] font-medium text-ink">{item.title}</span>
+                    <span className="mt-0.5 flex items-center gap-1 text-[11px] text-muted"><Clock size={11} /> {item.due_date ? formatDate(item.due_date) : "待安排"}</span>
+                  </span>
+                  <button onClick={() => finishFollowup(item.id)} className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-primary hover:bg-primary-soft" aria-label="完成随访">
+                    <CheckCircle2 size={15} />
+                  </button>
+                </div>
+              ))}
+              {summary?.medications?.slice(0, 2).map((item) => (
+                <div key={item.id} className="flex items-center gap-3 rounded-2xl bg-canvas p-3">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-50 text-emerald-600"><Pill size={15} /></span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-[13px] font-medium text-ink">{item.name}</span>
+                    <span className="mt-0.5 block text-[11px] text-muted">{item.dose || ""} {item.frequency || ""}</span>
+                  </span>
+                </div>
+              ))}
+              {!summary?.followups?.length && !summary?.medications?.length ? (
+                <div className="rounded-2xl bg-canvas p-4 text-[13px] text-muted">今天没有待办，保持好作息。</div>
+              ) : null}
+            </div>
+          </section>
+        </div>
+
+        <section className="card p-5">
+          <div className="flex items-center justify-between">
+            <h2 className="section-title">最近记录</h2>
+            <button onClick={() => router.push("/health/")} className="text-[12px] text-primary">查看全部</button>
+          </div>
+          <div className="mt-3 space-y-2">
+            {summary?.timeline?.slice(0, 3).map((event) => {
+              const meta = kindMeta[event.kind] || kindMeta.consult;
+              return (
+                <div key={event.id} className="flex items-center gap-3 rounded-2xl bg-canvas p-3">
+                  <span className={`badge ${meta.color}`}>{meta.label}</span>
+                  <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{event.title}</span>
+                  <span className="shrink-0 text-[11px] text-muted">{relativeTime(event.occurred_at)}</span>
+                </div>
+              );
+            })}
+            {!summary?.timeline?.length ? (
+              <p className="rounded-2xl bg-canvas p-4 text-[13px] text-muted">你的问诊、报告、用药和挂号记录会显示在这里。</p>
+            ) : null}
+          </div>
+        </section>
+
+        <section className="grid gap-3 sm:grid-cols-3">
+          {[
+            { icon: ShieldCheck, title: "证据可追溯", text: "每条建议都有医学来源" },
+            { icon: Users, title: "家庭档案", text: "为老人孩子分别建档" },
+            { icon: CalendarClock, title: "服务闭环", text: "分诊 → 挂号 → 支付 → 就诊指引" },
+          ].map((item) => (
+            <div key={item.title} className="flex items-center gap-3 rounded-2xl border border-line bg-card p-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-soft text-primary"><item.icon size={16} /></span>
+              <span>
+                <span className="block text-[12px] font-medium text-ink">{item.title}</span>
+                <span className="block text-[11px] text-muted">{item.text}</span>
+              </span>
+            </div>
+          ))}
+        </section>
+      </div>
+    </AppShell>
   );
 }

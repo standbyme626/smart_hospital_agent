@@ -43,3 +43,7 @@ backend/.ruff_cache/
 *.db
 frontend/.env.local
 frontend/*.tsbuildinfo
+backend/uploads/
+frontend-legacy/node_modules/
+frontend-legacy/.next/
+frontend-legacy/.env.local

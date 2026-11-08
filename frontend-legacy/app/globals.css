@@ -1,0 +1,166 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #060a12;
+  --color-panel: #0b1424;
+  --color-panel2: #0f1b2f;
+  --color-line: #1b2a45;
+  --color-primary: #38bdf8;
+  --color-primary2: #22d3ee;
+  --color-mint: #34d399;
+  --color-amber: #fbbf24;
+  --color-rose: #fb7185;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+* {
+  border-color: var(--color-line);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(1200px 600px at 15% -10%, rgba(56, 189, 248, 0.12), transparent 55%),
+    radial-gradient(900px 500px at 95% 0%, rgba(34, 211, 238, 0.08), transparent 50%),
+    var(--color-ink);
+  color: #e2e8f0;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgba(56, 189, 248, 0.28);
+}
+
+.surface {
+  @apply rounded-2xl border border-line bg-panel;
+}
+
+.surface-2 {
+  @apply rounded-xl border border-line bg-panel2;
+}
+
+.btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition;
+}
+
+.btn-primary {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition bg-primary text-slate-950 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+.btn-ghost {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition border border-line bg-panel2 text-slate-200 hover:bg-panel;
+}
+
+.btn-danger {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition border border-rose/40 bg-rose/10 text-rose hover:bg-rose/20;
+}
+
+.input {
+  @apply w-full rounded-xl border border-line bg-panel2 px-3.5 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-primary/60 focus:ring-2 focus:ring-primary/15;
+}
+
+.chip {
+  @apply inline-flex items-center gap-1.5 rounded-full border border-line bg-panel2 px-2.5 py-1 text-xs text-slate-300;
+}
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: #243754 transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #243754;
+  border-radius: 999px;
+}
+
+.markdown {
+  @apply text-[15px] leading-7 text-slate-200;
+}
+
+.markdown p {
+  @apply my-2;
+}
+
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4 {
+  @apply mt-5 mb-2 font-semibold text-white;
+}
+
+.markdown h1 {
+  @apply text-xl;
+}
+
+.markdown h2 {
+  @apply text-lg;
+}
+
+.markdown h3 {
+  @apply text-base;
+}
+
+.markdown ul {
+  @apply my-2 list-disc space-y-1 pl-5;
+}
+
+.markdown ol {
+  @apply my-2 list-decimal space-y-1 pl-5;
+}
+
+.markdown code {
+  @apply rounded bg-panel2 px-1.5 py-0.5 text-[13px] text-primary2;
+}
+
+.markdown pre {
+  @apply my-3 overflow-x-auto rounded-xl border border-line bg-panel2 p-3;
+}
+
+.markdown pre code {
+  @apply bg-transparent p-0 text-slate-200;
+}
+
+.markdown table {
+  @apply my-3 w-full border-collapse overflow-hidden rounded-xl text-sm;
+}
+
+.markdown th,
+.markdown td {
+  @apply border border-line px-3 py-2 text-left;
+}
+
+.markdown th {
+  @apply bg-panel2 text-slate-200;
+}
+
+.markdown blockquote {
+  @apply my-3 border-l-2 border-primary/50 bg-panel2 px-3 py-2 text-slate-300;
+}
+
+.markdown a {
+  @apply text-primary underline underline-offset-2;
+}
+
+@keyframes softPulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.pulse-dot {
+  animation: softPulse 1.4s ease-in-out infinite;
+}

@@ -107,6 +107,24 @@ TOOLS = [
         },
     },
     {
+        "name": "list_doctors",
+        "description": "List doctors for a department.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"department": {"type": "string"}},
+            "required": ["department"],
+        },
+    },
+    {
+        "name": "get_visit_guide",
+        "description": "Get visit guide for a paid order.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"order_id": {"type": "string"}},
+            "required": ["order_id"],
+        },
+    },
+    {
         "name": "get_payment_status",
         "description": "Get payment status for an order.",
         "inputSchema": {
@@ -185,6 +203,48 @@ def _call(name: str, args: dict[str, Any]) -> dict[str, Any]:
         order["method"] = args.get("method") or "mock"
         booked.add(order["slot_id"])
         return _text(order)
+    if name == "list_doctors":
+        department = args.get("department") or ""
+        if department not in DEPARTMENTS:
+            return _error(f"unknown department: {department}")
+        doctors = [
+            {
+                "doctor_id": f"doc_{department}_{index}",
+                "name": name,
+                "title": title,
+                "hospital": "示范医院",
+                "department": department,
+                "rating": rating,
+                "intro": intro,
+                "fee": fee,
+            }
+            for index, (name, title, rating, intro, fee) in enumerate(
+                [
+                    ("张医生", "主任医师", 4.9, "擅长常见病与慢性病管理，注重循证与沟通。", 50),
+                    ("李医生", "副主任医师", 4.8, "擅长症状鉴别与随访管理，耐心细致。", 40),
+                    ("王医生", "主治医师", 4.7, "擅长急慢性疾病初诊与健康宣教。", 30),
+                ],
+                start=1,
+            )
+        ]
+        return _text({"department": department, "doctors": doctors})
+    if name == "get_visit_guide":
+        order = orders.get(args.get("order_id") or "")
+        if not order:
+            return _error("order not found")
+        if order["payment_status"] != "paid":
+            return _error("order not paid")
+        return _text(
+            {
+                "order": order,
+                "hospital": "示范医院",
+                "address": "示例路 88 号",
+                "floor": "门诊楼 3 层",
+                "checkin": "请提前 20 分钟到自助机取号，携带身份证/医保卡。",
+                "items": ["身份证/医保卡", "既往病历", "正在服用的药物清单"],
+                "support": "如需帮助，可在问诊页继续提问。",
+            }
+        )
     if name == "get_payment_status":
         order = orders.get(args.get("order_id") or "")
         if not order:

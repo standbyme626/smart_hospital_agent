@@ -1,16 +1,24 @@
 import type {
   BookingOrder,
-  Citation,
+  Doctor,
   EvalResult,
+  Followup,
+  HomeSummary,
+  Medication,
+  Member,
   ModelCall,
   RagStatus,
+  ReportRecord,
   ScheduleSlot,
   Session,
   StreamEvent,
+  TimelineEvent,
+  User,
+  VisitGuide,
 } from "./types";
 
-export const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "") || "http://127.0.0.1:8020";
+const rawBase = process.env.NEXT_PUBLIC_API_BASE;
+export const API_BASE = rawBase === undefined ? "http://127.0.0.1:8020" : rawBase.replace(/\/$/, "");
 
 const TOKEN_KEY = "sha_token";
 
@@ -33,21 +41,42 @@ export class UnauthorizedError extends Error {
   }
 }
 
-async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+function authHeaders(extra?: HeadersInit): Headers {
+  const headers = new Headers(extra);
   const token = getToken();
-  const headers = new Headers(init.headers);
-  headers.set("Content-Type", "application/json");
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  const response = await fetch(`${API_BASE}${path}`, { ...init, headers });
-  if (response.status === 401) {
-    clearToken();
-    throw new UnauthorizedError();
+  return headers;
+}
+
+async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = authHeaders(init.headers);
+  if (init.body && !(init.body instanceof FormData)) headers.set("Content-Type", "application/json");
+  let lastError: unknown = null;
+  const method = (init.method || "GET").toUpperCase();
+  const canRetry = method === "GET" || path === "/api/v1/auth/login";
+  const attempts = canRetry ? 2 : 1;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const response = await fetch(`${API_BASE}${path}`, { ...init, headers });
+      if (response.status === 401) {
+        clearToken();
+        throw new UnauthorizedError();
+      }
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || `HTTP ${response.status}`);
+      }
+      return (await response.json()) as T;
+    } catch (err) {
+      if (err instanceof UnauthorizedError) throw err;
+      lastError = err;
+      if (canRetry && attempt === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        continue;
+      }
+    }
   }
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || `HTTP ${response.status}`);
-  }
-  return (await response.json()) as T;
+  throw lastError instanceof Error ? lastError : new Error("network error");
 }
 
 export async function login(username: string, password: string): Promise<{ access_token: string; role: string }> {
@@ -59,91 +88,221 @@ export async function login(username: string, password: string): Promise<{ acces
   return result;
 }
 
-export async function getMe(): Promise<{ user: string; role: string }> {
+export async function getMe(): Promise<User> {
   return apiFetch("/api/v1/auth/me");
 }
 
-export async function getSessions(): Promise<Session[]> {
-  const result = await apiFetch<{ sessions: Session[] }>("/api/v1/sessions");
-  return result.sessions;
+export async function getFamily(): Promise<Member[]> {
+  const data = await apiFetch<{ members: Member[] }>("/api/v1/family");
+  return data.members;
 }
 
-export async function ragSearch(query: string, topK = 5): Promise<Citation[]> {
-  const result = await apiFetch<{ results: Citation[] }>("/api/v1/rag/search", {
+export async function createMember(payload: Partial<Member>): Promise<Member> {
+  const data = await apiFetch<{ member: Member }>("/api/v1/family", {
     method: "POST",
-    body: JSON.stringify({ query, top_k: topK }),
+    body: JSON.stringify(payload),
   });
-  return result.results;
+  return data.member;
+}
+
+export async function updateMember(id: string, payload: Partial<Member>): Promise<Member> {
+  const data = await apiFetch<{ member: Member }>(`/api/v1/family/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return data.member;
+}
+
+export async function deleteMember(id: string): Promise<void> {
+  await apiFetch(`/api/v1/family/${id}`, { method: "DELETE" });
+}
+
+export async function getHomeSummary(memberId?: string): Promise<HomeSummary> {
+  const query = memberId ? `?member_id=${encodeURIComponent(memberId)}` : "";
+  return apiFetch(`/api/v1/home/summary${query}`);
+}
+
+export async function getSessions(): Promise<Session[]> {
+  const data = await apiFetch<{ sessions: Session[] }>("/api/v1/sessions");
+  return data.sessions;
+}
+
+export async function getMedications(memberId?: string): Promise<Medication[]> {
+  const query = memberId ? `?member_id=${encodeURIComponent(memberId)}` : "";
+  const data = await apiFetch<{ medications: Medication[] }>(`/api/v1/medications${query}`);
+  return data.medications;
+}
+
+export async function createMedication(payload: {
+  name: string;
+  member_id?: string;
+  dose?: string;
+  frequency?: string;
+  notes?: string;
+}): Promise<Medication> {
+  const data = await apiFetch<{ medication: Medication }>("/api/v1/medications", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return data.medication;
+}
+
+export async function toggleMedication(id: string, active: boolean): Promise<Medication> {
+  const data = await apiFetch<{ medication: Medication }>(`/api/v1/medications/${id}?active=${active}`, {
+    method: "PATCH",
+  });
+  return data.medication;
+}
+
+export async function deleteMedication(id: string): Promise<void> {
+  await apiFetch(`/api/v1/medications/${id}`, { method: "DELETE" });
+}
+
+export async function checkMedications(text: string, memberId?: string): Promise<{
+  drugs: string[];
+  interactions: { drug_a: string; drug_b: string; severity: string; description: string }[];
+  pregnancy_contraindications: { drug: string; description: string }[];
+  highest_severity: string;
+}> {
+  return apiFetch("/api/v1/medications/check", {
+    method: "POST",
+    body: JSON.stringify({ text, member_id: memberId }),
+  });
+}
+
+export async function interpretReport(
+  file: File,
+  memberId?: string,
+  title?: string,
+  kind: "report" | "skin" = "report",
+): Promise<ReportRecord> {
+  const form = new FormData();
+  form.append("file", file);
+  if (memberId) form.append("member_id", memberId);
+  if (title) form.append("title", title);
+  form.append("kind", kind);
+  const data = await apiFetch<{ report: ReportRecord }>("/api/v1/reports/interpret", {
+    method: "POST",
+    body: form,
+  });
+  return data.report;
+}
+
+export async function getReports(memberId?: string): Promise<ReportRecord[]> {
+  const query = memberId ? `?member_id=${encodeURIComponent(memberId)}` : "";
+  const data = await apiFetch<{ reports: ReportRecord[] }>(`/api/v1/reports${query}`);
+  return data.reports;
+}
+
+export async function getReport(id: string): Promise<ReportRecord> {
+  const data = await apiFetch<{ report: ReportRecord }>(`/api/v1/reports/${id}`);
+  return data.report;
+}
+
+export async function getFollowups(status?: string): Promise<Followup[]> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : "";
+  const data = await apiFetch<{ followups: Followup[] }>(`/api/v1/followups${query}`);
+  return data.followups;
+}
+
+export async function completeFollowup(id: string): Promise<void> {
+  await apiFetch(`/api/v1/followups/${id}/complete`, { method: "PATCH" });
+}
+
+export async function getTimeline(memberId?: string): Promise<TimelineEvent[]> {
+  const query = memberId ? `?member_id=${encodeURIComponent(memberId)}` : "";
+  const data = await apiFetch<{ timeline: TimelineEvent[] }>(`/api/v1/health/timeline${query}`);
+  return data.timeline;
+}
+
+export async function getDepartments(): Promise<string[]> {
+  const data = await apiFetch<{ departments: string[] }>("/api/v1/booking/departments");
+  return data.departments;
+}
+
+export async function getDoctors(department: string): Promise<Doctor[]> {
+  const data = await apiFetch<{ doctors: Doctor[] }>(
+    `/api/v1/services/doctors?department=${encodeURIComponent(department)}`,
+  );
+  return data.doctors;
+}
+
+export async function getSchedules(department: string, date?: string): Promise<ScheduleSlot[]> {
+  const query = new URLSearchParams({ department });
+  if (date) query.set("date", date);
+  const data = await apiFetch<{ slots: ScheduleSlot[] }>(`/api/v1/booking/schedules?${query.toString()}`);
+  return data.slots;
+}
+
+export async function lockSlot(slotId: string, patientId = "P001"): Promise<{ lock_id: string; slot_id: string; expires_in: number }> {
+  const data = await apiFetch<{ lock: { lock_id: string; slot_id: string; expires_in: number } }>(
+    "/api/v1/booking/lock",
+    { method: "POST", body: JSON.stringify({ slot_id: slotId, patient_id: patientId }) },
+  );
+  return data.lock;
+}
+
+export async function createOrder(lockId: string, patientId = "P001"): Promise<BookingOrder> {
+  const data = await apiFetch<{ order: BookingOrder }>("/api/v1/booking/orders", {
+    method: "POST",
+    body: JSON.stringify({ lock_id: lockId, patient_id: patientId }),
+  });
+  return data.order;
+}
+
+export async function payOrder(orderId: string, confirmToken: string): Promise<BookingOrder> {
+  const data = await apiFetch<{ order: BookingOrder }>(`/api/v1/booking/orders/${orderId}/pay`, {
+    method: "POST",
+    body: JSON.stringify({ confirm_token: confirmToken, method: "mock" }),
+  });
+  return data.order;
+}
+
+export async function getOrder(orderId: string): Promise<BookingOrder> {
+  const data = await apiFetch<{ order: BookingOrder }>(`/api/v1/booking/orders/${orderId}`);
+  return data.order;
+}
+
+export async function getVisitGuide(orderId: string): Promise<VisitGuide> {
+  return apiFetch(`/api/v1/services/visit-guide?order_id=${encodeURIComponent(orderId)}`);
+}
+
+export async function track(name: string, props: Record<string, unknown> = {}, sessionId?: string): Promise<void> {
+  try {
+    await apiFetch("/api/v1/analytics/event", {
+      method: "POST",
+      body: JSON.stringify({ name, props, session_id: sessionId }),
+    });
+  } catch {
+    // analytics must never block the UI
+  }
 }
 
 export async function getRagStatus(): Promise<RagStatus> {
   return apiFetch("/api/v1/rag/status");
 }
 
-export async function getDepartments(): Promise<string[]> {
-  const result = await apiFetch<{ departments: string[] }>("/api/v1/booking/departments");
-  return result.departments;
-}
-
-export async function getSchedules(department: string, date?: string): Promise<ScheduleSlot[]> {
-  const query = new URLSearchParams({ department });
-  if (date) query.set("date", date);
-  const result = await apiFetch<{ slots: ScheduleSlot[] }>(`/api/v1/booking/schedules?${query.toString()}`);
-  return result.slots;
-}
-
-export async function lockSlot(slotId: string, patientId = "P001"): Promise<{ lock_id: string; slot_id: string; expires_in: number }> {
-  const result = await apiFetch<{ lock: { lock_id: string; slot_id: string; expires_in: number } }>(
-    "/api/v1/booking/lock",
-    { method: "POST", body: JSON.stringify({ slot_id: slotId, patient_id: patientId }) },
-  );
-  return result.lock;
-}
-
-export async function createOrder(lockId: string, patientId = "P001"): Promise<BookingOrder> {
-  const result = await apiFetch<{ order: BookingOrder }>("/api/v1/booking/orders", {
-    method: "POST",
-    body: JSON.stringify({ lock_id: lockId, patient_id: patientId }),
-  });
-  return result.order;
-}
-
-export async function payOrder(orderId: string, confirmToken: string): Promise<BookingOrder> {
-  const result = await apiFetch<{ order: BookingOrder }>(`/api/v1/booking/orders/${orderId}/pay`, {
-    method: "POST",
-    body: JSON.stringify({ confirm_token: confirmToken, method: "mock" }),
-  });
-  return result.order;
-}
-
-export async function getOrder(orderId: string): Promise<BookingOrder> {
-  const result = await apiFetch<{ order: BookingOrder }>(`/api/v1/booking/orders/${orderId}`);
-  return result.order;
-}
-
-export async function cancelOrder(orderId: string): Promise<BookingOrder> {
-  const result = await apiFetch<{ order: BookingOrder }>(`/api/v1/booking/orders/${orderId}/cancel`, {
-    method: "POST",
-  });
-  return result.order;
-}
-
 export async function getModelCalls(): Promise<ModelCall[]> {
-  const result = await apiFetch<{ calls: ModelCall[] }>("/api/v1/admin/model-calls");
-  return result.calls;
+  const data = await apiFetch<{ calls: ModelCall[] }>("/api/v1/admin/model-calls");
+  return data.calls;
 }
 
-export async function runEval(limit = 50): Promise<Record<string, unknown>> {
-  const result = await apiFetch<{ metrics: Record<string, unknown> }>("/api/v1/eval/run", {
+export async function runEval(limit = 30): Promise<Record<string, unknown>> {
+  const data = await apiFetch<{ metrics: Record<string, unknown> }>("/api/v1/eval/run", {
     method: "POST",
     body: JSON.stringify({ name: "manual", limit }),
   });
-  return result.metrics;
+  return data.metrics;
 }
 
 export async function getEvalResults(): Promise<EvalResult[]> {
-  const result = await apiFetch<{ results: EvalResult[] }>("/api/v1/eval/results");
-  return result.results;
+  const data = await apiFetch<{ results: EvalResult[] }>("/api/v1/eval/results");
+  return data.results;
+}
+
+export async function getAnalytics(): Promise<{ name: string; count: number }[]> {
+  const data = await apiFetch<{ events: { name: string; count: number }[] }>("/api/v1/admin/analytics");
+  return data.events;
 }
 
 function parseBlock(block: string): StreamEvent | null {
@@ -168,10 +327,9 @@ function parseBlock(block: string): StreamEvent | null {
 export async function* streamChat(payload: {
   message: string;
   session_id?: string;
+  member_id?: string;
 }): AsyncGenerator<StreamEvent> {
-  const token = getToken();
-  const headers = new Headers({ "Content-Type": "application/json" });
-  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const headers = authHeaders({ "Content-Type": "application/json" });
   const response = await fetch(`${API_BASE}/api/v1/chat/stream`, {
     method: "POST",
     headers,
@@ -181,9 +339,7 @@ export async function* streamChat(payload: {
     clearToken();
     throw new UnauthorizedError();
   }
-  if (!response.ok || !response.body) {
-    throw new Error(`chat failed: HTTP ${response.status}`);
-  }
+  if (!response.ok || !response.body) throw new Error(`chat failed: HTTP ${response.status}`);
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";

@@ -1,113 +1,109 @@
 # smart_hospital_agent
 
-**面向医疗分诊与就医流程的单 Agent 系统**：混合检索 · 药物相互作用 · MCP 挂号支付 · SSE · 可审计
+**一个有证据的就医助手**：分诊 · 报告解读 · 用药检查 · 挂号支付 · 家庭健康档案
 
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)]()
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white)]()
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%20%2B%20pgvector-4169E1?logo=postgresql&logoColor=white)]()
 [![Next.js](https://img.shields.io/badge/Next.js-16.4-000000?logo=nextdotjs&logoColor=white)]()
 [![MCP](https://img.shields.io/badge/MCP-Hospital%20Tools-6E56CF)]()
-[![Status](https://img.shields.io/badge/status-v2%20rewrite-orange)]()
+[![Live](https://img.shields.io/badge/live-hospital.kk.zhzepei.cn-0E9384)](https://hospital.kk.zhzepei.cn/)
 
-> **v2 状态（2026-11）**
-> 已按 2026 H2 架构重写：删除 CrewAI、专家组、DSPy、Milvus/Neo4j 三件套与全局 SDK 劫持；改为单 Agent 循环 + 工具 + 确定性策略 + 模型网关 + 事件会话 + pgvector。
-> 当前医院 MCP 为 **mock server**，真实医院接口只需替换 `HOSPITAL_MCP_URL`；本地 0.6B 为 Qwen3-0.6B DPO（Ollama，Q8_0）。
-
-**21 个科室** · **药物相互作用规则** · **SSE 事件流** · **Qwen3-8B 向量/重排** · **DeepSeek V4.1 Flash** · **pgvector**
+> **线上演示**：https://hospital.kk.zhzepei.cn/ （登录后使用，演示账号由管理员发放）
+> **前端 v3**：2026 H2 消费级医疗 AI 界面，浅色「温暖临床 + 证据优先」；旧前端保留在 `frontend-legacy/`，不参与启动。
+> **唯一 mock**：医院 MCP（号源/订单/支付/就诊指引）。LLM、Embedding、Rerank、报告视觉解读均为真实调用。
 
 ---
 
 ## 界面预览
 
-> 以下截图来自本地运行实例：mock 医院 MCP、527 条种子文档、真实 DeepSeek V4.1 Flash 与 SiliconFlow Qwen3-8B（向量/重排）。
+> 截图来自线上实例：真实 DeepSeek V4.1 Flash、SiliconFlow Qwen3-8B、Qwen3-0.6B 本地兜底、527 条种子文档；医院 MCP 为 mock。
 
-| 问诊首页 | 分诊报告 |
+| 首页任务中心 | 分诊结果 |
 |---|---|
-| ![问诊首页](docs/screenshots/01-chat-home.png) | ![分诊报告](docs/screenshots/02-chat-report.png) |
+| ![首页](docs/screenshots/01-home.png) | ![分诊结果](docs/screenshots/02-consult-result.png) |
 
-| 证据溯源 | 挂号选号 |
+| 医学依据 | 挂号支付 + 就诊指引 |
 |---|---|
-| ![证据溯源](docs/screenshots/03-evidence.png) | ![挂号选号](docs/screenshots/04-booking.png) |
+| ![证据](docs/screenshots/03-evidence.png) | ![挂号支付](docs/screenshots/04-booking-paid.png) |
 
-| 支付成功（HITL） | 运营后台 |
+| 报告解读 | 药管家 / 相互作用 |
 |---|---|
-| ![支付成功](docs/screenshots/05-booking-paid.png) | ![运营后台](docs/screenshots/06-admin.png) |
+| ![报告解读](docs/screenshots/05-report.png) | ![药管家](docs/screenshots/06-meds.png) |
 
-| 登录页 |
-|---|
-| ![登录页](docs/screenshots/07-login.png) |
+| 健康时间线 | 运营后台 |
+|---|---|
+| ![健康](docs/screenshots/07-health.png) | ![运营后台](docs/screenshots/10-admin.png) |
+
+| 登录 | 移动端 |
+|---|---|
+| ![登录](docs/screenshots/09-login.png) | ![移动端](docs/screenshots/11-mobile-home.png) |
 
 ---
 
 ## 目录
 
-- [界面预览](#界面预览)
-- [1. 从 v1 到 v2 改了什么](#1-从-v1-到-v2-改了什么)
+- [1. 这一版做了什么](#1-这一版做了什么)
 - [2. 架构](#2-架构)
 - [3. 模型与外部依赖](#3-模型与外部依赖)
 - [4. 核心能力](#4-核心能力)
 - [5. 快速开始](#5-快速开始)
-- [6. 数据与种子](#6-数据与种子)
-- [7. API](#7-api)
-- [8. 评测](#8-评测)
-- [9. 安全与限制](#9-安全与限制)
-- [10. 目录结构](#10-目录结构)
-- [11. 许可与数据使用](#11-许可与数据使用)
+- [6. 106 部署](#6-106-部署)
+- [7. 数据与种子](#7-数据与种子)
+- [8. API](#8-api)
+- [9. 评测与测试](#9-评测与测试)
+- [10. 安全与限制](#10-安全与限制)
+- [11. 目录结构](#11-目录结构)
+- [12. 许可与数据使用](#12-许可与数据使用)
 
 ---
 
-## 1. 从 v1 到 v2 改了什么
+## 1. 这一版做了什么
 
-| 维度 | v1（旧） | v2（当前） |
-|---|---|---|
-| Agent 架构 | CrewAI 专家组 + N 个科室 Agent 并行 + 审计重试 | **单 Agent 循环 + 工具**；专科咨询最多 1 次，按需 |
-| 模型接入 | 916 行 `llm_factory` + 全局 monkey-patch OpenAI SDK | **Model Gateway**：provider registry + 模型目录 + 统一重试/用量 |
-| 轨迹 | `medical_core` 与 `diagnosis` 两套诊断路径 | **一条主链路**，事件日志可回放 |
-| 检索 | Milvus 2.3 + etcd + MinIO + Neo4j（可选） | **PostgreSQL 16 + pgvector**，Dense + BM25 + RRF + Qwen3-8B 重排 |
-| 会话 | 内存/临时状态 | **PG 事件日志** + SSE `Last-Event-ID` 可恢复 |
-| 前端 | Next.js 14，旧聊天壳 | **Next.js 16 / React 19 / Tailwind 4**，证据面板、报告卡、挂号支付 |
-| 依赖 | 5 份 requirements，CrewAI/DSPy/Chroma/旧 torch | **1 份 pyproject + 锁定依赖**，无 CrewAI/DSPy/Chroma |
-| 安全 | RBAC 默认关闭、CORS 全开、无限流 | **JWT + RBAC + CORS 白名单 + 限流 + 审计**（可配置） |
-| 挂号支付 | 直连 mock HIS/支付 | **MCP 工具** + HITL 确认 token |
-| 观测 | Langfuse/LangSmith 桥 + 自定义日志 | **Prometheus + 结构化事件 + 模型调用/成本表** |
+### 前端 P0–P4
 
-旧代码保留在 git 历史里；当前 `backend/app` 是 v2 实现。
+| 阶段 | 交付 |
+|---|---|
+| P0 视觉与 IA | 浅色温暖临床风、移动端底部导航、桌面侧栏、首页任务中心、分诊结果页、证据抽屉、登录/同意 |
+| P1 AI 诊室 + 报告 | 三步问诊（就诊人 → 症状 → 病史）、一屏一问、红旗筛查、报告/皮肤照片上传、视觉解读、家庭档案 |
+| P2 药管家 + 随访 | 用药清单、相互作用/妊娠禁忌、诊后随访待办、健康时间线 |
+| P3 服务 + 无障碍 | 医生卡、号源、锁号、订单、支付、就诊指引；大字体/高对比/减少动效 |
+| P4 数据 | 首访/任务/问诊/报告/支付/证据打开等埋点，运营后台汇总 |
+
+### 后端
+
+- 新增：家庭档案、用药、报告解读、随访、健康时间线、医生卡/就诊指引、埋点、首页聚合。
+- 单 Agent 循环 + 工具 + 确定性策略；SSE `session/status/thought/citation/token/final/booking/error`。
+- PostgreSQL 16 + pgvector；JWT + RBAC + CORS 白名单 + 按真实 IP 限流 + 审计。
+- 模型网关：opencode-go、SiliconFlow、WinPC Ollama（Qwen3-0.6B DPO）。
+
+### 旧前端
+
+`frontend-legacy/` 保留旧版深色控制台代码，**不参与启动**；默认启动 `frontend/` 新前端。
 
 ---
 
 ## 2. 架构
 
 ```text
-┌──────────────┐   SSE   ┌──────────────────────────────────────────────┐
-│ Next.js 16   │ ──────▶ │ FastAPI                                      │
-│ Chat/Booking │         │  /api/v1/chat/stream · /booking · /eval      │
-└──────────────┘         │   │                                          │
-                         │   ▼                                          │
-                         │ 单 Agent 循环                                │
-                         │  triage → tools → report                      │
-                         │   │        │          │                      │
-                         │   │        ▼          ▼                      │
-                         │   │   Retrieval     Hospital MCP              │
-                         │   │   pgvector      (mock / real)             │
-                         │   │   + BM25                             │
-                         │   │   + rerank                           │
-                         │   ▼                                          │
-                         │ 确定性策略：危机词 / 科室路由 / 药物检查 / 安全门禁 │
-                         │   │                                          │
-                         │   ▼                                          │
-                         │ PG：sessions / events / bookings / audit      │
-                         │     model_calls / eval_runs                   │
-                         └──────────────────────────────────────────────┘
+用户浏览器
+  │  HTTPS
+  ▼
+106.55.16.53 · nginx (hospital.kk.zhzepei.cn, LE 证书)
+  ├─ /            → /var/www/hospital  (Next.js 16 静态导出)
+  └─ /api/        → 127.0.0.1:18087
+                         │ 反向 SSH 隧道
+                         ▼
+家里服务器 · FastAPI :8020
+  ├─ 单 Agent 循环（DeepSeek V4.1 Flash）
+  ├─ 检索：pgvector + BM25 + RRF + Qwen3-8B 重排
+  ├─ 药物：本地 DDI 规则 + 妊娠禁忌
+  ├─ 报告：DeepSeek V4.1 Flash 视觉解读
+  ├─ 医院 MCP：mock server :9100（真实环境替换 URL）
+  └─ PostgreSQL 16 + pgvector / 事件 / 审计 / 埋点
 ```
 
-**设计参考**：`pi` 的极简 Agent Harness 思路——统一模型 API（pi-ai）、单 Agent 运行时（pi-agent-core）、可持久化会话（pi-durable）、厂商无关观测（pi-telemetry）。本项目没有引入 pi 的 TypeScript 运行时，只借鉴其分层与“默认不做多 Agent”的原则。
-
-**关键取舍**：
-
-- 危机识别走**确定性规则 + 关键词**，不让 LLM 单独决定“是否急诊”；
-- 药物检查是**独立工具 + 规则表**，LLM 可以调用，但输出由规则兜底；
-- 挂号支付只通过 MCP 工具；支付必须携带人工确认 token；
-- 图谱通道在 v2 暂不启用：没有消融证明前，不把“GraphRAG”作为卖点。
+**设计参考**：`pi` 的极简 Agent Harness 思路（统一模型 API、单 Agent 运行时、持久化会话、厂商无关观测）。没有引入多 Agent 框架；专家组已删除。
 
 ---
 
@@ -115,14 +111,14 @@
 
 | 用途 | 选择 | 说明 |
 |---|---|---|
-| 主 LLM | **opencode-go `deepseek-v4.1-flash`** | OpenAI 兼容；1M context / 384K output；支持工具调用；key 从 `OPENCODE_API_KEY` 或 `~/.local/share/opencode/auth.json` 读取 |
-| Embedding | **SiliconFlow `Qwen/Qwen3-Embedding-8B`** | 4096 维；key 在 `SILICONFLOW_API_KEY` |
-| Rerank | **SiliconFlow `Qwen/Qwen3-Reranker-8B`** | `/v1/rerank`；失败时回退 RRF 顺序 |
-| 本地小模型 | **WinPC Ollama `qwen3-0.6b-dpo-v11_2`** | 自己微调的 Qwen3-0.6B DPO，Q8_0 GGUF；用于本地分析/云端失败兜底 |
-| 数据库 | **PostgreSQL 16 + pgvector** | `docker compose` 中的 `pgvector/pgvector:pg16` |
-| 医院系统 | **MCP JSON-RPC** | 默认 `http://127.0.0.1:9100/mcp`（mock）；真实接口替换 URL 即可 |
+| 主 LLM | **opencode-go `deepseek-v4.1-flash`** | OpenAI 兼容；1M context；支持工具调用与视觉输入；key 从 `OPENCODE_API_KEY` 或本机 opencode auth 读取 |
+| Embedding | **SiliconFlow `Qwen/Qwen3-Embedding-8B`** | 4096 维 |
+| Rerank | **SiliconFlow `Qwen/Qwen3-Reranker-8B`** | `/v1/rerank`；失败回退 RRF |
+| 本地小模型 | **WinPC Ollama `qwen3-0.6b-dpo-v11_2`** | 自己微调的 Qwen3-0.6B DPO，Q8_0；分析/云端失败兜底 |
+| 数据库 | **PostgreSQL 16 + pgvector** | `pgvector/pgvector:pg16` |
+| 医院系统 | **MCP JSON-RPC** | 默认 mock `http://127.0.0.1:9100/mcp`；真实接口替换 `HOSPITAL_MCP_URL` |
 
-> 没有 SiliconFlow key 时，embedding 自动回退为确定性 hash 向量（仅用于本地冒烟，不代表真实检索质量）。没有 opencode key 时，模型调用会失败并返回明确的错误事件。
+没有 SiliconFlow key 时，embedding 回退为确定性 hash 向量（仅本地冒烟，不代表检索质量）。
 
 ---
 
@@ -130,17 +126,16 @@
 
 | 模块 | 能力 | 代码 |
 |---|---|---|
-| 单 Agent 循环 | 工具调用、最多 6 轮、结构化报告 | `backend/app/agent.py` |
-| 分诊 | 危机规则 + 科室关键词 + LLM 分诊（JSON） | `backend/app/policy.py`、`prompts.py` |
-| 混合检索 | Dense + BM25 + RRF(k=60) + Qwen3-8B 重排 | `backend/app/retrieval.py` |
-| 药物合规 | 40+ 常见 DDI 规则、妊娠禁忌、别名匹配 | `backend/app/data/drug_interactions.json` |
-| 挂号支付 | MCP：科室/号源/锁号/订单/支付/状态/取消 | `backend/app/mcp_client.py`、`backend/mcp_mock/server.py` |
-| SSE | `session/status/thought/citation/token/final/error/booking` | `backend/app/routes.py` |
-| 会话 | PG 事件日志、按 `after` 回放 | `backend/app/session_store.py` |
-| 安全 | JWT、RBAC、CORS 白名单、限流、审计 | `backend/app/api/deps.py`、`backend/app/main.py` |
-| 观测 | Prometheus `/metrics`、模型调用/成本表 | `backend/app/main.py`、`routes.py` |
-| 评测 | 检索冒烟 + 危机检测基准 | `backend/app/eval_runner.py` |
-| 前端 | 聊天、证据面板、挂号支付、运营后台 | `frontend/app/*` |
+| 首页 | 家庭成员切换、任务入口、继续上次、待办、最近记录 | `frontend/app/page.tsx` |
+| AI 诊室 | 三步问诊、一屏一问、红旗筛查、结果页、证据抽屉 | `frontend/app/consult/page.tsx`、`components/ResultView.tsx` |
+| 分诊 | 危机规则 + 科室关键词 + LLM JSON 分诊 | `backend/app/policy.py`、`prompts.py` |
+| 检索 | Dense + BM25 + RRF(60) + Qwen3-8B 重排 | `backend/app/retrieval.py` |
+| 报告解读 | 图像上传 → 视觉模型 → 摘要/异常指标/问医生问题 | `backend/app/routes.py`、`frontend/app/reports/page.tsx` |
+| 药管家 | 用药清单、DDI/妊娠禁忌检查 | `backend/app/data/drug_interactions.json`、`frontend/app/meds/page.tsx` |
+| 挂号支付 | MCP 科室/医生/号源/锁号/订单/支付/就诊指引 | `backend/app/mcp_client.py`、`backend/mcp_mock/server.py` |
+| 健康档案 | 家庭、时间线、随访、用药/报告/挂号聚合 | `backend/app/routes.py`、`frontend/app/health/page.tsx` |
+| 安全 | JWT + RBAC + CORS + 限流 + 审计 + HITL | `backend/app/api/deps.py`、`main.py` |
+| 观测 | Prometheus `/metrics`、模型调用/成本、埋点 | `backend/app/routes.py`、`frontend/app/admin/page.tsx` |
 
 ---
 
@@ -151,7 +146,7 @@
 - Python 3.12
 - Node.js 22+
 - Docker / Docker Compose
-- 可选：WinPC Ollama（本地小模型）、真实医院 MCP
+- 可选：WinPC Ollama、真实医院 MCP
 
 ### 5.2 环境变量
 
@@ -164,18 +159,27 @@ chmod 600 .env
 
 - `OPENCODE_API_KEY`（或留空，从 `~/.local/share/opencode/auth.json` 读取）
 - `SILICONFLOW_API_KEY`
-- `JWT_SECRET`、`ADMIN_PASSWORD`
+- `JWT_SECRET`、`ADMIN_PASSWORD`、`PATIENT_PASSWORD`
 - `HITL_CONFIRM_TOKEN`（演示默认 `confirm-demo`）
 
-### 5.3 启动基础设施
+### 5.3 基础设施
 
 ```bash
-docker compose up -d db redis mcp
+docker compose up -d db redis
 ```
 
-- PostgreSQL: `127.0.0.1:5434`
-- Redis: `127.0.0.1:6381`
-- Mock 医院 MCP: `127.0.0.1:9100/mcp`
+数据库 `127.0.0.1:5434`，Redis `127.0.0.1:6381`。
+
+Mock 医院 MCP 二选一：
+
+```bash
+# A. 容器
+docker compose up -d mcp
+
+# B. 宿主机（部署现役方式）
+cd backend
+PYTHONPATH=. .venv/bin/uvicorn mcp_mock.server:app --host 127.0.0.1 --port 9100
+```
 
 ### 5.4 后端
 
@@ -194,7 +198,7 @@ uvicorn app.main:app --host 127.0.0.1 --port 8020
 curl -s http://127.0.0.1:8020/health
 ```
 
-### 5.5 前端
+### 5.5 前端（开发）
 
 ```bash
 cd frontend
@@ -203,17 +207,21 @@ cp .env.local.example .env.local
 npm run dev
 ```
 
-打开 `http://localhost:3000`。如果 `AUTH_ENABLED=true`，先到 `/login` 登录（演示账号 `admin / admin123456`）。
+打开 `http://localhost:3000`。如果 `AUTH_ENABLED=true`，先登录。
 
-### 5.6 本地 0.6B（可选）
+### 5.6 前端（生产静态导出）
 
-模型已在 WinPC 上导入为 `qwen3-0.6b-dpo-v11_2`（Q8_0 GGUF）。复现步骤：
+```bash
+cd frontend
+NEXT_PUBLIC_API_BASE= npm run build
+# 产物在 out/，由 106 nginx 直接托管
+```
 
-1. 用 llama.cpp 的 `convert_hf_to_gguf.py` 将 HuggingFace 目录转换为 `--outtype q8_0`；
-2. 在 WinPC 写 Modelfile：`FROM <gguf 路径>` + `PARAMETER temperature 0.7` + `PARAMETER repeat_penalty 1.1`；
-3. `ollama create qwen3-0.6b-dpo-v11_2 -f Modelfile`。
+`NEXT_PUBLIC_API_BASE` 为空表示同源 `/api`，由 nginx 反代到后端。
 
-服务器侧用 SSH 隧道访问：
+### 5.7 本地 0.6B
+
+模型已在 WinPC 导入为 `qwen3-0.6b-dpo-v11_2`（Q8_0 GGUF）。服务器通过 SSH 隧道：
 
 ```bash
 ssh -N -L 11434:127.0.0.1:11434 winpc
@@ -227,126 +235,130 @@ OLLAMA_BASE_URL=http://127.0.0.1:11434/v1
 OLLAMA_MODEL=qwen3-0.6b-dpo-v11_2
 ```
 
-本地模型用途：
-
-- 云端 LLM 不可用时的兜底；
-- `POST /api/v1/local/analyze` 的文本分析；
-- 不建议作为主诊断模型：0.6B 的输出质量和稳定性有限。
-
-### 5.7 挂号支付
-
-默认走 mock MCP：
-
-- `GET /api/v1/booking/departments`
-- `GET /api/v1/booking/schedules?department=心血管内科`
-- `POST /api/v1/booking/lock`
-- `POST /api/v1/booking/orders`
-- `POST /api/v1/booking/orders/{order_id}/pay`（必须携带 `confirm_token`）
-
-真实医院 MCP 只需替换 `HOSPITAL_MCP_URL`，并保证工具名/参数与 `backend/app/tools.py` 中的 schema 一致。
+用途：本地分析、云端失败兜底；不建议作为主诊断模型。
 
 ---
 
-## 6. 数据与种子
+## 6. 106 部署
 
-`backend/scripts/seed.py` 默认读取仓库中的 `data/medical_gold_*.jsonl`（优先 hardened v5，其次 final v4）：
+现役线上：
+
+```text
+https://hospital.kk.zhzepei.cn/
+```
+
+组成：
+
+- 106 上 `/var/www/hospital`：`frontend/out` 静态产物；
+- nginx `hospital.kk.zhzepei.cn`：80 → 443 跳转，443 托管静态文件；
+- `/api/` → `127.0.0.1:18087`（反向 SSH 隧道到家服务器 8020）；
+- 家服务器 systemd：`smart-hospital-api`、`smart-hospital-mcp`、`smart-hospital-tunnel`、`smart-hospital-ollama-tunnel`；
+- Let's Encrypt 证书：`/etc/letsencrypt/live/hospital.kk.zhzepei.cn/`，自动续期。
+
+详细步骤与回滚见 [`docs/DEPLOYMENT-106.md`](docs/DEPLOYMENT-106.md)。
+
+---
+
+## 7. 数据与种子
+
+`backend/scripts/seed.py` 默认读取 `data/medical_gold_*.jsonl`：
 
 ```bash
 PYTHONPATH=. python scripts/seed.py --path ../data/medical_gold_final_v4.jsonl --limit 500
 ```
 
-每条记录会生成：
+每条记录生成：
 
 - `title` = 问题；
 - `content` = `vector_text` 或答案；
 - `department` = 科室；
 - `embedding` = Qwen3-Embedding-8B（4096 维）；
-- `tsv` = jieba 分词后的全文索引。
+- `tsv` = jieba 分词全文索引。
 
-仓库不包含 MSD 原文；`data/` 中的医疗 QA 数据按各自来源条款使用。
+当前演示库：527 条文档。仓库不包含 MSD 原文；医疗数据按各自来源条款使用。
 
 ---
 
-## 7. API
+## 8. API
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | `POST` | `/api/v1/auth/login` | 登录，返回 JWT |
 | `GET` | `/api/v1/auth/me` | 当前用户/角色 |
+| `GET` | `/api/v1/family` | 家庭成员（首次自动创建本人） |
+| `POST/PATCH/DELETE` | `/api/v1/family/{id}` | 家庭档案 |
 | `POST` | `/api/v1/chat/stream` | 问诊，SSE |
-| `GET` | `/api/v1/sessions` | 会话列表 |
-| `GET` | `/api/v1/sessions/{id}/events?after=` | 事件回放 |
-| `POST` | `/api/v1/rag/search` | 混合检索 |
-| `GET` | `/api/v1/rag/status` | 文档数、模型、MCP 状态 |
-| `POST` | `/api/v1/drug/check` | 药物相互作用 / 妊娠禁忌 |
-| `POST` | `/api/v1/local/analyze` | 本地 0.6B 文本分析 |
-| `GET` | `/api/v1/booking/departments` | 科室 |
-| `GET` | `/api/v1/booking/schedules` | 号源 |
-| `POST` | `/api/v1/booking/lock` | 锁号 |
-| `POST` | `/api/v1/booking/orders` | 创建订单 |
-| `POST` | `/api/v1/booking/orders/{id}/pay` | 支付（HITL token） |
-| `GET` | `/api/v1/booking/orders/{id}` | 订单/支付状态 |
-| `POST` | `/api/v1/booking/orders/{id}/cancel` | 取消未支付订单 |
-| `POST` | `/api/v1/doctor/consult` | 医生工作台咨询 |
-| `GET/POST/DELETE` | `/api/v1/admin/rules` | 规则管理 |
-| `GET` | `/api/v1/admin/model-calls` | 模型调用/成本 |
-| `GET` | `/api/v1/admin/audit` | 审计日志 |
-| `POST` | `/api/v1/eval/run` | 运行评测 |
-| `GET` | `/api/v1/eval/results` | 评测结果 |
-| `GET` | `/health` | 健康检查 |
-| `GET` | `/metrics` | Prometheus |
+| `GET` | `/api/v1/home/summary` | 首页聚合 |
+| `GET` | `/api/v1/health/timeline` | 健康时间线 |
+| `GET/POST` | `/api/v1/medications` | 用药清单 |
+| `POST` | `/api/v1/medications/check` | DDI / 妊娠禁忌 |
+| `POST` | `/api/v1/reports/interpret` | 报告/皮肤照片视觉解读 |
+| `GET` | `/api/v1/reports` | 报告记录 |
+| `GET/POST/PATCH` | `/api/v1/followups` | 随访 |
+| `GET` | `/api/v1/services/doctors` | 医生卡 |
+| `GET` | `/api/v1/services/visit-guide` | 就诊指引 |
+| `GET/POST` | `/api/v1/booking/*` | 科室/号源/锁号/订单/支付 |
+| `POST` | `/api/v1/analytics/event` | 埋点 |
+| `POST` | `/api/v1/eval/run` | 评测 |
+| `GET` | `/admin` | 运营后台（管理员） |
+| `GET` | `/health` / `/metrics` | 健康 / Prometheus |
 
 SSE 事件：
 
 ```text
-event: session   → { session_id, request_id }
-event: status    → { stage, detail }
-event: thought   → { text, tool? }
-event: citation  → { id, title, snippet, department, source, score }
-event: token     → { text }
-event: booking   → { data }
-event: final     → { report, citations, safety, triage, booking }
-data: [DONE]
+session → status → thought → citation → token → final → [DONE]
 ```
 
 ---
 
-## 8. 评测
+## 9. 评测与测试
 
-本次实测（本机，2026-11-08）：
+### 自动化
 
-| 项目 | 结果 | 说明 |
+| 项 | 结果 |
+|---|---|
+| 后端单元/接口测试 | **15 passed**（`cd backend && pytest -q`） |
+| 后端 lint | **ruff 全绿** |
+| 前端类型检查 | **通过** |
+| 前端生产构建 | **通过**（Next.js 16.4.5，静态导出） |
+| CI | GitHub Actions：backend lint/test + frontend build |
+
+### 线上真实链路（2026-11-08）
+
+在 `https://hospital.kk.zhzepei.cn/` 用真实模型完成：
+
+- 患者登录 → 首页任务中心 → 三步问诊 → DeepSeek V4.1 Flash 分诊结果；
+- 证据抽屉打开医学来源；
+- 结果页「去挂号」→ 选医生/号源 → 锁号 → 订单 → HITL 支付 → 就诊指引；
+- 报告上传 → 视觉模型解读 → 异常指标/建议问医生；
+- 药管家：华法林 + 阿司匹林 → major；
+- 健康时间线、家庭档案、运营后台、移动端；
+- 管理员登录与患者登录分别验证。
+
+### 检索/危机评测
+
+| 项 | 结果 | 说明 |
 |---|---|---|
-| 检索冒烟 | Recall@5 **1.0**，MRR@5 **0.86**（n=30） | **in-corpus**：query 取文档标题，答案就在同一索引内；不是留出集 |
-| 危机检测 | precision **1.0**，recall **1.0**（n=500） | 关键词表使用了这份 benchmark 的失败样本做扩充，**in-sample**，不是盲测 |
-| 后端测试 | **15 passed** | `backend/tests` |
-| 前端构建 | **通过** | Next.js 16.4.5 生产构建 |
+| 检索冒烟 | Recall@5 **1.0**，MRR@5 **0.86**（n=30） | **in-corpus**：query 取文档标题，答案在同一索引内；不是留出集 |
+| 危机检测 | precision **1.0**，recall **1.0**（n=500） | 关键词表使用了该 benchmark 的失败样本扩充，**in-sample**，不是盲测 |
 
-**评测缺口（下一步）**：
-
-- 构建 200–500 条**留出集**（query 与索引文档不同源）；
-- 四条基线：BM25 / 向量 / 混合 / +图；
-- 引用准确率与 faithfulness；
-- 图通道消融（有图 vs 无图），未证明增益前不启用。
-
-> 旧 README 的 92% Recall、71.4% 行业基线等数字不再使用；本 README 只保留可复算的结果。
+**下一步**：200–500 条留出集、四条基线（BM25/向量/混合/+图）、引用准确率、图通道消融。旧版 92% Recall 等数字不再使用。
 
 ---
 
-## 9. 安全与限制
+## 10. 安全与限制
 
-- **默认演示口令**：`admin / admin123456`，上线前必须修改；`AUTH_ENABLED=false` 只用于本地开发。
-- **密钥**：`.env` 权限 600，不提交；`OPENCODE_API_KEY` / `SILICONFLOW_API_KEY` 不进日志。
-- **医院 MCP**：当前为 mock；真实接入前需确认鉴权、幂等、超时、重试与对账。
-- **支付**：必须人工确认 token；不要在生产环境把 token 写进前端默认值。
+- **鉴权**：线上 `AUTH_ENABLED=true`；管理员/患者账号为强随机密码，存于服务器 600 权限凭据文件，不进入仓库。
+- **限流**：按 `X-Forwarded-For` / `X-Real-IP` 的真实 IP 计数，避免隧道把所有人算成一个 IP。
+- **支付**：`HITL_CONFIRM_TOKEN` 人工确认；当前为 mock 医院 MCP。
 - **医疗边界**：不确诊、不开处方；危机情况直接建议 120/急诊。
-- **数据版权**：MSD/Merck 内容仅内部使用；仓库不包含原文。
-- **本地 0.6B**：适合分析/兜底，不适合作为主诊断模型。
-- **未验证**：高并发、长会话、真实医院 MCP、生产级审计合规。
+- **数据**：报告图片保存在服务器 `backend/uploads/`（gitignore）；健康数据按用户隔离。
+- **未验证**：真实医院 MCP、生产级高并发、长会话、临床正确性、完整 DDI 数据库。
+- **旧前端**：`frontend-legacy/` 仅保留代码，不启动。
 
 ---
 
-## 10. 目录结构
+## 11. 目录结构
 
 ```text
 smart_hospital_agent/
@@ -360,28 +372,32 @@ smart_hospital_agent/
 │   │   ├── tools.py             # 工具注册与执行
 │   │   ├── mcp_client.py        # 医院 MCP JSON-RPC
 │   │   ├── session_store.py     # 事件日志 / 审计 / 调用记录
-│   │   ├── eval_runner.py       # 检索冒烟 + 危机评测
-│   │   ├── main.py              # FastAPI + 中间件
-│   │   └── data/                # 21 科室、DDI 规则、科室 YAML
+│   │   ├── routes.py            # 家庭/用药/报告/随访/健康/服务/埋点
+│   │   ├── eval_runner.py
+│   │   └── main.py
 │   ├── mcp_mock/server.py       # mock 医院 MCP
 │   ├── scripts/                 # seed / eval
 │   ├── tests/                   # 15 个测试
 │   └── pyproject.toml
-├── frontend/                    # Next.js 16 / React 19 / Tailwind 4
-│   ├── app/                     # chat / booking / admin / login
-│   ├── components/              # Sidebar / ReportCard
-│   └── lib/                     # API + SSE 客户端
+├── frontend/                    # v3 新前端（Next.js 16 / React 19 / Tailwind 4）
+│   ├── app/                     # 首页 / 诊室 / 报告 / 药管家 / 健康 / 服务 / 我的 / 登录 / 后台
+│   ├── components/              # AppShell / ResultView / FamilySwitcher / TaskCard
+│   └── lib/                     # API / SSE / AppContext
+├── frontend-legacy/             # v2 旧前端（保留代码，不启动）
 ├── data/                        # medical_gold / benchmarks
-├── docs/UPGRADE_PLAN_2026H2.md  # v1 → v2 升级方案
-├── docker-compose.yml           # pgvector + redis + mock MCP + api
+├── docs/
+│   ├── screenshots/             # 线上真实截图
+│   ├── DEPLOYMENT-106.md
+│   └── UPGRADE_PLAN_2026H2.md
+├── docker-compose.yml
 └── .env.example
 ```
 
 ---
 
-## 11. 许可与数据使用
+## 12. 许可与数据使用
 
 - 代码：仓库未声明 License；如需开源请补 MIT / Apache-2.0。
-- 医疗数据：`data/` 与外部 MSD 内容按各自来源条款使用，不随代码重新授权。
-- 模型：DeepSeek / Qwen 系列遵循各自官方许可；Ollama 本地权重来自你自己的微调产物。
-- 医院 MCP：接入真实系统前，先完成安全评估、鉴权与对账方案。
+- 医疗数据：按各自来源条款使用，不随代码重新授权。
+- 模型：DeepSeek / Qwen 遵循官方许可；本地 0.6B 为你自己的微调产物。
+- 医院 MCP：接入真实系统前完成安全评估、鉴权与对账。

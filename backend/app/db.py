@@ -105,6 +105,91 @@ SCHEMA = [
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS family_members (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        relation TEXT NOT NULL DEFAULT 'self',
+        gender TEXT,
+        birth_date TEXT,
+        phone TEXT,
+        allergies TEXT,
+        conditions TEXT,
+        is_self BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_family_user ON family_members (user_id)",
+    """
+    CREATE TABLE IF NOT EXISTS medications (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        member_id TEXT,
+        name TEXT NOT NULL,
+        dose TEXT,
+        frequency TEXT,
+        reminder_times JSONB NOT NULL DEFAULT '[]'::jsonb,
+        active BOOLEAN NOT NULL DEFAULT true,
+        notes TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_medications_user ON medications (user_id, member_id)",
+    """
+    CREATE TABLE IF NOT EXISTS reports (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        member_id TEXT,
+        title TEXT NOT NULL,
+        image_path TEXT,
+        summary TEXT NOT NULL DEFAULT '',
+        abnormal_values JSONB NOT NULL DEFAULT '[]'::jsonb,
+        questions JSONB NOT NULL DEFAULT '[]'::jsonb,
+        raw JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_reports_user ON reports (user_id, member_id)",
+    """
+    CREATE TABLE IF NOT EXISTS followups (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        member_id TEXT,
+        booking_id TEXT,
+        title TEXT NOT NULL,
+        due_date DATE,
+        status TEXT NOT NULL DEFAULT 'pending',
+        notes TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_followups_user ON followups (user_id, status)",
+    """
+    CREATE TABLE IF NOT EXISTS health_events (
+        id BIGSERIAL PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        member_id TEXT,
+        kind TEXT NOT NULL,
+        title TEXT NOT NULL,
+        detail JSONB NOT NULL DEFAULT '{}'::jsonb,
+        occurred_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_health_events_user ON health_events (user_id, member_id, occurred_at DESC)",
+    """
+    CREATE TABLE IF NOT EXISTS analytics_events (
+        id BIGSERIAL PRIMARY KEY,
+        user_id TEXT,
+        session_id TEXT,
+        name TEXT NOT NULL,
+        props JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_analytics_name ON analytics_events (name, created_at DESC)",
 ]
 
 

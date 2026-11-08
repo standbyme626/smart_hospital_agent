@@ -39,8 +39,9 @@ class MedicalAgent:
         message: str,
         user_id: str = "anonymous",
         request_id: str,
+        title: str | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
-        await self.sessions.ensure(session_id, user_id, title=message[:40])
+        await self.sessions.ensure(session_id, user_id, title=(title or message)[:40])
         yield await self._emit(session_id, "status", {"stage": "triage", "detail": "正在分诊"})
 
         triage = await self._triage(message, request_id, session_id)

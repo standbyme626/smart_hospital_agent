@@ -6,3 +6,6 @@ os.environ.setdefault("OLLAMA_ENABLED", "false")
 os.environ.setdefault("HOSPITAL_MCP_URL", "http://127.0.0.1:5999/mcp")
 os.environ.setdefault("OPENCODE_API_KEY", "test-key")
 os.environ.setdefault("SILICONFLOW_API_KEY", "")
+
+os.environ.setdefault("ADMIN_PASSWORD", "admin123456")
+os.environ.setdefault("PATIENT_PASSWORD", "patient123456")

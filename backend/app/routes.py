@@ -1,22 +1,30 @@
 from __future__ import annotations
 
+import base64
 import json
+import re
 import uuid
+from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from .api.deps import create_token, get_current_user, require_admin
 from .policy import DEPARTMENT_NAMES, DRUG_CHECKER
 from .schemas import (
+    AnalyticsEventRequest,
     ChatRequest,
     DrugCheckRequest,
     EvalRequest,
+    FamilyMemberRequest,
+    FollowupRequest,
     LocalAnalyzeRequest,
     LockRequest,
     LoginRequest,
+    MedCheckRequest,
+    MedicationRequest,
     OrderRequest,
     PayRequest,
     RagSearchRequest,
@@ -43,13 +51,87 @@ async def _mcp(state: Any, name: str, arguments: dict[str, Any]) -> dict[str, An
     return result["data"] or {}
 
 
+
+
+def _row_json(row: Any) -> dict[str, Any]:
+    data = dict(row)
+    for key in ("abnormal_values", "questions", "raw", "detail", "reminder_times", "props"):
+        if isinstance(data.get(key), str):
+            try:
+                data[key] = json.loads(data[key])
+            except Exception:
+                pass
+    return data
+
+async def _ensure_self_member(db: Any, user_id: str) -> dict[str, Any]:
+    row = await db.fetchrow(
+        "SELECT * FROM family_members WHERE user_id=$1 AND is_self=true ORDER BY created_at LIMIT 1",
+        user_id,
+    )
+    if row:
+        return dict(row)
+    member_id = "mem_" + uuid.uuid4().hex[:10]
+    row = await db.fetchrow(
+        """
+        INSERT INTO family_members (id, user_id, name, relation, is_self)
+        VALUES ($1, $2, '本人', 'self', true)
+        RETURNING *
+        """,
+        member_id,
+        user_id,
+    )
+    return dict(row) if row else {"id": member_id, "user_id": user_id, "name": "本人", "relation": "self", "is_self": True}
+
+
+async def _member_row(db: Any, member_id: str | None, user_id: str) -> dict[str, Any]:
+    if member_id:
+        row = await db.fetchrow(
+            "SELECT * FROM family_members WHERE id=$1 AND user_id=$2",
+            member_id,
+            user_id,
+        )
+        if row:
+            return dict(row)
+    return await _ensure_self_member(db, user_id)
+
+
+async def _add_event(db: Any, user_id: str, member_id: str | None, kind: str, title: str, detail: dict[str, Any]) -> None:
+    await db.execute(
+        """
+        INSERT INTO health_events (user_id, member_id, kind, title, detail)
+        VALUES ($1, $2, $3, $4, $5::jsonb)
+        """,
+        user_id,
+        member_id,
+        kind,
+        title,
+        json.dumps(detail, ensure_ascii=False, default=str),
+    )
+
+
+def _parse_json_text(content: str) -> dict[str, Any] | None:
+    text = (content or "").strip()
+    text = re.sub(r"^```(?:json)?\s*", "", text)
+    text = re.sub(r"\s*```$", "", text)
+    start = text.find("{")
+    end = text.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    try:
+        value = json.loads(text[start : end + 1])
+        return value if isinstance(value, dict) else None
+    except json.JSONDecodeError:
+        return None
+
 # --------------------------------------------------------------------- auth
 @router.post("/api/v1/auth/login")
 async def login(payload: LoginRequest, request: Request) -> dict[str, Any]:
     settings = _state(request).settings
     if payload.username == settings.ADMIN_USER and payload.password == settings.ADMIN_PASSWORD:
         return {"access_token": create_token(settings, payload.username, "admin"), "token_type": "bearer", "role": "admin"}
-    if payload.username == "guest" and payload.password == "guest":
+    if payload.username == settings.PATIENT_USER and payload.password == settings.PATIENT_PASSWORD:
+        return {"access_token": create_token(settings, payload.username, "patient"), "token_type": "bearer", "role": "patient"}
+    if settings.GUEST_LOGIN_ENABLED and payload.username == "guest" and payload.password == "guest":
         return {"access_token": create_token(settings, "guest", "patient"), "token_type": "bearer", "role": "patient"}
     raise HTTPException(status_code=401, detail="invalid credentials")
 
@@ -70,6 +152,21 @@ async def chat_stream(
     session_id = payload.session_id or f"sess_{uuid.uuid4().hex[:12]}"
     request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
     user_id = payload.user_id or str(user.get("sub") or "anonymous")
+    try:
+        member = await _member_row(state.db, payload.member_id, user_id)
+    except Exception:
+        member = {"id": None, "name": "本人", "relation": "self"}
+    member_bits = [f"就诊人：{member.get('name', '本人')}（{member.get('relation', 'self')}）"]
+    if member.get("gender"):
+        member_bits.append(f"性别：{member['gender']}")
+    if member.get("birth_date"):
+        member_bits.append(f"出生日期：{member['birth_date']}")
+    if member.get("allergies"):
+        member_bits.append(f"过敏史：{member['allergies']}")
+    if member.get("conditions"):
+        member_bits.append(f"既往史：{member['conditions']}")
+    member_context = "；".join(member_bits)
+    message = f"{member_context}\n\n用户输入：{payload.message}"
 
     async def generator():
         yield _sse(
@@ -79,14 +176,35 @@ async def chat_stream(
                 "data": {"session_id": session_id, "request_id": request_id},
             }
         )
+        final_data: dict[str, Any] | None = None
         try:
             async for event in state.agent.stream(
                 session_id=session_id,
-                message=payload.message,
+                message=message,
                 user_id=user_id,
                 request_id=request_id,
+                title=payload.message,
             ):
+                if event.get("type") == "final":
+                    final_data = event.get("data")
                 yield _sse(event)
+            if final_data and final_data.get("report"):
+                report = final_data["report"]
+                try:
+                    await _add_event(
+                    state.db,
+                    user_id,
+                    member.get("id"),
+                    "consult",
+                    f"问诊 · {report.get('department', '分诊')}",
+                        {
+                            "summary": str(report.get("summary", ""))[:300],
+                            "urgency": report.get("urgency"),
+                            "citations": report.get("citations", []),
+                        },
+                    )
+                except Exception:
+                    pass
         except Exception as exc:
             yield _sse(
                 {
@@ -288,6 +406,35 @@ async def booking_pay(
         action="booking.pay",
         detail=data,
     )
+    user_id = str(user.get("sub") or "anonymous")
+    member = await _ensure_self_member(state.db, user_id)
+    department = (data.get("slot_id") or "").split("|")[0]
+    await _add_event(
+        state.db,
+        user_id,
+        member["id"],
+        "booking",
+        f"挂号 · {department}",
+        {"order_id": order_id, "slot_id": data.get("slot_id"), "amount": data.get("amount")},
+    )
+    exists = await state.db.fetchval(
+        "SELECT id FROM followups WHERE user_id=$1 AND booking_id=$2 LIMIT 1",
+        user_id,
+        order_id,
+    )
+    if not exists:
+        await state.db.execute(
+            """
+            INSERT INTO followups (id, user_id, member_id, booking_id, title, due_date, status, notes)
+            VALUES ($1,$2,$3,$4,$5,CURRENT_DATE + INTERVAL '7 days','pending',$6)
+            """,
+            "fu_" + uuid.uuid4().hex[:10],
+            user_id,
+            member["id"],
+            order_id,
+            f"诊后随访 · {department}",
+            "就诊后 7 天，记录症状变化与用药情况。",
+        )
     return {"order": data}
 
 
@@ -453,6 +600,570 @@ async def doctor_consult(
     if not final:
         raise HTTPException(status_code=502, detail="no report produced")
     return {"session_id": session_id, **final}
+
+
+
+# ------------------------------------------------------------------- family
+@router.get("/api/v1/family")
+async def list_family(
+    request: Request,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    db = _state(request).db
+    user_id = str(user.get("sub") or "anonymous")
+    await _ensure_self_member(db, user_id)
+    rows = await db.fetch(
+        "SELECT * FROM family_members WHERE user_id=$1 ORDER BY is_self DESC, created_at ASC",
+        user_id,
+    )
+    return {"members": [dict(row) for row in rows]}
+
+
+@router.post("/api/v1/family")
+async def create_family_member(
+    payload: FamilyMemberRequest,
+    request: Request,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    db = _state(request).db
+    user_id = str(user.get("sub") or "anonymous")
+    member_id = "mem_" + uuid.uuid4().hex[:10]
+    if payload.is_self:
+        await db.execute("UPDATE family_members SET is_self=false WHERE user_id=$1", user_id)
+    row = await db.fetchrow(
+        """
+        INSERT INTO family_members
+            (id, user_id, name, relation, gender, birth_date, phone, allergies, conditions, is_self)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        RETURNING *
+        """,
+        member_id,
+        user_id,
+        payload.name,
+        payload.relation,
+        payload.gender,
+        payload.birth_date,
+        payload.phone,
+        payload.allergies,
+        payload.conditions,
+        payload.is_self,
+    )
+    return {"member": dict(row) if row else None}
+
+
+@router.patch("/api/v1/family/{member_id}")
+async def update_family_member(
+    member_id: str,
+    payload: FamilyMemberRequest,
+    request: Request,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    db = _state(request).db
+    user_id = str(user.get("sub") or "anonymous")
+    existing = await db.fetchrow(
+        "SELECT * FROM family_members WHERE id=$1 AND user_id=$2", member_id, user_id
+    )
+    if not existing:
+        raise HTTPException(status_code=404, detail="member not found")
+    if payload.is_self:
+        await db.execute("UPDATE family_members SET is_self=false WHERE user_id=$1", user_id)
+    row = await db.fetchrow(
+        """
+        UPDATE family_members SET
+            name=$3, relation=$4, gender=$5, birth_date=$6, phone=$7,
+            allergies=$8, conditions=$9, is_self=$10, updated_at=now()
+        WHERE id=$1 AND user_id=$2
+        RETURNING *
+        """,
+        member_id,
+        user_id,
+        payload.name,
+        payload.relation,
+        payload.gender,
+        payload.birth_date,
+        payload.phone,
+        payload.allergies,
+        payload.conditions,
+        payload.is_self,
+    )
+    return {"member": dict(row) if row else None}
+
+
+@router.delete("/api/v1/family/{member_id}")
+async def delete_family_member(
+    member_id: str,
+    request: Request,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    db = _state(request).db
+    user_id = str(user.get("sub") or "anonymous")
+    row = await db.fetchrow(
+        "SELECT is_self FROM family_members WHERE id=$1 AND user_id=$2", member_id, user_id
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="member not found")
+    if row["is_self"]:
+        raise HTTPException(status_code=400, detail="cannot delete self member")
+    await db.execute("DELETE FROM family_members WHERE id=$1 AND user_id=$2", member_id, user_id)
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------- medication
+@router.get("/api/v1/medications")
+async def list_medications(
+    request: Request,
+    member_id: str | None = Query(None),
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    db = _state(request).db
+    user_id = str(user.get("sub") or "anonymous")
+    if member_id:
+        rows = await db.fetch(
+            "SELECT * FROM medications WHERE user_id=$1 AND member_id=$2 ORDER BY active DESC, created_at DESC",
+            user_id,
+            member_id,
+        )
+    else:
+        rows = await db.fetch(
+            "SELECT * FROM medications WHERE user_id=$1 ORDER BY active DESC, created_at DESC",
+            user_id,
+        )
+    return {"medications": [_row_json(row) for row in rows]}
+
+
+@router.post("/api/v1/medications")
+async def create_medication(
+    payload: MedicationRequest,
+    request: Request,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    db = _state(request).db
+    user_id = str(user.get("sub") or "anonymous")
+    member = await _member_row(db, payload.member_id, user_id)
+    med_id = "med_" + uuid.uuid4().hex[:10]
+    row = await db.fetchrow(
+        """
+        INSERT INTO medications (id, user_id, member_id, name, dose, frequency, reminder_times, notes)
+        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8)
+        RETURNING *
+        """,
+        med_id,
+        user_id,
+        member["id"],
+        payload.name,
+        payload.dose,
+        payload.frequency,
+        json.dumps(payload.reminder_times, ensure_ascii=False),
+        payload.notes,
+    )
+    await _add_event(
+        db,
+        user_id,
+        member["id"],
+        "medication",
+        f"新增用药 · {payload.name}",
+        {"name": payload.name, "dose": payload.dose, "frequency": payload.frequency},
+    )
+    return {"medication": _row_json(row) if row else None}
+
+
+@router.patch("/api/v1/medications/{med_id}")
+async def update_medication(
+    med_id: str,
+    request: Request,
+    active: bool = Query(...),
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    db = _state(request).db
+    user_id = str(user.get("sub") or "anonymous")
+    row = await db.fetchrow(
+        "UPDATE medications SET active=$3 WHERE id=$1 AND user_id=$2 RETURNING *",
+        med_id,
+        user_id,
+        active,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="medication not found")
+    return {"medication": _row_json(row)}
+
+
+@router.delete("/api/v1/medications/{med_id}")
+async def delete_medication(
+    med_id: str,
+    request: Request,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    db = _state(request).db
+    user_id = str(user.get("sub") or "anonymous")
+    await db.execute("DELETE FROM medications WHERE id=$1 AND user_id=$2", med_id, user_id)
+    return {"ok": True}
+
+
+@router.post("/api/v1/medications/check")
+async def check_medications(
+    payload: MedCheckRequest,
+    request: Request,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    db = _state(request).db
+    user_id = str(user.get("sub") or "anonymous")
+    member = await _member_row(db, payload.member_id, user_id)
+    rows = await db.fetch(
+        "SELECT name, dose FROM medications WHERE user_id=$1 AND member_id=$2 AND active=true",
+        user_id,
+        member["id"],
+    )
+    names = "、".join([row["name"] for row in rows] or [])
+    text = f"{names} {payload.text}".strip()
+    result = DRUG_CHECKER.check_text(text)
+    return {"member_id": member["id"], "current_medications": [dict(row) for row in rows], **result}
+
+
+# -------------------------------------------------------------------- report
+REPORT_SYSTEM = """你是一位严谨的医学检验/检查报告解读助手。只输出 JSON，不要输出 Markdown 代码块：
+{
+  "summary": "用普通人能懂的话总结报告，<=200字，不诊断、不开药",
+  "abnormal_values": [
+    {"name": "指标名", "value": "结果", "reference": "参考范围", "status": "high|low|normal", "explanation": "这条指标意味着什么，<=60字"}
+  ],
+  "questions": ["建议问医生的3个问题"],
+  "disclaimer": "本解读不能替代医生诊断"
+}
+如果图片不是报告或无法识别，summary 说明无法识别，abnormal_values 为空。"""
+
+SKIN_SYSTEM = """你是皮肤健康观察助手。只输出 JSON，不要输出 Markdown：
+{
+  "summary": "客观描述照片中可见的皮肤表现（部位、颜色、形态、范围），用普通人能懂的话，<=200字，不做诊断",
+  "abnormal_values": [],
+  "questions": ["建议问医生的3个问题"],
+  "disclaimer": "照片观察不能替代皮肤科医生面诊"
+}
+不要推荐处方药。若出现发热、疼痛明显、快速扩散、呼吸困难、眼周/口唇肿胀等，建议尽快就医。"""
+
+
+@router.post("/api/v1/reports/interpret")
+async def interpret_report(
+    request: Request,
+    file: UploadFile = File(...),
+    member_id: str = Form(""),
+    title: str = Form(""),
+    kind: str = Form("report"),
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    state = _state(request)
+    settings = state.settings
+    user_id = str(user.get("sub") or "anonymous")
+    member = await _member_row(state.db, member_id or None, user_id)
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="empty file")
+    if len(data) > settings.MAX_UPLOAD_MB * 1024 * 1024:
+        raise HTTPException(status_code=413, detail=f"file larger than {settings.MAX_UPLOAD_MB}MB")
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in {".jpg", ".jpeg", ".png", ".webp"}:
+        suffix = ".jpg"
+    mime = file.content_type or "image/jpeg"
+    upload_dir = Path(settings.UPLOADS_DIR) / "reports"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    report_id = "rep_" + uuid.uuid4().hex[:12]
+    image_path = upload_dir / f"{report_id}{suffix}"
+    image_path.write_bytes(data)
+    b64 = base64.b64encode(data).decode("ascii")
+    is_skin = kind == "skin"
+    result = await state.gateway.chat(
+        [
+            {"role": "system", "content": SKIN_SYSTEM if is_skin else REPORT_SYSTEM},
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "请观察这张皮肤照片，按系统要求的 JSON 输出。" if is_skin else "请解读这份检查/检验报告，按系统要求的 JSON 输出。",
+                    },
+                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+                ],
+            },
+        ],
+        task="diagnosis",
+        temperature=0.1,
+        max_tokens=2200,
+        reasoning_effort="high",
+        session_id=f"report-{report_id}",
+    )
+    parsed = _parse_json_text(result.content) or {}
+    summary = str(parsed.get("summary") or result.content or "报告已上传，但模型未返回可读摘要。")
+    abnormal = parsed.get("abnormal_values") or []
+    questions = parsed.get("questions") or []
+    report_title = title.strip() or (("皮肤照片" if is_skin else file.filename) or "检查报告")
+    row = await state.db.fetchrow(
+        """
+        INSERT INTO reports (id, user_id, member_id, title, image_path, summary, abnormal_values, questions, raw)
+        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb)
+        RETURNING *
+        """,
+        report_id,
+        user_id,
+        member["id"],
+        report_title,
+        str(image_path),
+        summary,
+        json.dumps(abnormal, ensure_ascii=False),
+        json.dumps(questions, ensure_ascii=False),
+        json.dumps({"kind": kind, "model": result.model, "provider": result.provider, "content": result.content[:2000]}, ensure_ascii=False),
+    )
+    await _add_event(
+        state.db,
+        user_id,
+        member["id"],
+        "report",
+        f"报告解读 · {report_title}",
+        {"report_id": report_id, "summary": summary[:160], "abnormal_count": len(abnormal)},
+    )
+    return {
+        "report": _row_json(row) if row else None,
+        "model": {"provider": result.provider, "model": result.model},
+    }
+
+
+@router.get("/api/v1/reports")
+async def list_reports(
+    request: Request,
+    member_id: str | None = Query(None),
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    db = _state(request).db
+    user_id = str(user.get("sub") or "anonymous")
+    if member_id:
+        rows = await db.fetch(
+            "SELECT id, title, summary, abnormal_values, questions, created_at FROM reports WHERE user_id=$1 AND member_id=$2 ORDER BY created_at DESC LIMIT 30",
+            user_id,
+            member_id,
+        )
+    else:
+        rows = await db.fetch(
+            "SELECT id, title, summary, abnormal_values, questions, created_at FROM reports WHERE user_id=$1 ORDER BY created_at DESC LIMIT 30",
+            user_id,
+        )
+    return {"reports": [_row_json(row) for row in rows]}
+
+
+@router.get("/api/v1/reports/{report_id}")
+async def get_report(
+    report_id: str,
+    request: Request,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    row = await _state(request).db.fetchrow(
+        "SELECT * FROM reports WHERE id=$1 AND user_id=$2",
+        report_id,
+        str(user.get("sub") or "anonymous"),
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="report not found")
+    return {"report": _row_json(row)}
+
+
+# ----------------------------------------------------------------- followup
+@router.get("/api/v1/followups")
+async def list_followups(
+    request: Request,
+    status: str | None = Query(None),
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    db = _state(request).db
+    user_id = str(user.get("sub") or "anonymous")
+    if status:
+        rows = await db.fetch(
+            "SELECT * FROM followups WHERE user_id=$1 AND status=$2 ORDER BY due_date NULLS LAST, created_at DESC LIMIT 50",
+            user_id,
+            status,
+        )
+    else:
+        rows = await db.fetch(
+            "SELECT * FROM followups WHERE user_id=$1 ORDER BY status, due_date NULLS LAST, created_at DESC LIMIT 50",
+            user_id,
+        )
+    return {"followups": [dict(row) for row in rows]}
+
+
+@router.post("/api/v1/followups")
+async def create_followup(
+    payload: FollowupRequest,
+    request: Request,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    db = _state(request).db
+    user_id = str(user.get("sub") or "anonymous")
+    member = await _member_row(db, payload.member_id, user_id)
+    followup_id = "fu_" + uuid.uuid4().hex[:10]
+    row = await db.fetchrow(
+        """
+        INSERT INTO followups (id, user_id, member_id, title, due_date, notes)
+        VALUES ($1,$2,$3,$4,$5,$6)
+        RETURNING *
+        """,
+        followup_id,
+        user_id,
+        member["id"],
+        payload.title,
+        payload.due_date,
+        payload.notes,
+    )
+    await _add_event(db, user_id, member["id"], "followup", f"随访 · {payload.title}", {"followup_id": followup_id})
+    return {"followup": dict(row) if row else None}
+
+
+@router.patch("/api/v1/followups/{followup_id}/complete")
+async def complete_followup(
+    followup_id: str,
+    request: Request,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    row = await _state(request).db.fetchrow(
+        "UPDATE followups SET status='done' WHERE id=$1 AND user_id=$2 RETURNING *",
+        followup_id,
+        str(user.get("sub") or "anonymous"),
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="followup not found")
+    return {"followup": dict(row)}
+
+
+# ------------------------------------------------------------------- health
+@router.get("/api/v1/health/timeline")
+async def health_timeline(
+    request: Request,
+    member_id: str | None = Query(None),
+    limit: int = Query(50, ge=1, le=100),
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    db = _state(request).db
+    user_id = str(user.get("sub") or "anonymous")
+    if member_id:
+        rows = await db.fetch(
+            "SELECT id, kind, title, detail, occurred_at FROM health_events WHERE user_id=$1 AND member_id=$2 ORDER BY occurred_at DESC LIMIT $3",
+            user_id,
+            member_id,
+            limit,
+        )
+    else:
+        rows = await db.fetch(
+            "SELECT id, kind, title, detail, occurred_at FROM health_events WHERE user_id=$1 ORDER BY occurred_at DESC LIMIT $2",
+            user_id,
+            limit,
+        )
+    return {
+        "timeline": [
+            {
+                **_row_json(row),
+                "occurred_at": row["occurred_at"].isoformat() if row["occurred_at"] else None,
+            }
+            for row in rows
+        ]
+    }
+
+
+@router.get("/api/v1/home/summary")
+async def home_summary(
+    request: Request,
+    member_id: str | None = Query(None),
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    state = _state(request)
+    user_id = str(user.get("sub") or "anonymous")
+    member = await _member_row(state.db, member_id, user_id)
+    sessions = await state.sessions.list_sessions(user_id, limit=1)
+    followups = await state.db.fetch(
+        "SELECT id, title, due_date, status FROM followups WHERE user_id=$1 AND status='pending' ORDER BY due_date NULLS LAST LIMIT 5",
+        user_id,
+    )
+    meds = await state.db.fetch(
+        "SELECT id, name, dose, frequency FROM medications WHERE user_id=$1 AND member_id=$2 AND active=true ORDER BY created_at DESC LIMIT 6",
+        user_id,
+        member["id"],
+    )
+    reports = await state.db.fetch(
+        "SELECT id, title, summary, created_at FROM reports WHERE user_id=$1 AND member_id=$2 ORDER BY created_at DESC LIMIT 3",
+        user_id,
+        member["id"],
+    )
+    timeline = await state.db.fetch(
+        "SELECT id, kind, title, occurred_at FROM health_events WHERE user_id=$1 AND member_id=$2 ORDER BY occurred_at DESC LIMIT 8",
+        user_id,
+        member["id"],
+    )
+    return {
+        "member": member,
+        "latest_session": sessions[0] if sessions else None,
+        "followups": [dict(row) for row in followups],
+        "medications": [dict(row) for row in meds],
+        "reports": [dict(row) for row in reports],
+        "timeline": [
+            {
+                "id": row["id"],
+                "kind": row["kind"],
+                "title": row["title"],
+                "occurred_at": row["occurred_at"].isoformat() if row["occurred_at"] else None,
+            }
+            for row in timeline
+        ],
+    }
+
+
+# ----------------------------------------------------------------- services
+@router.get("/api/v1/services/doctors")
+async def list_doctors(
+    request: Request,
+    department: str = Query(...),
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    data = await _mcp(_state(request), "list_doctors", {"department": department})
+    return data
+
+
+@router.get("/api/v1/services/visit-guide")
+async def visit_guide(
+    request: Request,
+    order_id: str = Query(...),
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    data = await _mcp(_state(request), "get_visit_guide", {"order_id": order_id})
+    return data
+
+
+# ---------------------------------------------------------------- analytics
+@router.post("/api/v1/analytics/event")
+async def analytics_event(
+    payload: AnalyticsEventRequest,
+    request: Request,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    await _state(request).db.execute(
+        "INSERT INTO analytics_events (user_id, session_id, name, props) VALUES ($1,$2,$3,$4::jsonb)",
+        str(user.get("sub") or "anonymous"),
+        payload.session_id,
+        payload.name,
+        json.dumps(payload.props, ensure_ascii=False),
+    )
+    return {"ok": True}
+
+
+@router.get("/api/v1/admin/analytics")
+async def admin_analytics(
+    request: Request,
+    user: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    rows = await _state(request).db.fetch(
+        """
+        SELECT name, count(*) AS count
+        FROM analytics_events
+        WHERE created_at > now() - interval '30 days'
+        GROUP BY name
+        ORDER BY count DESC
+        LIMIT 50
+        """
+    )
+    return {"events": [dict(row) for row in rows]}
 
 
 # ------------------------------------------------------------------ health

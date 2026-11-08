@@ -1,157 +1,150 @@
 @import "tailwindcss";
 
 @theme {
-  --color-ink: #060a12;
-  --color-panel: #0b1424;
-  --color-panel2: #0f1b2f;
-  --color-line: #1b2a45;
-  --color-primary: #38bdf8;
-  --color-primary2: #22d3ee;
-  --color-mint: #34d399;
-  --color-amber: #fbbf24;
-  --color-rose: #fb7185;
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --color-canvas: #f6f7f3;
+  --color-card: #ffffff;
+  --color-ink: #16302c;
+  --color-muted: #6b7c77;
+  --color-line: #e3e9e4;
+  --color-primary: #0e9384;
+  --color-primary-soft: #e6f4f1;
+  --color-coral: #e86a5e;
+  --color-amber: #f0a43c;
+  --color-mint: #1fa97a;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", sans-serif;
 }
 
 * {
   border-color: var(--color-line);
 }
 
-html,
-body {
-  height: 100%;
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+}
+
+html[data-font="lg"] {
+  font-size: 18px;
+}
+
+html[data-contrast="high"] {
+  --color-muted: #42524e;
+  --color-line: #b9c6c0;
+}
+
+html[data-motion="reduced"] * {
+  animation: none !important;
+  transition: none !important;
 }
 
 body {
   background:
-    radial-gradient(1200px 600px at 15% -10%, rgba(56, 189, 248, 0.12), transparent 55%),
-    radial-gradient(900px 500px at 95% 0%, rgba(34, 211, 238, 0.08), transparent 50%),
-    var(--color-ink);
-  color: #e2e8f0;
+    radial-gradient(1000px 500px at 10% -10%, rgba(14, 147, 132, 0.09), transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, rgba(240, 164, 60, 0.08), transparent 50%),
+    var(--color-canvas);
+  color: var(--color-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
 
 ::selection {
-  background: rgba(56, 189, 248, 0.28);
+  background: rgba(14, 147, 132, 0.18);
 }
 
-.surface {
-  @apply rounded-2xl border border-line bg-panel;
+.card {
+  @apply rounded-3xl border border-line bg-card;
+  box-shadow: 0 10px 35px rgba(22, 48, 44, 0.05);
 }
 
-.surface-2 {
-  @apply rounded-xl border border-line bg-panel2;
+.card-flat {
+  @apply rounded-2xl border border-line bg-card;
 }
 
 .btn {
-  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition;
+  @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-5 text-sm font-medium transition active:scale-[0.99];
 }
 
 .btn-primary {
-  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition bg-primary text-slate-950 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50;
+  @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-5 text-sm font-medium transition active:scale-[0.99] bg-primary text-white hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-40;
+}
+
+.btn-soft {
+  @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-5 text-sm font-medium transition active:scale-[0.99] bg-primary-soft text-primary hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-40;
 }
 
 .btn-ghost {
-  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition border border-line bg-panel2 text-slate-200 hover:bg-panel;
-}
-
-.btn-danger {
-  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition border border-rose/40 bg-rose/10 text-rose hover:bg-rose/20;
+  @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-4 text-sm font-medium transition active:scale-[0.99] border border-line bg-card text-ink hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-40;
 }
 
 .input {
-  @apply w-full rounded-xl border border-line bg-panel2 px-3.5 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-primary/60 focus:ring-2 focus:ring-primary/15;
+  @apply w-full rounded-2xl border border-line bg-white px-4 py-3 text-[15px] text-ink outline-none placeholder:text-muted/70 focus:border-primary/60 focus:ring-4 focus:ring-primary/10;
+}
+
+.label {
+  @apply mb-1.5 block text-[13px] font-medium text-muted;
 }
 
 .chip {
-  @apply inline-flex items-center gap-1.5 rounded-full border border-line bg-panel2 px-2.5 py-1 text-xs text-slate-300;
+  @apply inline-flex min-h-9 items-center gap-1.5 rounded-full border border-line bg-white px-3 text-[13px] text-ink transition;
+}
+
+.chip-active {
+  @apply border-primary/50 bg-primary-soft text-primary;
+}
+
+.badge {
+  @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium;
+}
+
+.section-title {
+  @apply text-[15px] font-semibold text-ink;
+}
+
+.muted {
+  @apply text-[13px] leading-6 text-muted;
 }
 
 .scrollbar-thin {
   scrollbar-width: thin;
-  scrollbar-color: #243754 transparent;
+  scrollbar-color: #c8d4ce transparent;
 }
 
 .scrollbar-thin::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background: #243754;
+  background: #c8d4ce;
   border-radius: 999px;
 }
 
-.markdown {
-  @apply text-[15px] leading-7 text-slate-200;
+.mobile-safe {
+  padding-bottom: calc(5.5rem + env(safe-area-inset-bottom));
 }
 
-.markdown p {
-  @apply my-2;
+@media (min-width: 1024px) {
+  .mobile-safe {
+    padding-bottom: 2rem;
+  }
 }
 
-.markdown h1,
-.markdown h2,
-.markdown h3,
-.markdown h4 {
-  @apply mt-5 mb-2 font-semibold text-white;
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.markdown h1 {
-  @apply text-xl;
+.fade-up {
+  animation: fadeUp 280ms ease-out both;
 }
 
-.markdown h2 {
-  @apply text-lg;
-}
-
-.markdown h3 {
-  @apply text-base;
-}
-
-.markdown ul {
-  @apply my-2 list-disc space-y-1 pl-5;
-}
-
-.markdown ol {
-  @apply my-2 list-decimal space-y-1 pl-5;
-}
-
-.markdown code {
-  @apply rounded bg-panel2 px-1.5 py-0.5 text-[13px] text-primary2;
-}
-
-.markdown pre {
-  @apply my-3 overflow-x-auto rounded-xl border border-line bg-panel2 p-3;
-}
-
-.markdown pre code {
-  @apply bg-transparent p-0 text-slate-200;
-}
-
-.markdown table {
-  @apply my-3 w-full border-collapse overflow-hidden rounded-xl text-sm;
-}
-
-.markdown th,
-.markdown td {
-  @apply border border-line px-3 py-2 text-left;
-}
-
-.markdown th {
-  @apply bg-panel2 text-slate-200;
-}
-
-.markdown blockquote {
-  @apply my-3 border-l-2 border-primary/50 bg-panel2 px-3 py-2 text-slate-300;
-}
-
-.markdown a {
-  @apply text-primary underline underline-offset-2;
-}
-
-@keyframes softPulse {
+@keyframes pulseSoft {
   0%,
   100% {
     opacity: 0.35;
@@ -161,6 +154,16 @@ body {
   }
 }
 
-.pulse-dot {
-  animation: softPulse 1.4s ease-in-out infinite;
+.pulse-soft {
+  animation: pulseSoft 1.5s ease-in-out infinite;
+}
+
+.timeline-line::before {
+  content: "";
+  position: absolute;
+  left: 15px;
+  top: 34px;
+  bottom: -18px;
+  width: 1px;
+  background: var(--color-line);
 }

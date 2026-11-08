@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     JWT_TTL_MINUTES: int = 720
     ADMIN_USER: str = "admin"
     ADMIN_PASSWORD: str = "admin123456"
+    PATIENT_USER: str = "patient"
+    PATIENT_PASSWORD: str = "patient123456"
+    GUEST_LOGIN_ENABLED: bool = True
     CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
     RATE_LIMIT_PER_MINUTE: int = 60
 
@@ -77,6 +80,8 @@ class Settings(BaseSettings):
     HOSPITAL_MCP_URL: str = "http://127.0.0.1:9100/mcp"
     HOSPITAL_MCP_TOKEN: str = ""
     HITL_CONFIRM_TOKEN: str = "confirm-demo"
+    UPLOADS_DIR: str = str(BACKEND_DIR / "uploads")
+    MAX_UPLOAD_MB: int = 8
 
     # Costs (USD per 1M tokens, for accounting only)
     LLM_INPUT_COST_PER_M: float = 0.15
