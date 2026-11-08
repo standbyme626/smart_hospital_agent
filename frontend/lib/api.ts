@@ -208,6 +208,32 @@ export async function getReport(id: string): Promise<ReportRecord> {
   return data.report;
 }
 
+async function fetchBlob(path: string): Promise<Blob> {
+  const response = await fetch(`${API_BASE}${path}`, { headers: authHeaders() });
+  if (response.status === 401) {
+    clearToken();
+    throw new UnauthorizedError();
+  }
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.blob();
+}
+
+export async function getReportImage(id: string): Promise<Blob> {
+  return fetchBlob(`/api/v1/reports/${encodeURIComponent(id)}/image`);
+}
+
+export async function deleteReport(id: string): Promise<void> {
+  await apiFetch(`/api/v1/reports/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export async function exportMyData(): Promise<Blob> {
+  return fetchBlob("/api/v1/me/export");
+}
+
+export async function deleteAccount(password: string): Promise<void> {
+  await apiFetch("/api/v1/me", { method: "DELETE", body: JSON.stringify({ password }) });
+}
+
 export async function getFollowups(status?: string): Promise<Followup[]> {
   const query = status ? `?status=${encodeURIComponent(status)}` : "";
   const data = await apiFetch<{ followups: Followup[] }>(`/api/v1/followups${query}`);

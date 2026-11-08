@@ -122,7 +122,7 @@ export type ReportRecord = {
   abnormal_values: AbnormalValue[];
   questions: string[];
   created_at: string;
-  image_path?: string;
+  has_image?: boolean;
 };
 
 export type Followup = {

@@ -11,12 +11,18 @@ from typing import Any
 
 import asyncpg
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from .api.deps import create_token, get_current_user, require_admin
 from .conversation import append_message, load_history
 from .policy import DEPARTMENT_NAMES, DRUG_CHECKER
+from .reports import (
+    has_report_image,
+    remove_report_image,
+    report_image_media_type,
+    resolve_report_image,
+)
 from .reviews import approve_review, create_payment_review, reject_review, review_json
 from .schemas import (
     AdminUserCreateRequest,
@@ -85,6 +91,14 @@ def _row_json(row: Any) -> dict[str, Any]:
             except Exception:
                 pass
     return data
+
+
+def _report_json(settings: Any, row: Any) -> dict[str, Any]:
+    data = _row_json(row)
+    image_path = data.pop("image_path", None)
+    data["has_image"] = has_report_image(settings, image_path)
+    return data
+
 
 async def _ensure_self_member(db: Any, user_id: str) -> dict[str, Any]:
     row = await db.fetchrow(
@@ -1112,59 +1126,68 @@ async def interpret_report(
     report_id = "rep_" + uuid.uuid4().hex[:12]
     image_path = upload_dir / f"{report_id}{suffix}"
     image_path.write_bytes(data)
-    b64 = base64.b64encode(data).decode("ascii")
-    is_skin = kind == "skin"
-    result = await state.gateway.chat(
-        [
-            {"role": "system", "content": SKIN_SYSTEM if is_skin else REPORT_SYSTEM},
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": "请观察这张皮肤照片，按系统要求的 JSON 输出。" if is_skin else "请解读这份检查/检验报告，按系统要求的 JSON 输出。",
-                    },
-                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
-                ],
-            },
-        ],
-        task="diagnosis",
-        temperature=0.1,
-        max_tokens=2200,
-        reasoning_effort="high",
-        session_id=f"report-{report_id}",
-    )
+    try:
+        b64 = base64.b64encode(data).decode("ascii")
+        is_skin = kind == "skin"
+        result = await state.gateway.chat(
+            [
+                {"role": "system", "content": SKIN_SYSTEM if is_skin else REPORT_SYSTEM},
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "请观察这张皮肤照片，按系统要求的 JSON 输出。" if is_skin else "请解读这份检查/检验报告，按系统要求的 JSON 输出。",
+                        },
+                        {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+                    ],
+                },
+            ],
+            task="diagnosis",
+            temperature=0.1,
+            max_tokens=2200,
+            reasoning_effort="high",
+            session_id=f"report-{report_id}",
+        )
+    except Exception as exc:
+        image_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=502, detail="报告解读服务暂不可用，请稍后再试") from exc
     parsed = _parse_json_text(result.content) or {}
     summary = str(parsed.get("summary") or result.content or "报告已上传，但模型未返回可读摘要。")
     abnormal = parsed.get("abnormal_values") or []
     questions = parsed.get("questions") or []
     report_title = title.strip() or (("皮肤照片" if is_skin else file.filename) or "检查报告")
-    row = await state.db.fetchrow(
-        """
-        INSERT INTO reports (id, user_id, member_id, title, image_path, summary, abnormal_values, questions, raw)
-        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb)
-        RETURNING *
-        """,
-        report_id,
-        user_id,
-        member["id"],
-        report_title,
-        str(image_path),
-        summary,
-        json.dumps(abnormal, ensure_ascii=False),
-        json.dumps(questions, ensure_ascii=False),
-        json.dumps({"kind": kind, "model": result.model, "provider": result.provider, "content": result.content[:2000]}, ensure_ascii=False),
-    )
-    await _add_event(
-        state.db,
-        user_id,
-        member["id"],
-        "report",
-        f"报告解读 · {report_title}",
-        {"report_id": report_id, "summary": summary[:160], "abnormal_count": len(abnormal)},
-    )
+    try:
+        async with state.db.transaction() as conn:
+            row = await conn.fetchrow(
+                """
+                INSERT INTO reports (id, user_id, member_id, title, image_path, summary, abnormal_values, questions, raw)
+                VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb)
+                RETURNING *
+                """,
+                report_id,
+                user_id,
+                member["id"],
+                report_title,
+                str(image_path),
+                summary,
+                json.dumps(abnormal, ensure_ascii=False),
+                json.dumps(questions, ensure_ascii=False),
+                json.dumps({"kind": kind, "model": result.model, "provider": result.provider, "content": result.content[:2000]}, ensure_ascii=False),
+            )
+            await _add_event(
+                conn,
+                user_id,
+                member["id"],
+                "report",
+                f"报告解读 · {report_title}",
+                {"report_id": report_id, "summary": summary[:160], "abnormal_count": len(abnormal)},
+            )
+    except Exception:
+        image_path.unlink(missing_ok=True)
+        raise
     return {
-        "report": _row_json(row) if row else None,
+        "report": _report_json(settings, row) if row else None,
         "model": {"provider": result.provider, "model": result.model},
     }
 
@@ -1175,21 +1198,22 @@ async def list_reports(
     member_id: str | None = Query(None),
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
-    db = _state(request).db
+    state = _state(request)
+    db = state.db
     user_id = str(user["sub"])
     if member_id:
         await _owned_member(db, member_id, user_id)
         rows = await db.fetch(
-            "SELECT id, title, summary, abnormal_values, questions, created_at FROM reports WHERE user_id=$1 AND member_id=$2 ORDER BY created_at DESC LIMIT 30",
+            "SELECT id, title, summary, abnormal_values, questions, image_path, created_at FROM reports WHERE user_id=$1 AND member_id=$2 ORDER BY created_at DESC LIMIT 30",
             user_id,
             member_id,
         )
     else:
         rows = await db.fetch(
-            "SELECT id, title, summary, abnormal_values, questions, created_at FROM reports WHERE user_id=$1 ORDER BY created_at DESC LIMIT 30",
+            "SELECT id, title, summary, abnormal_values, questions, image_path, created_at FROM reports WHERE user_id=$1 ORDER BY created_at DESC LIMIT 30",
             user_id,
         )
-    return {"reports": [_row_json(row) for row in rows]}
+    return {"reports": [_report_json(state.settings, row) for row in rows]}
 
 
 @router.get("/api/v1/reports/{report_id}")
@@ -1198,8 +1222,54 @@ async def get_report(
     request: Request,
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
-    row = await _owned_report(_state(request).db, report_id, str(user["sub"]))
-    return {"report": _row_json(row)}
+    state = _state(request)
+    row = await _owned_report(state.db, report_id, str(user["sub"]))
+    return {"report": _report_json(state.settings, row)}
+
+
+@router.get("/api/v1/reports/{report_id}/image")
+async def get_report_image(
+    report_id: str,
+    request: Request,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> FileResponse:
+    state = _state(request)
+    row = await _owned_report(state.db, report_id, str(user["sub"]))
+    path = resolve_report_image(state.settings, row.get("image_path"))
+    if path is None or not path.is_file():
+        raise HTTPException(status_code=404, detail="image not found")
+    return FileResponse(
+        path,
+        media_type=report_image_media_type(path),
+        headers={"Cache-Control": "private"},
+    )
+
+
+@router.delete("/api/v1/reports/{report_id}")
+async def delete_report(
+    report_id: str,
+    request: Request,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    state = _state(request)
+    user_id = str(user["sub"])
+    row = await _owned_report(state.db, report_id, user_id)
+    async with state.db.transaction() as conn:
+        await conn.execute("DELETE FROM reports WHERE id=$1 AND user_id=$2", report_id, user_id)
+        await conn.execute(
+            "DELETE FROM health_events WHERE user_id=$1 AND kind='report' AND detail->>'report_id'=$2",
+            user_id,
+            report_id,
+        )
+    remove_report_image(state.settings, row.get("image_path"))
+    await state.sessions.audit(
+        request_id=getattr(request.state, "request_id", uuid.uuid4().hex),
+        session_id=user_id,
+        actor=user_id,
+        action="report.delete",
+        detail={"report_id": report_id},
+    )
+    return {"ok": True}
 
 
 # ----------------------------------------------------------------- followup

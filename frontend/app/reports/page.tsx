@@ -7,15 +7,17 @@ import {
   CheckCircle2,
   ChevronRight,
   FileText,
+  Image as ImageIcon,
   Loader2,
   Sparkles,
+  Trash2,
   UploadCloud,
   X,
 } from "lucide-react";
 import clsx from "clsx";
 import { AppShell } from "@/components/AppShell";
 import { useApp } from "@/lib/app-context";
-import { getReports, interpretReport, track } from "@/lib/api";
+import { deleteReport, getReportImage, getReports, interpretReport, track } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import type { ReportRecord } from "@/lib/types";
 
@@ -28,6 +30,9 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(false);
   const [reports, setReports] = useState<ReportRecord[]>([]);
   const [selected, setSelected] = useState<ReportRecord | null>(null);
+  const [detailImage, setDetailImage] = useState<string | null>(null);
+  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -40,11 +45,67 @@ export default function ReportsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeMember?.id]);
 
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    let cancelled = false;
+    setDetailImage(null);
+    if (selected?.has_image) {
+      getReportImage(selected.id)
+        .then((blob) => {
+          if (cancelled) return;
+          objectUrl = URL.createObjectURL(blob);
+          setDetailImage(objectUrl);
+        })
+        .catch(() => {
+          if (!cancelled) setDetailImage(null);
+        });
+    }
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [selected?.id, selected?.has_image]);
+
+  useEffect(() => {
+    return () => {
+      if (viewerUrl) URL.revokeObjectURL(viewerUrl);
+    };
+  }, [viewerUrl]);
+
   async function load() {
     try {
       setReports(await getReports(activeMember?.id));
     } catch {
       setReports([]);
+    }
+  }
+
+  async function openViewer(item: ReportRecord) {
+    try {
+      const blob = await getReportImage(item.id);
+      setViewerUrl(URL.createObjectURL(blob));
+    } catch {
+      showToast("图片加载失败");
+    }
+  }
+
+  function closeViewer() {
+    setViewerUrl(null);
+  }
+
+  async function removeReport(item: ReportRecord) {
+    if (!window.confirm(`删除报告「${item.title}」？图片与记录将一并删除，且无法恢复。`)) return;
+    setDeleting(true);
+    try {
+      await deleteReport(item.id);
+      setReports((prev) => prev.filter((entry) => entry.id !== item.id));
+      setSelected((prev) => (prev?.id === item.id ? null : prev));
+      closeViewer();
+      showToast("报告已删除");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "删除失败，请稍后再试");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -100,7 +161,7 @@ export default function ReportsPage() {
           <p className="mt-1 text-[12px] leading-5 text-muted">
             {mode === "skin"
               ? "拍一张清晰的皮肤照片，大医会客观描述可见表现，并给出就医建议。不诊断、不推荐处方药。"
-              : "支持化验单、检查报告、出院小结等。演示环境：数据保留用于展示；导出/删除功能见设置页（若已上线）。"}
+              : "支持化验单、检查报告、出院小结等。记录可随时在下方删除，完整数据可在设置页导出或删除账号。"}
           </p>
 
           <div className="mt-4 grid gap-4 sm:grid-cols-[1.1fr_0.9fr]">
@@ -164,8 +225,32 @@ export default function ReportsPage() {
                 <p className="text-[11px] text-muted">{formatDate(selected.created_at)}</p>
                 <h2 className="mt-1 text-[17px] font-semibold text-ink">{selected.title}</h2>
               </div>
-              <span className="badge bg-primary-soft text-primary">AI 解读</span>
+              <div className="flex items-center gap-2">
+                <span className="badge bg-primary-soft text-primary">AI 解读</span>
+                <button
+                  onClick={() => removeReport(selected)}
+                  disabled={deleting}
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-muted transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"
+                  aria-label="删除报告"
+                >
+                  {deleting ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                </button>
+              </div>
             </div>
+            {selected.has_image ? (
+              <div className="mt-3 overflow-hidden rounded-2xl border border-line bg-canvas">
+                {detailImage ? (
+                  <button onClick={() => openViewer(selected)} className="block w-full" aria-label="查看报告大图">
+                    <img src={detailImage} alt="报告原图" className="max-h-[360px] w-full object-contain" />
+                  </button>
+                ) : (
+                  <div className="flex h-32 items-center justify-center gap-2 text-[12px] text-muted">
+                    <Loader2 size={15} className="animate-spin" />
+                    正在加载图片…
+                  </div>
+                )}
+              </div>
+            ) : null}
             <p className="mt-3 whitespace-pre-wrap text-[14px] leading-7 text-ink">{selected.summary}</p>
 
             {selected.abnormal_values?.length ? (
@@ -216,14 +301,36 @@ export default function ReportsPage() {
               <p className="rounded-2xl bg-canvas p-4 text-[13px] text-muted">还没有报告记录，上传一份试试。</p>
             ) : (
               reports.map((item) => (
-                <button key={item.id} onClick={() => { setSelected(item); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="flex w-full items-center justify-between gap-3 rounded-2xl bg-canvas p-3 text-left hover:bg-primary-soft/50">
-                  <span className="min-w-0">
-                    <span className="block truncate text-[13px] font-medium text-ink">{item.title}</span>
-                    <span className="mt-0.5 block truncate text-[11px] text-muted">{item.summary}</span>
-                  </span>
-                  <span className="shrink-0 text-[11px] text-muted">{formatDate(item.created_at)}</span>
-                  <ChevronRight size={15} className="shrink-0 text-muted" />
-                </button>
+                <div key={item.id} className="flex items-center gap-2 rounded-2xl bg-canvas p-3">
+                  <button
+                    onClick={() => { setSelected(item); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                    className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-[13px] font-medium text-ink">{item.title}</span>
+                      <span className="mt-0.5 block truncate text-[11px] text-muted">{item.summary}</span>
+                    </span>
+                    <span className="shrink-0 text-[11px] text-muted">{formatDate(item.created_at)}</span>
+                    <ChevronRight size={15} className="shrink-0 text-muted" />
+                  </button>
+                  {item.has_image ? (
+                    <button
+                      onClick={() => openViewer(item)}
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted transition hover:bg-white hover:text-primary"
+                      aria-label="查看图片"
+                    >
+                      <ImageIcon size={15} />
+                    </button>
+                  ) : null}
+                  <button
+                    onClick={() => removeReport(item)}
+                    disabled={deleting}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted transition hover:bg-white hover:text-rose-600 disabled:opacity-40"
+                    aria-label="删除报告"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
               ))
             )}
           </div>
@@ -234,6 +341,24 @@ export default function ReportsPage() {
           报告和皮肤照片解读只用于辅助理解，不构成诊断。危急值、持续加重或出现呼吸困难等情况请立即就医。
         </div>
       </div>
+
+      {viewerUrl ? (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 p-4" onClick={closeViewer}>
+          <img
+            src={viewerUrl}
+            alt="报告图片"
+            className="max-h-full max-w-full rounded-2xl bg-white object-contain"
+            onClick={(event) => event.stopPropagation()}
+          />
+          <button
+            onClick={closeViewer}
+            className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white"
+            aria-label="关闭图片"
+          >
+            <X size={18} />
+          </button>
+        </div>
+      ) : null}
     </AppShell>
   );
 }
