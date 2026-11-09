@@ -2,7 +2,7 @@ import path from "node:path";
 
 import { expect, test, type Page } from "@playwright/test";
 
-import { ADMIN_PASSWORD, ADMIN_USER, PATIENT_PASSWORD, PATIENT_USER } from "./env";
+import { ADMIN_PASSWORD, ADMIN_USER, API_BASE, PATIENT_PASSWORD, PATIENT_USER } from "./env";
 
 const REPORT_MARKER = "【E2E】";
 const MEMBER_NAME = "测试家人";
@@ -138,4 +138,37 @@ test("booking lock, admin approval and visit guide", async ({ page, browser }) =
   await expect(page.getByText("已支付", { exact: true })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText("就诊指引")).toBeVisible();
   await expect(page.getByText(/示范医院/)).toBeVisible();
+});
+
+function ageFor(year: number, month: number, day: number): number {
+  const now = new Date();
+  let age = now.getFullYear() - year;
+  if (now.getMonth() + 1 < month || (now.getMonth() + 1 === month && now.getDate() < day)) age -= 1;
+  return age;
+}
+
+test("consult age follows the selected member's birth date", async ({ page, request }) => {
+  const auth = await request.post(`${API_BASE}/api/v1/auth/login`, {
+    data: { username: PATIENT_USER, password: PATIENT_PASSWORD },
+  });
+  expect(auth.ok()).toBeTruthy();
+  const token = ((await auth.json()) as { access_token: string }).access_token;
+  const created = await request.post(`${API_BASE}/api/v1/family`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { name: "年龄测试家人", relation: "子女", birth_date: "2018-06-01" },
+  });
+  expect(created.ok()).toBeTruthy();
+
+  await login(page, PATIENT_USER, PATIENT_PASSWORD);
+  await open(page, "/consult/");
+  await expect(page.getByText("这次为谁咨询？")).toBeVisible();
+  const memberCard = page.locator(".card").first();
+  const ageInput = memberCard.locator('label:has-text("年龄") input');
+
+  await memberCard.getByRole("button", { name: /^年龄测试家人/ }).click();
+  await expect(ageInput).toHaveValue(String(ageFor(2018, 6, 1)));
+  await expect(memberCard.getByText("来自家庭档案出生日期")).toBeVisible();
+
+  await memberCard.getByRole("button", { name: /^本人\s*本人/ }).click();
+  await expect(ageInput).toHaveValue("");
 });

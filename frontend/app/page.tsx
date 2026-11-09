@@ -22,7 +22,7 @@ import { AppShell } from "@/components/AppShell";
 import { TaskCard } from "@/components/TaskCard";
 import { useApp } from "@/lib/app-context";
 import { completeFollowup, getHomeSummary, track } from "@/lib/api";
-import { formatDate, kindMeta, relativeTime } from "@/lib/format";
+import { formatDate, formatSessionTitle, kindMeta, relativeTime } from "@/lib/format";
 import type { HomeSummary } from "@/lib/types";
 
 export default function HomePage() {
@@ -178,7 +178,7 @@ export default function HomePage() {
             ) : summary?.latest_session ? (
               <button onClick={() => router.push(`/consult/?session=${encodeURIComponent(summary.latest_session!.id)}`)} className="mt-4 flex w-full items-center justify-between gap-3 rounded-2xl bg-canvas p-3 text-left">
                 <span className="min-w-0">
-                  <span className="block truncate text-[14px] font-medium text-ink">{summary.latest_session.title || "上次问诊"}</span>
+                  <span className="block truncate text-[14px] font-medium text-ink">{formatSessionTitle(summary.latest_session.title)}</span>
                   <span className="mt-1 block text-[11px] text-muted">回到上次问诊，继续追问</span>
                 </span>
                 <ChevronRight size={16} className="shrink-0 text-muted" />

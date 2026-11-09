@@ -437,6 +437,7 @@ function parseBlock(block: string): StreamEvent | null {
 
 export async function* streamChat(payload: {
   message: string;
+  title?: string;
   session_id?: string;
   member_id?: string;
 }): AsyncGenerator<StreamEvent> {

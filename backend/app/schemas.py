@@ -9,6 +9,7 @@ class ChatRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     message: str = Field(..., min_length=1, max_length=4000)
+    title: str | None = Field(default=None, max_length=80)
     session_id: str | None = None
     member_id: str | None = None
     mode: str = "patient"

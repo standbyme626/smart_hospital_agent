@@ -256,3 +256,34 @@ def test_chat_stream_foreign_member_id_returns_404_before_sse():
             assert "text/event-stream" not in response.headers.get("content-type", "")
         finally:
             client.app.state.settings.AUTH_ENABLED = False
+
+
+def test_chat_stream_stores_posted_title_without_member_context():
+    session_id = "sess-title"
+    with TestClient(app) as client:
+        _install_fakes(client)
+        response = client.post(
+            "/api/v1/chat/stream",
+            json={
+                "message": "主要部位：头面部\n症状：疼痛",
+                "title": "头面部 · 疼痛 · 1–3 天",
+                "session_id": session_id,
+            },
+        )
+        assert response.status_code == 200, response.text
+        detail = client.get(f"/api/v1/sessions/{session_id}").json()
+        assert detail["session"]["title"] == "头面部 · 疼痛 · 1–3 天"
+        assert "就诊人：" not in detail["session"]["title"]
+
+
+def test_chat_stream_default_title_is_user_message_only():
+    session_id = "sess-title-default"
+    with TestClient(app) as client:
+        _install_fakes(client)
+        response = client.post(
+            "/api/v1/chat/stream",
+            json={"message": "头痛两天了", "session_id": session_id},
+        )
+        assert response.status_code == 200, response.text
+        detail = client.get(f"/api/v1/sessions/{session_id}").json()
+        assert detail["session"]["title"] == "头痛两天了"

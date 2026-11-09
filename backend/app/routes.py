@@ -345,7 +345,7 @@ async def chat_stream(
             await state.sessions.ensure(
                 session_id,
                 user_id,
-                title=payload.message[:40],
+                title=(payload.title or payload.message)[:80],
                 member_id=member.get("id"),
             )
             history = await load_history(state.db, session_id)
@@ -362,7 +362,7 @@ async def chat_stream(
                 message=message,
                 user_id=user_id,
                 request_id=request_id,
-                title=payload.message,
+                title=payload.title or payload.message,
                 member_id=member.get("id"),
                 history=history,
             ):

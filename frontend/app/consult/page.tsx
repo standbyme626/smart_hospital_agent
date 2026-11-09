@@ -21,15 +21,21 @@ import { ResultView } from "@/components/ResultView";
 import { useApp } from "@/lib/app-context";
 import { getSession, streamChat, track } from "@/lib/api";
 import { memberMismatch } from "@/lib/session-guard";
-import type { ChatMessage, Citation, Report, Safety, StreamEvent, Triage } from "@/lib/types";import { bodyAreas, durationOptions, redFlagOptions, symptomOptions } from "@/lib/format";
+import type { ChatMessage, Citation, Report, Safety, StreamEvent, Triage } from "@/lib/types";
+import {
+  ageFromBirthDate,
+  bodyAreas,
+  durationOptions,
+  redFlagOptions,
+  stripMemberContext,
+  symptomOptions,
+} from "@/lib/format";
 
 type Step = 0 | 1 | 2;
 type SymptomStep = 0 | 1 | 2 | 3 | 4;
 
 function displayContent(content: string): string {
-  const marker = "用户输入：";
-  const index = content.lastIndexOf(marker);
-  return index >= 0 ? content.slice(index + marker.length) : content;
+  return stripMemberContext(content);
 }
 
 export default function ConsultPage() {
@@ -115,6 +121,7 @@ export default function ConsultPage() {
   useEffect(() => {
     if (activeMember) {
       setMemberId(activeMember.id);
+      setAge(ageFromBirthDate(activeMember.birth_date)?.toString() ?? "");
       setGender(activeMember.gender || "");
       setAllergies(activeMember.allergies || "");
       setConditions(activeMember.conditions || "");
@@ -122,6 +129,7 @@ export default function ConsultPage() {
   }, [activeMember]);
 
   const member = useMemo(() => members.find((item) => item.id === memberId) || activeMember, [members, memberId, activeMember]);
+  const memberAge = member?.birth_date ? ageFromBirthDate(member.birth_date) : null;
 
   function toggleSymptom(value: string) {
     setSymptoms((prev) => (prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value]));
@@ -180,14 +188,8 @@ export default function ConsultPage() {
     setReport(null);
     setCitations([]);
     track("consult_submit", { member_id: memberId, body_area: bodyArea, symptoms: symptoms.join(",") });
-    const memberBits = [
-      `就诊人：${member?.name || "本人"}（${member?.relation || "self"}）`,
-      gender ? `性别：${gender}` : "",
-      age ? `年龄：${age}` : member?.birth_date ? `出生日期：${member.birth_date}` : "",
-      member?.allergies ? `档案过敏史：${member.allergies}` : "",
-      member?.conditions ? `档案既往史：${member.conditions}` : "",
-    ].filter(Boolean);
     const symptomBits = [
+      !member?.birth_date && age ? `年龄：${age}` : "",
       bodyArea ? `主要部位：${bodyArea}` : "",
       symptoms.length ? `症状：${symptoms.join("、")}` : "",
       duration ? `持续时间：${duration}` : "",
@@ -198,11 +200,12 @@ export default function ConsultPage() {
       medications ? `正在用药：${medications}` : "",
       draft ? `补充描述：${draft}` : "",
     ].filter(Boolean);
-    const message = [...memberBits, "", ...symptomBits].join("\n");
+    const message = symptomBits.join("\n");
+    const title = [bodyArea, symptoms.join("、"), duration].filter(Boolean).join(" · ") || draft.trim().slice(0, 40) || "问诊";
     setSessionMemberId(memberId || null);
     setMessages((prev) => [...prev, { role: "user", content: message }]);
     try {
-      for await (const event of streamChat({ message, session_id: sessionId || undefined, member_id: memberId || undefined })) {
+      for await (const event of streamChat({ message, title, session_id: sessionId || undefined, member_id: memberId || undefined })) {
         applyStreamEvent(event);
       }
     } catch (err) {
@@ -253,6 +256,10 @@ export default function ConsultPage() {
     setFollowup("");
     setSessionId(null);
     setSessionMemberId(null);
+    setAge(ageFromBirthDate(activeMember?.birth_date)?.toString() ?? "");
+    setGender(activeMember?.gender || "");
+    setAllergies(activeMember?.allergies || "");
+    setConditions(activeMember?.conditions || "");
     window.history.replaceState(null, "", "/consult/");
   }
 
@@ -287,6 +294,7 @@ export default function ConsultPage() {
                   onClick={() => {
                     setMemberId(item.id);
                     setActiveMemberId(item.id);
+                    setAge(ageFromBirthDate(item.birth_date)?.toString() ?? "");
                     setGender(item.gender || "");
                     setAllergies(item.allergies || "");
                     setConditions(item.conditions || "");
@@ -313,7 +321,19 @@ export default function ConsultPage() {
               </label>
               <label className="block">
                 <span className="label">年龄</span>
-                <input className="input" value={age} onChange={(event) => setAge(event.target.value)} placeholder="例如 56" inputMode="numeric" />
+                {memberAge !== null ? (
+                  <>
+                    <input className="input" value={String(memberAge)} readOnly aria-readonly="true" />
+                    <p className="mt-1 text-[11px] text-muted">
+                      来自家庭档案出生日期 · <a className="text-primary underline underline-offset-2" href="/profile/">去修改</a>
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <input className="input" value={age} onChange={(event) => setAge(event.target.value)} placeholder="例如 56" inputMode="numeric" />
+                    <p className="mt-1 text-[11px] text-muted">在设置与家庭填写出生日期后自动带出</p>
+                  </>
+                )}
               </label>
             </div>
 

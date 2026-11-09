@@ -1,3 +1,76 @@
+const memberContextPrefixes = [
+  "就诊人：",
+  "性别：",
+  "年龄：",
+  "出生日期：",
+  "档案过敏史：",
+  "档案既往史：",
+];
+
+const titleContextPrefixes = [...memberContextPrefixes, "过敏史：", "既往史："];
+
+const titleLabelPrefixes = [
+  "主要部位：",
+  "症状：",
+  "持续时间：",
+  "严重程度：",
+  "红旗筛查：",
+  "补充描述：",
+  "正在用药：",
+  "过敏史：",
+  "既往史：",
+];
+
+export function ageFromBirthDate(birthDate?: string | null): number | null {
+  if (!birthDate) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthDate.trim());
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const birth = new Date(year, month - 1, day);
+  if (birth.getFullYear() !== year || birth.getMonth() !== month - 1 || birth.getDate() !== day) return null;
+  const now = new Date();
+  if (birth.getTime() > now.getTime()) return null;
+  let age = now.getFullYear() - year;
+  const hadBirthday = now.getMonth() > month - 1 || (now.getMonth() === month - 1 && now.getDate() >= day);
+  if (!hadBirthday) age -= 1;
+  if (age < 0 || age > 120) return null;
+  return age;
+}
+
+export function stripMemberContext(text?: string | null): string {
+  if (!text) return "";
+  const marker = "用户输入：";
+  const index = text.lastIndexOf(marker);
+  const body = index >= 0 ? text.slice(index + marker.length) : text;
+  return body
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !memberContextPrefixes.some((prefix) => line.startsWith(prefix)))
+    .join("\n");
+}
+
+export function formatSessionTitle(title?: string | null, fallback = "上次问诊"): string {
+  const stripped = stripMemberContext(title);
+  if (!stripped) return fallback;
+  const parts = stripped
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !titleContextPrefixes.some((prefix) => line.startsWith(prefix)))
+    .map((line) => {
+      let value = line;
+      const label = titleLabelPrefixes.find((prefix) => value.startsWith(prefix));
+      if (label) value = value.slice(label.length).trim();
+      return value.replace(/\s+/g, " ").trim();
+    })
+    .filter(Boolean);
+  let joined = parts.join(" · ").replace(/\s+/g, " ").trim();
+  if (!joined) return fallback;
+  if (joined.length > 60) joined = `${joined.slice(0, 60).trimEnd()}…`;
+  return joined;
+}
+
 export function formatDate(value?: string | null): string {
   if (!value) return "—";
   const date = new Date(value);
