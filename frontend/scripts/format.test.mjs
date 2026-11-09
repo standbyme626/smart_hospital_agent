@@ -92,3 +92,16 @@ test("stripMemberContext prefers text after the last 用户输入 marker", () =>
   assert.equal(stripMemberContext(stored), "主要部位：头面部\n症状：疼痛");
   assert.equal(stripMemberContext(null), "");
 });
+
+test("stripMemberContext leaves free-text follow-ups untouched", () => {
+  assert.equal(stripMemberContext("年龄：35"), "年龄：35");
+  assert.equal(stripMemberContext("过敏史：无"), "过敏史：无");
+  assert.equal(stripMemberContext("补充描述：这两天晚上更明显"), "补充描述：这两天晚上更明显");
+});
+
+test("formatSessionTitle trims trailing separators and short fragments", () => {
+  const legacyTruncated = "就诊人：张三（self）\n性别：男\n主要部位：头面部\n症状：疼、";
+  assert.equal(formatSessionTitle(legacyTruncated), "头面部 · 疼");
+  assert.equal(formatSessionTitle("症状：痛"), "上次问诊");
+  assert.equal(formatSessionTitle("主要部位：头面部，"), "头面部");
+});

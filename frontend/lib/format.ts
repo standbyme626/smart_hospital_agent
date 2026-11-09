@@ -9,7 +9,7 @@ const memberContextPrefixes = [
 
 const titleContextPrefixes = [...memberContextPrefixes, "过敏史：", "既往史："];
 
-const titleLabelPrefixes = [
+const symptomLabelPrefixes = [
   "主要部位：",
   "症状：",
   "持续时间：",
@@ -20,6 +20,10 @@ const titleLabelPrefixes = [
   "过敏史：",
   "既往史：",
 ];
+
+function trimTrailingSeparators(value: string): string {
+  return value.replace(/[、，,·\s]+$/u, "");
+}
 
 export function ageFromBirthDate(birthDate?: string | null): number | null {
   if (!birthDate) return null;
@@ -43,6 +47,11 @@ export function stripMemberContext(text?: string | null): string {
   if (!text) return "";
   const marker = "用户输入：";
   const index = text.lastIndexOf(marker);
+  const looksLikeSubmit =
+    index >= 0 ||
+    text.includes("就诊人：") ||
+    symptomLabelPrefixes.some((prefix) => text.trimStart().startsWith(prefix));
+  if (!looksLikeSubmit) return text;
   const body = index >= 0 ? text.slice(index + marker.length) : text;
   return body
     .split(/\r?\n/)
@@ -60,14 +69,14 @@ export function formatSessionTitle(title?: string | null, fallback = "上次问�
     .filter((line) => line && !titleContextPrefixes.some((prefix) => line.startsWith(prefix)))
     .map((line) => {
       let value = line;
-      const label = titleLabelPrefixes.find((prefix) => value.startsWith(prefix));
+      const label = symptomLabelPrefixes.find((prefix) => value.startsWith(prefix));
       if (label) value = value.slice(label.length).trim();
       return value.replace(/\s+/g, " ").trim();
     })
     .filter(Boolean);
-  let joined = parts.join(" · ").replace(/\s+/g, " ").trim();
-  if (!joined) return fallback;
-  if (joined.length > 60) joined = `${joined.slice(0, 60).trimEnd()}…`;
+  let joined = trimTrailingSeparators(parts.join(" · ").replace(/\s+/g, " ").trim());
+  if (joined.length > 60) joined = `${trimTrailingSeparators(joined.slice(0, 60))}…`;
+  if (joined.replace(/…$/, "").length < 2) return fallback;
   return joined;
 }
 

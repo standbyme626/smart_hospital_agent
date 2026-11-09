@@ -129,7 +129,7 @@ export default function ConsultPage() {
   }, [activeMember]);
 
   const member = useMemo(() => members.find((item) => item.id === memberId) || activeMember, [members, memberId, activeMember]);
-  const memberAge = member?.birth_date ? ageFromBirthDate(member.birth_date) : null;
+  const memberAge = ageFromBirthDate(member?.birth_date);
 
   function toggleSymptom(value: string) {
     setSymptoms((prev) => (prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value]));
@@ -189,7 +189,8 @@ export default function ConsultPage() {
     setCitations([]);
     track("consult_submit", { member_id: memberId, body_area: bodyArea, symptoms: symptoms.join(",") });
     const symptomBits = [
-      !member?.birth_date && age ? `年龄：${age}` : "",
+      memberAge === null && age ? `年龄：${age}` : "",
+      gender && gender !== (member?.gender || "") ? `性别：${gender}` : "",
       bodyArea ? `主要部位：${bodyArea}` : "",
       symptoms.length ? `症状：${symptoms.join("、")}` : "",
       duration ? `持续时间：${duration}` : "",
@@ -256,10 +257,11 @@ export default function ConsultPage() {
     setFollowup("");
     setSessionId(null);
     setSessionMemberId(null);
-    setAge(ageFromBirthDate(activeMember?.birth_date)?.toString() ?? "");
-    setGender(activeMember?.gender || "");
-    setAllergies(activeMember?.allergies || "");
-    setConditions(activeMember?.conditions || "");
+    setMemberId(member?.id ?? null);
+    setAge(memberAge?.toString() ?? "");
+    setGender(member?.gender || "");
+    setAllergies(member?.allergies || "");
+    setConditions(member?.conditions || "");
     window.history.replaceState(null, "", "/consult/");
   }
 
@@ -331,7 +333,13 @@ export default function ConsultPage() {
                 ) : (
                   <>
                     <input className="input" value={age} onChange={(event) => setAge(event.target.value)} placeholder="例如 56" inputMode="numeric" />
-                    <p className="mt-1 text-[11px] text-muted">在设置与家庭填写出生日期后自动带出</p>
+                    {member?.birth_date ? (
+                      <p className="mt-1 text-[11px] text-muted">
+                        档案出生日期无效，请修改；本次可手动填写年龄 · <a className="text-primary underline underline-offset-2" href="/profile/">去修改</a>
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-[11px] text-muted">在设置与家庭填写出生日期后自动带出</p>
+                    )}
                   </>
                 )}
               </label>

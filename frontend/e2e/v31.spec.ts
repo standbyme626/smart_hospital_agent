@@ -158,6 +158,11 @@ test("consult age follows the selected member's birth date", async ({ page, requ
     data: { name: "年龄测试家人", relation: "子女", birth_date: "2018-06-01" },
   });
   expect(created.ok()).toBeTruthy();
+  const invalid = await request.post(`${API_BASE}/api/v1/family`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { name: "无效生日家人", relation: "父母", birth_date: "1994-13-40" },
+  });
+  expect(invalid.ok()).toBeTruthy();
 
   await login(page, PATIENT_USER, PATIENT_PASSWORD);
   await open(page, "/consult/");
@@ -168,6 +173,11 @@ test("consult age follows the selected member's birth date", async ({ page, requ
   await memberCard.getByRole("button", { name: /^年龄测试家人/ }).click();
   await expect(ageInput).toHaveValue(String(ageFor(2018, 6, 1)));
   await expect(memberCard.getByText("来自家庭档案出生日期")).toBeVisible();
+
+  await memberCard.getByRole("button", { name: /^无效生日家人/ }).click();
+  await expect(memberCard.getByText("档案出生日期无效，请修改；本次可手动填写年龄")).toBeVisible();
+  await ageInput.fill("35");
+  await expect(ageInput).toHaveValue("35");
 
   await memberCard.getByRole("button", { name: /^本人\s*本人/ }).click();
   await expect(ageInput).toHaveValue("");
