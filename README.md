@@ -10,7 +10,7 @@
 [![Live](https://img.shields.io/badge/live-hospital.kk.zhzepei.cn-0E9384)](https://hospital.kk.zhzepei.cn/)
 
 > **线上演示**：https://hospital.kk.zhzepei.cn/ （登录后使用，演示账号由管理员发放）
-> **版本状态（2026-11-09）**：线上仍是 v3.0 旧进程；v3.1 已完成本地实现与自动化验证，尚未部署。部署清单与剩余项见 [`docs/V3.1-RELEASE.md`](docs/V3.1-RELEASE.md)。
+> **版本状态（2026-11-09）**：**v3.1 已上线**（commit `90669c5`，tag `v3.1.0`）；生产密码已轮换，106 nginx/Basic Auth/Kuma 已启用。真实医院 MCP 仍为 v3.2 范围。发布记录见 [`docs/V3.1-RELEASE.md`](docs/V3.1-RELEASE.md)。
 > **前端 v3**：2026 H2 消费级医疗 AI 界面，浅色「温暖临床 + 证据优先」；旧前端保留在 `frontend-legacy/`，不参与启动。
 > **唯一 mock**：医院 MCP（号源/订单/支付/就诊指引）。LLM、Embedding、Rerank、报告视觉解读均为真实调用；真实医院 MCP 尚未接入，排期 v3.2。
 
@@ -61,7 +61,7 @@
 
 ## 1. 这一版做了什么
 
-### v3.1（2026-11，本地完成、待部署）
+### v3.1（2026-11，已上线）
 
 | 能力 | 交付 |
 |---|---|
@@ -297,7 +297,7 @@ https://hospital.kk.zhzepei.cn/
 - 家服务器 systemd：`smart-hospital-api`、`smart-hospital-mcp`、`smart-hospital-tunnel`、`smart-hospital-ollama-tunnel`；
 - Let's Encrypt 证书：`/etc/letsencrypt/live/hospital.kk.zhzepei.cn/`，自动续期。
 
-**v3.1 部署状态**：截至 2026-11-09，线上仍为 v3.0；v3.1 仅在本地提交（分支 `v3.1`），未改 106 nginx、未重启生产服务、未轮换生产密码。v3.1 的部署顺序、迁移幂等、备份/回滚和剩余验收项见 [`docs/V3.1-RELEASE.md`](docs/V3.1-RELEASE.md) 与 [`docs/DEPLOYMENT-106.md`](docs/DEPLOYMENT-106.md)。
+**v3.1 部署状态**：已于 2026-11-09 14:47 CST 上线（commit `90669c5`，tag `v3.1.0`）；已完成迁移、生产密码轮换、106 静态前端发布、nginx v3.1 应用、Kuma `/api/health` UP、恢复演练。GitHub 未 push，CI 未在 GitHub 首跑；真实医院 MCP 属 v3.2。详见 [`docs/V3.1-RELEASE.md`](docs/V3.1-RELEASE.md)。
 
 ### 6.1 回滚（v3.1 → v3.0）
 
@@ -466,9 +466,9 @@ E2E_BACKEND_PORT=8021 E2E_FRONTEND_PORT=3010 NEXT_DIST_DIR=.next-e2e \
 - 契约测试：`frontend/lib/api.ts` 每个调用都能在 FastAPI OpenAPI 找到；旧演示密码不再出现于构建产物/`.env.example`/部署文档。
 - 迁移幂等：重复启动多次执行 `init_schema()` + `MIGRATIONS` 无报错。
 
-**待部署后才算通过（当前未绿灯）**
+**部署相关验收（2026-11-09 已执行）**
 
-- 生产库备份 + v3.1 迁移 + API 重启（当前线上仍是 v3.0，`/api/health` 返回 404）。
+- 生产库备份 + v3.1 迁移 + API 重启（已完成，线上 `/api/health` 返回 `version=3.1.0`）。
 - 106 nginx v3.1 示例审核/安装（`deploy/nginx-hospital-v31.conf` 未应用），之后 `/admin` Basic Auth 才生效。
 - Kuma 监控项启用；线上 `/api/health` 200。
 - 生产密码轮换与恢复演练（需主人批准）。

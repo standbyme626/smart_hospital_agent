@@ -1,7 +1,6 @@
 # 106 部署记录（hospital.kk.zhzepei.cn）
 
-> 2026-11-08 上线 v3.0。静态前端 + 家服务器 API + 反向 SSH 隧道 + Let's Encrypt。
-> **v3.1（2026-11-09）**：代码在本地分支 `v3.1` 完成，**尚未部署**；部署顺序见第 2 节。线上仍是 v3.0 旧进程。
+> 2026-11-08 上线 v3.0；**2026-11-09 14:47 CST 上线 v3.1**（commit `90669c5`，tag `v3.1.0`）。静态前端 + 家服务器 API + 反向 SSH 隧道 + Let's Encrypt。生产密码已轮换，nginx v3.1/Basic Auth/Kuma 已启用，恢复演练已通过。
 > 本文不含任何密码/密钥；凭据在服务器 `/root/.credentials/smart-hospital.env`（600）。v3.1 部署不改凭据文件内容（轮换需主人单独批准）。
 
 ## 1. 拓扑
@@ -342,7 +341,7 @@ curl -s -o /dev/null -w '%{http_code}\n' \
 curl -s -o /dev/null -w '%{http_code}\n' https://hospital.kk.zhzepei.cn/api/v1/reports/rep_x/image
 ```
 
-线上 v3.0 基线（2026-11-08）已用 Playwright 验证：登录、三步问诊、证据、挂号支付、报告视觉解读、药管家、健康时间线、后台、移动端。**v3.1 的 Playwright 3 条流程当前只在本地 `sha_e2e` 通过，部署后需在线上复跑**（见 `docs/V3.1-RELEASE.md`）。
+线上 v3.0 基线（2026-11-08）已用 Playwright 验证：登录、三步问诊、证据、挂号支付、报告视觉解读、药管家、健康时间线、后台、移动端。**v3.1 的 Playwright 3 条流程已在本地 `sha_e2e` 通过；线上未跑真实模型 E2E，部署后健康/登录/管理入口/检索已人工复核**（见 `docs/V3.1-RELEASE.md`）。
 
 ## 8.1 健康检查与备份
 
