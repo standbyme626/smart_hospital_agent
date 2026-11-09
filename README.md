@@ -10,7 +10,7 @@
 [![Live](https://img.shields.io/badge/live-hospital.kk.zhzepei.cn-0E9384)](https://hospital.kk.zhzepei.cn/)
 
 > **线上演示**：https://hospital.kk.zhzepei.cn/ （登录后使用，演示账号由管理员发放）
-> **版本状态（2026-11-09）**：**v3.1 已上线**（commit `90669c5`，tag `v3.1.0`）；生产密码已轮换，106 nginx/Basic Auth/Kuma 已启用。真实医院 MCP 仍为 v3.2 范围。发布记录见 [`docs/V3.1-RELEASE.md`](docs/V3.1-RELEASE.md)。
+> **版本状态（2026-11-09）**：**v3.1 已上线**（v3.1.1 hotfix，tag `v3.1.1`）；生产密码已轮换，106 nginx/Basic Auth/Kuma 已启用。真实医院 MCP 仍为 v3.2 范围。发布记录见 [`docs/V3.1-RELEASE.md`](docs/V3.1-RELEASE.md)。
 > **前端 v3**：2026 H2 消费级医疗 AI 界面，浅色「温暖临床 + 证据优先」；旧前端保留在 `frontend-legacy/`，不参与启动。
 > **唯一 mock**：医院 MCP（号源/订单/支付/就诊指引）。LLM、Embedding、Rerank、报告视觉解读均为真实调用；真实医院 MCP 尚未接入，排期 v3.2。
 
