@@ -46,7 +46,9 @@ export function FamilySwitcher() {
             >
               <span>
                 {member.name}
-                <span className="ml-1.5 text-[11px] text-muted">{member.relation === "self" ? "本人" : member.relation}</span>
+                {member.name !== (member.relation === "self" ? "本人" : member.relation) ? (
+                  <span className="ml-1.5 text-[11px] text-muted">{member.relation === "self" ? "本人" : member.relation}</span>
+                ) : null}
               </span>
               {activeMember?.id === member.id ? <Check size={14} className="text-primary" /> : null}
             </button>

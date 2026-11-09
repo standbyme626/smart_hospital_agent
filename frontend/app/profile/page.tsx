@@ -185,7 +185,9 @@ export default function ProfilePage() {
                 <div className="min-w-0 flex-1">
                   <p className="text-[13px] font-medium text-ink">
                     {member.name}
-                    <span className="ml-1.5 text-[11px] text-muted">{member.relation === "self" ? "本人" : member.relation}</span>
+                    {member.name !== (member.relation === "self" ? "本人" : member.relation) ? (
+                      <span className="ml-1.5 text-[11px] text-muted">{member.relation === "self" ? "本人" : member.relation}</span>
+                    ) : null}
                   </p>
                   <p className="mt-0.5 truncate text-[11px] text-muted">
                     {[member.gender, member.birth_date, member.allergies ? `过敏：${member.allergies}` : "", member.conditions ? `既往：${member.conditions}` : ""].filter(Boolean).join(" · ") || "暂无档案信息"}

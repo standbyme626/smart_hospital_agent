@@ -126,7 +126,7 @@ export function AppShell({
               <ShieldCheck size={12} />
               隐私与安全
             </p>
-            <p className="mt-1 text-primary/80">演示环境：数据保留用于展示；导出/删除功能见设置页（若已上线）。</p>
+            <p className="mt-1 text-primary/80">健康数据仅用于本次服务；可在「设置与家庭」中导出或删除。</p>
           </div>
         </div>
       </aside>

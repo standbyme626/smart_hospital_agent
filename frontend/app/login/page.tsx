@@ -58,7 +58,7 @@ export default function LoginPage() {
             从症状到科室，从报告到用药，从挂号到就诊指引。每条建议都可以查看医学依据，危机情况直接走急诊通道。
           </p>
           <div className="mt-8 grid gap-3 text-[13px] text-white/85">
-            <p className="flex items-center gap-2"><ShieldCheck size={15} /> 演示环境：数据保留用于展示；导出/删除功能见设置页（若已上线）</p>
+            <p className="flex items-center gap-2"><ShieldCheck size={15} /> 健康数据仅用于问诊服务；可在设置与家庭中导出或删除</p>
             <p className="flex items-center gap-2"><ShieldCheck size={15} /> AI 不确诊、不开处方，危机情况转人工/急诊</p>
             <p className="flex items-center gap-2"><ShieldCheck size={15} /> 挂号支付由管理员人工审核后生效，批准前不会扣款</p>
           </div>

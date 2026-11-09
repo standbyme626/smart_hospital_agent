@@ -305,7 +305,9 @@ export default function ConsultPage() {
                 >
                   <UserRound size={14} />
                   {item.name}
-                  <span className="text-[11px] text-muted">{item.relation === "self" ? "本人" : item.relation}</span>
+                  {item.name !== (item.relation === "self" ? "本人" : item.relation) ? (
+                    <span className="text-[11px] text-muted">{item.relation === "self" ? "本人" : item.relation}</span>
+                  ) : null}
                 </button>
               ))}
               <button onClick={() => router.push("/profile/")} className="chip text-primary">+ 添加家人</button>
