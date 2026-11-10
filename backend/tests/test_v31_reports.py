@@ -110,6 +110,17 @@ def _fetch(client: TestClient, query: str, *args):
     return asyncio.run(run())
 
 
+def _fetchrow(client: TestClient, query: str, *args):
+    async def run():
+        conn = await asyncpg.connect(_dsn(client))
+        try:
+            return await conn.fetchrow(query, *args)
+        finally:
+            await conn.close()
+
+    return asyncio.run(run())
+
+
 def _fetchval(client: TestClient, query: str, *args):
     async def run():
         conn = await asyncpg.connect(_dsn(client))
@@ -493,3 +504,51 @@ def test_delete_account_removes_data_and_invalidates_token(client):
         _fetchval(client, "SELECT count(*) FROM audit_log WHERE action='account.delete' AND actor='anonymous'")
         == 1
     )
+
+
+class CriticalValueGateway(FakeGateway):
+    async def chat(self, messages, **kwargs) -> ChatResult:
+        self.calls.append(kwargs)
+        return ChatResult(
+            content=json.dumps(
+                {
+                    "summary": "血钾明显升高，请立即就医。",
+                    "abnormal_values": [
+                        {
+                            "name": "血钾",
+                            "value": "7.2 mmol/L",
+                            "reference": "3.5-5.3",
+                            "status": "high",
+                            "explanation": "高钾血症风险",
+                        }
+                    ],
+                    "questions": ["是否需要急诊复查？"],
+                },
+                ensure_ascii=False,
+            ),
+            provider="fake",
+            model="fake-vision",
+        )
+
+
+def test_report_critical_value_sets_flags_and_urgency(client):
+    state = client.app.state
+    state.gateway = CriticalValueGateway()
+    headers = _patient(client)
+    response = client.post(
+        "/api/v1/reports/interpret",
+        headers=headers,
+        files={"file": ("report.png", io.BytesIO(b"not-a-real-png"), "image/png")},
+        data={"kind": "report", "title": "急诊生化"},
+    )
+    assert response.status_code == 200, response.text
+    report = response.json()["report"]
+    assert report["urgency"] == "critical"
+    assert any("血钾" in flag for flag in report["critical_flags"])
+    row = _fetchrow(
+        client,
+        "SELECT critical_flags, source FROM reports WHERE id=$1",
+        report["id"],
+    )
+    assert row["source"] == "upload"
+    assert "血钾" in json.dumps(row["critical_flags"], ensure_ascii=False)

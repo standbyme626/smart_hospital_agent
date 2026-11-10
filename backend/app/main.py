@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from prometheus_client import Counter, Histogram
 
 from .agent import MedicalAgent
+from .booking_service import BookingService
 from .config import get_settings
 from .db import Database
 from .eval_runner import EvalRunner
@@ -31,6 +32,7 @@ LLM_CALLS = Counter("sha_llm_calls_total", "LLM calls", ["provider", "task"])
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
+    settings.validate_security()
     app.state.settings = settings
     db = Database(settings)
     try:
@@ -42,6 +44,7 @@ async def lifespan(app: FastAPI):
     retrieval = RetrievalService(settings, db, gateway)
     mcp = HospitalMCPClient(settings)
     tools = ToolRegistry(retrieval, mcp, db)
+    booking = BookingService(settings, db, mcp)
     sessions = SessionStore(db)
     agent = MedicalAgent(settings, gateway, retrieval, tools, sessions)
     eval_runner = EvalRunner(settings, db, retrieval, gateway)
@@ -50,6 +53,7 @@ async def lifespan(app: FastAPI):
     app.state.retrieval = retrieval
     app.state.mcp = mcp
     app.state.tools = tools
+    app.state.booking = booking
     app.state.sessions = sessions
     app.state.agent = agent
     app.state.eval_runner = eval_runner
@@ -85,7 +89,6 @@ _rate_lock = asyncio.Lock()
 async def observability(request: Request, call_next):
     request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
     request.state.request_id = request_id
-    path = request.url.path
     start = time.perf_counter()
     status = 500
     try:
@@ -93,8 +96,10 @@ async def observability(request: Request, call_next):
         status = response.status_code
     finally:
         elapsed = time.perf_counter() - start
-        REQUEST_COUNT.labels(request.method, path, str(status)).inc()
-        REQUEST_LATENCY.labels(request.method, path).observe(elapsed)
+        route = request.scope.get("route")
+        route_path = getattr(route, "path", None) or "__unmatched__"
+        REQUEST_COUNT.labels(request.method, route_path, str(status)).inc()
+        REQUEST_LATENCY.labels(request.method, route_path).observe(elapsed)
     response.headers["X-Request-ID"] = request_id
     return response
 

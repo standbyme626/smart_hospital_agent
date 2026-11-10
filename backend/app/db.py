@@ -8,8 +8,11 @@ import asyncpg
 
 from .config import Settings
 
+SCHEMA_VERSION = "2026-11-09.p0"
+
 SCHEMA = [
     "CREATE EXTENSION IF NOT EXISTS vector",
+    "CREATE EXTENSION IF NOT EXISTS pgcrypto",
     """
     CREATE TABLE IF NOT EXISTS documents (
         id BIGSERIAL PRIMARY KEY,
@@ -212,12 +215,13 @@ SCHEMA = [
     """
     CREATE TABLE IF NOT EXISTS review_requests (
         id TEXT PRIMARY KEY,
-        kind TEXT NOT NULL CHECK (kind IN ('payment')),
+        kind TEXT NOT NULL CHECK (kind IN ('payment', 'payment_collection', 'clinical_review')),
         ref_id TEXT NOT NULL,
         user_id TEXT NOT NULL,
         member_id TEXT,
         status TEXT NOT NULL DEFAULT 'pending'
-            CHECK (status IN ('pending', 'processing', 'approved', 'rejected', 'failed')),
+            CHECK (status IN ('pending', 'acknowledged', 'processing', 'approved',
+                              'completed', 'rejected', 'cancelled', 'failed')),
         payload JSONB NOT NULL DEFAULT '{}'::jsonb,
         decision_note TEXT,
         decided_by TEXT,
@@ -268,6 +272,197 @@ SCHEMA = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_messages_session ON messages (session_id, id)",
+    """
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+        version TEXT PRIMARY KEY,
+        applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS his_patient_map (
+        id BIGSERIAL PRIMARY KEY,
+        user_id TEXT NOT NULL DEFAULT '',
+        member_id TEXT NOT NULL,
+        his_tenant_id TEXT,
+        his_patient_id TEXT,
+        his_bus_no TEXT,
+        id_card_hash TEXT,
+        id_card_last4 TEXT,
+        match_method TEXT,
+        verified_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        UNIQUE (user_id, member_id)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_his_patient_map_his ON his_patient_map (his_tenant_id, his_patient_id)",
+    """
+    CREATE TABLE IF NOT EXISTS his_encounter_map (
+        appointment_id TEXT PRIMARY KEY,
+        his_encounter_id TEXT,
+        his_patient_id TEXT,
+        his_org_id TEXT,
+        his_practitioner_id TEXT,
+        his_service_id TEXT,
+        quote_id TEXT,
+        payment_id TEXT,
+        invoice_id TEXT,
+        his_status TEXT,
+        payment_status TEXT,
+        last_synced_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_his_encounter_map_his ON his_encounter_map (his_encounter_id)",
+    """
+    CREATE TABLE IF NOT EXISTS his_prescription_map (
+        his_prescription_no TEXT PRIMARY KEY,
+        his_encounter_id TEXT,
+        his_patient_id TEXT,
+        source_table TEXT,
+        status TEXT,
+        issued_at TIMESTAMPTZ,
+        synced_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_his_prescription_map_encounter ON his_prescription_map (his_encounter_id)",
+    """
+    CREATE TABLE IF NOT EXISTS sync_outbox (
+        id TEXT PRIMARY KEY,
+        aggregate_type TEXT NOT NULL,
+        aggregate_id TEXT,
+        operation TEXT NOT NULL,
+        payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+        idempotency_key TEXT UNIQUE,
+        status TEXT NOT NULL DEFAULT 'pending',
+        attempts INTEGER NOT NULL DEFAULT 0,
+        next_attempt_at TIMESTAMPTZ,
+        last_error TEXT,
+        response_payload JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_sync_outbox_status ON sync_outbox (status, next_attempt_at)",
+    """
+    CREATE TABLE IF NOT EXISTS reconciliation_finding (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        local_ref TEXT,
+        his_ref TEXT,
+        detail TEXT,
+        status TEXT NOT NULL DEFAULT 'open',
+        detected_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        resolved_at TIMESTAMPTZ
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_reconciliation_finding_status ON reconciliation_finding (status, detected_at DESC)",
+    """
+    CREATE TABLE IF NOT EXISTS his_sync_cursor (
+        stream TEXT PRIMARY KEY,
+        last_update_time TIMESTAMPTZ,
+        last_id TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS appointment_projection (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL DEFAULT '',
+        member_id TEXT NOT NULL,
+        his_patient_id TEXT NOT NULL,
+        his_encounter_id TEXT,
+        his_org_id TEXT,
+        his_practitioner_id TEXT,
+        his_service_id TEXT,
+        quote_id TEXT,
+        amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'quoted',
+        payment_status TEXT NOT NULL DEFAULT 'unpaid',
+        his_status TEXT,
+        appointment_date TEXT,
+        department TEXT,
+        doctor_name TEXT,
+        payment_id TEXT,
+        invoice_id TEXT,
+        payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+        idempotency_key TEXT UNIQUE,
+        last_synced_at TIMESTAMPTZ,
+        stale BOOLEAN NOT NULL DEFAULT false,
+        legacy_demo BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_appointment_projection_encounter ON appointment_projection (his_encounter_id)",
+    "CREATE INDEX IF NOT EXISTS idx_appointment_projection_user ON appointment_projection (user_id, created_at DESC)",
+    """
+    CREATE TABLE IF NOT EXISTS human_task (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        ref_id TEXT NOT NULL,
+        user_id TEXT NOT NULL DEFAULT '',
+        member_id TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'requested',
+        payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+        assignee TEXT,
+        sla_due_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_human_task_open ON human_task (status, kind, ref_id)",
+    """
+    CREATE TABLE IF NOT EXISTS human_tasks (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL CHECK (kind IN ('payment_collection', 'clinical_review')),
+        ref_id TEXT NOT NULL,
+        user_id TEXT,
+        member_id TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+        assignee TEXT,
+        sla_due_at TIMESTAMPTZ,
+        decision_note TEXT,
+        decided_by TEXT,
+        decided_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_human_tasks_status ON human_tasks (status, sla_due_at)",
+    "CREATE INDEX IF NOT EXISTS idx_human_tasks_ref ON human_tasks (kind, ref_id)",
+    """
+    CREATE TABLE IF NOT EXISTS consent_record (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        subject_member_id TEXT,
+        consent_type TEXT NOT NULL,
+        version TEXT NOT NULL,
+        granted_by TEXT,
+        granted_at TIMESTAMPTZ,
+        expires_at TIMESTAMPTZ,
+        revoked_at TIMESTAMPTZ,
+        evidence JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_consent_record_user ON consent_record (user_id, consent_type)",
+    """
+    CREATE TABLE IF NOT EXISTS notifications (
+        id BIGSERIAL PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        title TEXT NOT NULL,
+        body TEXT,
+        link TEXT,
+        read_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications (user_id, created_at DESC)",
 ]
 
 MIGRATIONS = [
@@ -295,6 +490,48 @@ MIGRATIONS = [
     "ALTER TABLE model_calls ADD COLUMN IF NOT EXISTS user_id TEXT",
     "CREATE INDEX IF NOT EXISTS idx_model_calls_user ON model_calls (user_id, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_messages_user_day ON messages (user_id, created_at)",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_version TEXT",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_at TIMESTAMPTZ",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE family_members ADD COLUMN IF NOT EXISTS id_card_ciphertext TEXT",
+    "ALTER TABLE family_members ADD COLUMN IF NOT EXISTS id_card_hash TEXT",
+    "ALTER TABLE family_members ADD COLUMN IF NOT EXISTS id_card_last4 TEXT",
+    "ALTER TABLE family_members ADD COLUMN IF NOT EXISTS consent_id TEXT",
+    "ALTER TABLE family_members ADD COLUMN IF NOT EXISTS his_link_status TEXT",
+    "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS his_patient_id TEXT",
+    "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS his_encounter_id TEXT",
+    "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS his_org_id TEXT",
+    "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS his_practitioner_id TEXT",
+    "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS his_service_id TEXT",
+    "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS quote_id TEXT",
+    "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS his_status TEXT",
+    "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMPTZ",
+    "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS stale BOOLEAN NOT NULL DEFAULT false",
+    "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS legacy_demo BOOLEAN NOT NULL DEFAULT false",
+    "CREATE INDEX IF NOT EXISTS idx_bookings_his_encounter ON bookings (his_encounter_id)",
+    "ALTER TABLE review_requests DROP CONSTRAINT IF EXISTS review_requests_kind_check",
+    "ALTER TABLE review_requests ADD CONSTRAINT review_requests_kind_check "
+    "CHECK (kind IN ('payment', 'payment_collection', 'clinical_review'))",
+    "ALTER TABLE review_requests DROP CONSTRAINT IF EXISTS review_requests_status_check",
+    "ALTER TABLE review_requests ADD CONSTRAINT review_requests_status_check "
+    "CHECK (status IN ('pending', 'acknowledged', 'processing', 'approved', "
+    "'completed', 'rejected', 'cancelled', 'failed'))",
+    "ALTER TABLE review_requests ADD COLUMN IF NOT EXISTS sla_due_at TIMESTAMPTZ",
+    "ALTER TABLE review_requests ADD COLUMN IF NOT EXISTS assignee TEXT",
+    "ALTER TABLE medications ADD COLUMN IF NOT EXISTS source TEXT",
+    "ALTER TABLE medications ADD COLUMN IF NOT EXISTS his_medication_request_id TEXT",
+    "ALTER TABLE medications ADD COLUMN IF NOT EXISTS his_prescription_no TEXT",
+    "ALTER TABLE medications ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMPTZ",
+    "ALTER TABLE reports ADD COLUMN IF NOT EXISTS source TEXT",
+    "ALTER TABLE reports ADD COLUMN IF NOT EXISTS his_observation_id TEXT",
+    "ALTER TABLE reports ADD COLUMN IF NOT EXISTS critical_flags JSONB NOT NULL DEFAULT '[]'::jsonb",
+    "ALTER TABLE reports ADD COLUMN IF NOT EXISTS consent_id TEXT",
+    "ALTER TABLE health_events ADD COLUMN IF NOT EXISTS source TEXT",
+    "ALTER TABLE health_events ADD COLUMN IF NOT EXISTS his_ref_type TEXT",
+    "ALTER TABLE health_events ADD COLUMN IF NOT EXISTS his_ref_id TEXT",
+    "ALTER TABLE health_events ADD COLUMN IF NOT EXISTS deep_link TEXT",
+    "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS report_state JSONB",
+    "ALTER TABLE messages ADD COLUMN IF NOT EXISTS member_context JSONB",
 ]
 
 
@@ -325,6 +562,10 @@ class Database:
                 await conn.execute(statement)
             for statement in MIGRATIONS:
                 await conn.execute(statement)
+            await conn.execute(
+                "INSERT INTO schema_migrations (version) VALUES ($1) ON CONFLICT (version) DO NOTHING",
+                SCHEMA_VERSION,
+            )
 
     @asynccontextmanager
     async def transaction(self) -> AsyncIterator[asyncpg.Connection]:

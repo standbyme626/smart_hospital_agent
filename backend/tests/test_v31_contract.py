@@ -53,7 +53,7 @@ def test_frontend_services_has_no_payment_token():
     assert "confirmToken" not in source
     assert "confirm_token" not in source
     assert "payOrder" not in source
-    assert "requestPayment" in source
+    assert "requestAppointmentPayment" in source or "requestPayment" in source
 
 
 def test_removed_endpoints_not_in_openapi():

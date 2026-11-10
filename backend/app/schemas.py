@@ -28,6 +28,12 @@ class AccountDeleteRequest(BaseModel):
     password: str = Field(..., min_length=1, max_length=200)
 
 
+class ConsentRequest(BaseModel):
+    consent_type: str = Field(default="privacy_terms", max_length=40)
+    version: str = Field(..., min_length=1, max_length=40)
+    subject_member_id: str | None = None
+
+
 class LockRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -78,6 +84,8 @@ class FamilyMemberRequest(BaseModel):
     allergies: str | None = None
     conditions: str | None = None
     is_self: bool = False
+    id_card: str | None = Field(default=None, max_length=32)
+    consent: bool = False
 
 
 class MedicationRequest(BaseModel):

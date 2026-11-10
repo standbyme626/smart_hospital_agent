@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "smart-hospital-agent"
     APP_VERSION: str = "3.1.0"
     ENV: str = "dev"
+    APP_ENV: str = ""
     DEBUG: bool = False
 
     # Security
@@ -47,6 +48,8 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
     RATE_LIMIT_PER_MINUTE: int = 60
     CHAT_DAILY_LIMIT: int = 60
+    PSEUDONYM_KEY: str = ""
+    ID_CARD_KEY: str = ""
 
     # Data
     DATABASE_URL: str = "postgresql://sha:sha_pwd@127.0.0.1:5434/sha"
@@ -79,6 +82,7 @@ class Settings(BaseSettings):
     # Hospital MCP
     HOSPITAL_MCP_URL: str = "http://127.0.0.1:9100/mcp"
     HOSPITAL_MCP_TOKEN: str = ""
+    HIS_PAYMENT_MODE: str = "cashier"
     HITL_CONFIRM_TOKEN: str = "change-me"
     UPLOADS_DIR: str = str(BACKEND_DIR / "uploads")
     MAX_UPLOAD_MB: int = 8
@@ -98,6 +102,21 @@ class Settings(BaseSettings):
     @property
     def auth_enabled(self) -> bool:
         return bool(self.AUTH_ENABLED)
+
+    @property
+    def production(self) -> bool:
+        return any(
+            value.strip().lower() in {"production", "prod"}
+            for value in (self.ENV, self.APP_ENV)
+            if value
+        )
+
+    def validate_security(self) -> None:
+        if self.production and not self.AUTH_ENABLED:
+            raise RuntimeError(
+                "AUTH_ENABLED=false is forbidden when ENV/APP_ENV=production; "
+                "enable authentication or run in a non-production environment"
+            )
 
 
 @lru_cache(maxsize=1)

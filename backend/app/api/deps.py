@@ -10,11 +10,12 @@ from ..config import Settings
 from ..security import load_user
 
 
-def create_token(settings: Settings, subject: str, role: str) -> str:
+def create_token(settings: Settings, subject: str, role: str, token_version: int = 0) -> str:
     now = datetime.now(UTC)
     payload = {
         "sub": subject,
         "role": role,
+        "token_version": int(token_version),
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(minutes=settings.JWT_TTL_MINUTES)).timestamp()),
     }

@@ -25,14 +25,32 @@ def test_triage_crisis_override():
     assert result["department"] == "急诊科"
 
 
+def test_crisis_triage_carries_rule_fields():
+    result = rule_triage("我爸刚才晕倒了")
+    assert result["rule_triggered"] is True
+    assert result["crisis_subtype"] == "stroke_acs"
+    assert "晕倒" in result["crisis_terms"]
+
+
 def test_drug_interaction_major():
     result = DRUG_CHECKER.check_text("患者在吃华法林，现在牙痛想吃阿司匹林")
     assert "华法林" in result["drugs"]
     assert "阿司匹林" in result["drugs"]
     assert result["highest_severity"] == "major"
     assert result["interactions"]
+    assert result["coverage"] == "full"
+    assert result["exposures"] == []
+    assert result["unrecognized"] == []
 
 
 def test_pregnancy_contraindication():
     result = DRUG_CHECKER.check_text("孕妇可以用异维A酸吗")
     assert result["pregnancy_contraindications"]
+    assert result["coverage"] == "full"
+
+
+def test_pregnancy_contraindication_structured_flag():
+    result = DRUG_CHECKER.check_text("可以用华法林吗", pregnant=True)
+    assert result["pregnancy_contraindications"]
+    result = DRUG_CHECKER.check_text("孕妇可以用华法林吗", pregnant=False)
+    assert result["pregnancy_contraindications"] == []

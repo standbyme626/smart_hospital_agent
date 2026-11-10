@@ -25,8 +25,63 @@ _MAX_TRACKED_KEYS = 10_000
 
 BOOTSTRAP_MARKER = "users_bootstrapped"
 
+REDACTED_DETAIL_KEYS = frozenset(
+    {
+        "report",
+        "triage",
+        "safety",
+        "symptoms",
+        "name",
+        "phone",
+        "content",
+        "message",
+        "member_context",
+    }
+)
+
 _login_failures: dict[str, list[float]] = {}
 _locked_until: dict[str, float] = {}
+_fallback_pseudonym_key: bytes | None = None
+
+
+def redact_detail(detail: Any) -> dict[str, Any]:
+    if not isinstance(detail, dict):
+        return {}
+    return {key: value for key, value in detail.items() if key not in REDACTED_DETAIL_KEYS}
+
+
+def pseudonym_tag(settings: Any, value: str) -> str:
+    global _fallback_pseudonym_key
+    key = str(getattr(settings, "PSEUDONYM_KEY", "") or "")
+    if key:
+        secret = key.encode("utf-8")
+    else:
+        if _fallback_pseudonym_key is None:
+            _fallback_pseudonym_key = secrets.token_bytes(32)
+            logger.warning(
+                "PSEUDONYM_KEY is not configured; using a random per-process key "
+                "for deletion pseudonyms"
+            )
+        secret = _fallback_pseudonym_key
+    digest = hmac.new(secret, value.encode("utf-8"), hashlib.sha256).hexdigest()[:12]
+    return f"deleted-{digest}"
+
+
+def id_card_key(settings: Any) -> str:
+    return str(
+        getattr(settings, "ID_CARD_KEY", "")
+        or getattr(settings, "PSEUDONYM_KEY", "")
+        or getattr(settings, "JWT_SECRET", "")
+        or "dev-id-card-key"
+    )
+
+
+def id_card_hash(settings: Any, id_card: str) -> str:
+    return hmac.new(
+        id_card_key(settings).encode("utf-8"),
+        (id_card or "").encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
 
 
 def hash_password(password: str) -> str:
@@ -200,7 +255,7 @@ async def load_user(request: Request, authorization: str | None) -> dict[str, An
         raise HTTPException(status_code=503, detail="database unavailable")
     try:
         row = await db.fetchrow(
-            "SELECT id, username, role, enabled FROM users WHERE id=$1",
+            "SELECT id, username, role, enabled, token_version FROM users WHERE id=$1",
             subject,
         )
     except (AssertionError, OSError, asyncpg.PostgresError) as exc:
@@ -209,6 +264,8 @@ async def load_user(request: Request, authorization: str | None) -> dict[str, An
         raise HTTPException(status_code=401, detail="user not found")
     if not row["enabled"]:
         raise HTTPException(status_code=401, detail="user disabled")
+    if int(payload.get("token_version", 0)) != int(row["token_version"] or 0):
+        raise HTTPException(status_code=401, detail="token revoked")
     return {
         "sub": row["id"],
         "user": row["id"],

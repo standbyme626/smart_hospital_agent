@@ -1,0 +1,19 @@
+version: openhis-1.3
+tenant_id: "${OPENHIS_TENANT_ID}"
+capabilities:
+  patient.resolve:    {mode: rest,         stability: medium}
+  patient.create:     {mode: rest,         stability: medium}
+  schedule.list:      {mode: rest,         stability: low,  note: catalog_only_no_slot_inventory}
+  appointment.create: {mode: rest,         stability: medium}
+  registration.create:{mode: rest,         stability: low,  note: depends_on_HIS_PAYMENT_MODE}
+  payment.request:    {mode: local_task,   stability: high}
+  payment.status:     {mode: read_only_db, stability: medium}
+  encounter.get:      {mode: read_only_db, stability: medium}
+  prescription.list:  {mode: read_only_db, stability: medium}
+  visit.status:       {mode: derived,      stability: medium}
+  appointment.cancel: {mode: rest,         stability: low}
+  his.reconcile:      {mode: read_only_db, stability: high}
+degraded:
+  schedule.list:      catalog_only
+  payment.status:     last_known
+  prescription.list:  last_known

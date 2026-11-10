@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 
@@ -11,18 +12,21 @@ async def append_message(
     member_id: str | None,
     role: str,
     content: str,
+    member_context: str | None = None,
 ) -> None:
     async with db.transaction() as conn:
         await conn.execute(
             """
-            INSERT INTO messages (session_id, user_id, member_id, role, content)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO messages
+                (session_id, user_id, member_id, role, content, member_context)
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
             """,
             session_id,
             user_id,
             member_id,
             role,
             content,
+            json.dumps({"text": member_context}, ensure_ascii=False) if member_context else None,
         )
         await conn.execute(
             "UPDATE sessions SET last_message_at = now(), updated_at = now() WHERE id = $1",

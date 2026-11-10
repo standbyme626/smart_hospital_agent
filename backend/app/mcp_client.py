@@ -31,7 +31,14 @@ class HospitalMCPClient:
     async def close(self) -> None:
         await self.client.aclose()
 
-    async def _rpc(self, method: str, params: dict[str, Any] | None = None, request_id: int | None = None) -> Any:
+    async def _rpc(
+        self,
+        method: str,
+        params: dict[str, Any] | None = None,
+        request_id: int | None = None,
+        *,
+        scope: str | None = None,
+    ) -> Any:
         payload = {
             "jsonrpc": "2.0",
             "id": request_id or int(time.time() * 1000),
@@ -41,6 +48,8 @@ class HospitalMCPClient:
         headers = {"Content-Type": "application/json"}
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
+        if scope:
+            headers["X-Adapter-Scope"] = scope
         response = await self.client.post(self.url, json=payload, headers=headers)
         if response.status_code >= 400:
             raise MCPError(f"HTTP {response.status_code}: {response.text[:200]}")
@@ -78,12 +87,17 @@ class HospitalMCPClient:
         name: str,
         arguments: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
+        *,
+        scope: str | None = None,
     ) -> dict[str, Any]:
         await self.initialize()
         payload = dict(arguments or {})
         if idempotency_key:
             payload["idempotency_key"] = idempotency_key
-        result = await self._rpc("tools/call", {"name": name, "arguments": payload})
+        kwargs: dict[str, Any] = {}
+        if scope:
+            kwargs["scope"] = scope
+        result = await self._rpc("tools/call", {"name": name, "arguments": payload}, **kwargs)
         if not isinstance(result, dict):
             return {"text": str(result), "is_error": False}
         content = result.get("content") or []

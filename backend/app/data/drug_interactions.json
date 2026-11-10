@@ -41,7 +41,9 @@
     {"name": "依那普利", "aliases": ["依那普利", "enalapril", "ACEI"], "class": "ACEI"},
     {"name": "缬沙坦", "aliases": ["缬沙坦", "valsartan", "ARB"], "class": "ARB"},
     {"name": "地塞米松", "aliases": ["地塞米松", "dexamethasone"], "class": "糖皮质激素"},
-    {"name": "异维A酸", "aliases": ["异维A酸", "isotretinoin", "泰尔丝"], "class": "维A酸类"}
+    {"name": "异维A酸", "aliases": ["异维A酸", "isotretinoin", "泰尔丝"], "class": "维A酸类"},
+    {"name": "酒精", "aliases": ["酒精", "喝酒", "饮酒", "喝了酒", "喝了点酒", "喝点酒", "啤酒", "白酒", "红酒", "黄酒", "酒"], "class": "暴露因素", "kind": "exposure"},
+    {"name": "碘造影剂", "aliases": ["碘造影剂", "造影剂", "增强CT", "增强ct", "增强扫描", "含碘造影剂", "碘对比剂", "contrast"], "class": "暴露因素", "kind": "exposure"}
   ],
   "interactions": [
     {"a": "华法林", "b": "阿司匹林", "severity": "major", "description": "联用显著增加出血风险；需监测 INR 与出血征象。"},
@@ -88,6 +90,12 @@
     {"drug": "异维A酸", "description": "高度致畸，妊娠期禁用；用药前需严格避孕与妊娠试验。"},
     {"drug": "甲氨蝶呤", "description": "致畸与流产风险，妊娠期禁用。"},
     {"drug": "依那普利", "description": "ACEI 妊娠中晚期可致胎儿肾损伤，妊娠期禁用。"},
-    {"drug": "缬沙坦", "description": "ARB 妊娠期禁用。"}
+    {"drug": "缬沙坦", "description": "ARB 妊娠期禁用。"},
+    {"drug": "华法林", "description": "华法林胚胎病可致胎儿畸形（尤其孕 6-12 周），妊娠期禁用；需孕前由医生换药。"},
+    {"drug": "四环素", "description": "影响胎儿骨骼与牙齿发育，妊娠中晚期禁用。"},
+    {"drug": "左氧氟沙星", "description": "喹诺酮类可能损伤胎儿软骨，妊娠期避免使用。"},
+    {"drug": "莫西沙星", "description": "喹诺酮类可能损伤胎儿软骨，妊娠期避免使用。"},
+    {"drug": "布洛芬", "description": "NSAID 孕晚期（约 30 周后）禁用，可致胎儿动脉导管早闭、羊水过少。"},
+    {"drug": "氟康唑", "description": "高剂量（≥400mg/日）妊娠早期与致畸相关，妊娠期避免；低剂量也需医生评估。"}
   ]
 }

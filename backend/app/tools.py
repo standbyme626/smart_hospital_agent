@@ -7,7 +7,7 @@ from typing import Any
 
 from .db import Database
 from .mcp_client import HospitalMCPClient
-from .policy import DEPARTMENT_NAMES, DRUG_CHECKER
+from .policy import DEPARTMENT_NAMES, DRUG_CHECKER, merge_drug_results
 from .retrieval import RetrievalService
 
 ToolHandler = Callable[[dict[str, Any], "ToolContext"], Awaitable[dict[str, Any]]]
@@ -22,6 +22,7 @@ class ToolContext:
     user_text: str = ""
     citations: list[dict[str, Any]] = field(default_factory=list)
     drug_result: dict[str, Any] | None = None
+    drug_results: list[dict[str, Any]] = field(default_factory=list)
     report: dict[str, Any] | None = None
     booking: dict[str, Any] | None = None
     emitted_citations: set[str] = field(default_factory=set)
@@ -47,6 +48,10 @@ class ToolRegistry:
             "create_order": self.create_order,
             "get_payment_status": self.get_payment_status,
             "cancel_order": self.cancel_order,
+            "encounter_info": self.encounter_info,
+            "prescription_list": self.prescription_list,
+            "visit_status": self.visit_status,
+            "payment_status": self.payment_status,
             "submit_report": self.submit_report,
         }
 
@@ -56,11 +61,10 @@ class ToolRegistry:
             _tool("check_drug_interaction", "从文本中抽取药物并检查药物相互作用与妊娠禁忌。", {"text": "string"}, required=["text"]),
             _tool("lookup_guideline", "检索指南/共识类证据。", {"topic": "string"}, required=["topic"]),
             _tool("list_departments", "列出医院科室。", {}, required=[]),
-            _tool("list_schedules", "查询某科室的号源。", {"department": "string", "date": "string"}, required=["department"]),
-            _tool("lock_slot", "锁定号源 10 分钟。", {"slot_id": "string"}, required=["slot_id"]),
-            _tool("create_order", "从锁定的号源创建挂号订单。", {"lock_id": "string"}, required=["lock_id"]),
-            _tool("get_payment_status", "查询订单支付状态。", {"order_id": "string"}, required=["order_id"]),
-            _tool("cancel_order", "取消未支付订单。", {"order_id": "string"}, required=["order_id"]),
+            _tool("list_schedules", "查询某科室可挂号的服务（不含时间号源）。", {"department": "string", "date": "string"}, required=["department"]),
+            _tool("encounter_info", "查询就诊记录状态。", {"appointment_id": "string", "encounter_id": "string"}, required=[]),
+            _tool("prescription_list", "查询就诊处方（只读）。", {"encounter_id": "string", "appointment_id": "string"}, required=[]),
+            _tool("visit_status", "查询预约/就诊状态与下一步。", {"appointment_id": "string", "encounter_id": "string"}, required=[]),
             _tool(
                 "submit_report",
                 "提交最终结构化报告。",
@@ -113,22 +117,45 @@ class ToolRegistry:
 
     async def check_drug_interaction(self, args: dict[str, Any], context: ToolContext) -> dict[str, Any]:
         text = str(args.get("text") or context.user_text)
+        if context.member_id:
+            rows = await self.db.fetch(
+                """
+                SELECT name FROM medications
+                WHERE user_id=$1 AND active=true AND ($2::text IS NULL OR member_id=$2)
+                """,
+                context.user_id,
+                context.member_id,
+            )
+            names = [str(row["name"]) for row in rows if row["name"]]
+            if names:
+                text = f"{text} 在用药物：{'、'.join(names)}"
         result = DRUG_CHECKER.check_text(text)
-        context.drug_result = result
-        return {"ok": True, **result}
+        context.drug_results.append(result)
+        context.drug_result = merge_drug_results(context.drug_results)
+        return {"ok": True, **context.drug_result}
 
     # -------------------------------------------------------------- hospital
     async def list_departments(self, args: dict[str, Any], context: ToolContext) -> dict[str, Any]:
-        return {"ok": True, "departments": DEPARTMENT_NAMES}
+        result = await self.mcp.call_tool("schedule.list", {}, scope="agent_read")
+        data = self._adapter_result(result)
+        if not data.get("ok"):
+            return {"ok": True, "departments": DEPARTMENT_NAMES, "degraded": True}
+        return {
+            "ok": True,
+            "departments": [item.get("name") for item in data.get("departments") or []],
+            "availability_mode": data.get("availability_mode"),
+        }
 
     async def list_schedules(self, args: dict[str, Any], context: ToolContext) -> dict[str, Any]:
         result = await self.mcp.call_tool(
-            "list_schedules",
+            "schedule.list",
             {"department": args.get("department"), "date": args.get("date")},
+            scope="agent_read",
         )
-        if result["is_error"]:
-            return {"ok": False, "error": result["text"]}
-        return {"ok": True, "data": result["data"]}
+        data = self._adapter_result(result)
+        if not data.get("ok"):
+            return data
+        return {"ok": True, "data": data}
 
     async def _patient_ref(self, context: ToolContext) -> tuple[str, str | None]:
         if context.member_id:
@@ -208,6 +235,53 @@ class ToolRegistry:
             return {"ok": False, "error": result["text"]}
         return {"ok": True, "data": result["data"]}
 
+    # ------------------------------------------------------------- read HIT
+    async def encounter_info(self, args: dict[str, Any], context: ToolContext) -> dict[str, Any]:
+        result = await self.mcp.call_tool(
+            "encounter.get",
+            {"appointment_id": args.get("appointment_id"), "encounter_id": args.get("encounter_id")},
+            scope="agent_read",
+        )
+        return self._adapter_result(result)
+
+    async def prescription_list(self, args: dict[str, Any], context: ToolContext) -> dict[str, Any]:
+        result = await self.mcp.call_tool(
+            "prescription.list",
+            {
+                "encounter_id": args.get("encounter_id"),
+                "appointment_id": args.get("appointment_id"),
+                "include_details": True,
+            },
+            scope="agent_read",
+        )
+        return self._adapter_result(result)
+
+    async def visit_status(self, args: dict[str, Any], context: ToolContext) -> dict[str, Any]:
+        result = await self.mcp.call_tool(
+            "visit.status",
+            {"appointment_id": args.get("appointment_id"), "encounter_id": args.get("encounter_id")},
+            scope="agent_read",
+        )
+        return self._adapter_result(result)
+
+    async def payment_status(self, args: dict[str, Any], context: ToolContext) -> dict[str, Any]:
+        result = await self.mcp.call_tool(
+            "payment.status",
+            {"appointment_id": args.get("appointment_id"), "encounter_id": args.get("encounter_id")},
+            scope="agent_read",
+        )
+        return self._adapter_result(result)
+
+    @staticmethod
+    def _adapter_result(result: dict[str, Any]) -> dict[str, Any]:
+        envelope = result.get("data")
+        if result.get("is_error") or not isinstance(envelope, dict):
+            return {"ok": False, "error": str(result.get("text") or "hospital system unavailable")}
+        if envelope.get("ok") is False:
+            error = envelope.get("error") or {}
+            return {"ok": False, "error": error.get("message") or "hospital system error"}
+        return {"ok": True, **(envelope.get("data") or {})}
+
     # ---------------------------------------------------------------- report
     async def submit_report(self, args: dict[str, Any], context: ToolContext) -> dict[str, Any]:
         report = {
@@ -216,7 +290,7 @@ class ToolRegistry:
             "summary": str(args.get("summary") or ""),
             "advice": list(args.get("advice") or []),
             "medications": list(args.get("medications") or []),
-            "citations": list(args.get("citations") or [citation["id"] for citation in context.citations]),
+            "citations": list(args.get("citations") or []),
             "confidence": float(args.get("confidence") or 0.0),
             "followup_question": str(args.get("followup_question") or ""),
         }

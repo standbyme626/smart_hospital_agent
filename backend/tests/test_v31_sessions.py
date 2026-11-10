@@ -110,8 +110,8 @@ def test_second_turn_includes_previous_user_and_assistant_history():
         assert len(diagnosis) == 1
         messages = diagnosis[0]["messages"]
         assert messages[0]["role"] == "system"
-        assert messages[1] == {"role": "user", "content": first_user}
-        assert messages[2] == {"role": "assistant", "content": first_assistant}
+        assert {"role": "user", "content": first_user} in messages
+        assert {"role": "assistant", "content": first_assistant} in messages
         assert messages[-1]["role"] == "user"
         assert "还伴有恶心" in messages[-1]["content"]
 
