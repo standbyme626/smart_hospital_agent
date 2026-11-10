@@ -60,7 +60,7 @@
 | 患者端 | 患者 / 家属 | 分诊、报告解读、用药检查、挂号缴费、随访、消息 | 已上线（主链路） |
 | 医生端 `/clinician` | 门诊医生 | 今日队列、患者 360、病历草稿（签名待 HIS 接入） | 只读 + 草稿已上线 |
 | 运营 / 质控端 | 医务科、运营 | 支付异常、对账、接管、审计 | 原型已定稿，接口待接 |
-| 管理端 | 平台运维 / 知识库管理员 | Agent 配置、RAG、模型、规则、发布与回滚 | 原型已定稿，接口待接 |
+| 管理端 `/platform` | 平台运维 / 知识库管理员 | 运行总览、开关配置、能力矩阵（只读；发布与回滚在 S12） | 只读已上线 |
 
 > 四个入口的完整交互稿见 [`prototype/dual-end.html`](prototype/dual-end.html)（61 屏，单文件、可点击；纯演示数据）。
 
@@ -95,6 +95,7 @@
 
 - 通知中心：通知表 + 已读状态，随访/报告触发自动写入；
 - 医院适配器：MCP 工具、幂等 outbox、只读池、对账 finding；
+- 平台管理只读：`/platform` 汇总应用版本、Schema、数据规模、开关（鉴权/医生签名/限流/配额）与能力矩阵；
 - 验收脚本：26 条剧本（P/D/E2E/INT）定义在规划文档中。
 
 ---
@@ -259,7 +260,7 @@ cd frontend && npm run typecheck && npm run test:unit && NEXT_PUBLIC_API_BASE=""
 | 通知 | `GET /api/v1/notifications`、`POST .../read`、`.../read-all` | 站内通知 |
 | 医生端 | `GET /api/v1/clinician/queue`、`/patients/{id}`、`/drafts` | 只读 + 草稿 |
 | 运营 | `GET /api/v1/ops/summary`、`/ops/reconciliation`、`/ops/handoff` | 对账差异与人工接管 |
-| 管理 | `/api/v1/admin/*`、`/api/v1/eval`、`/api/ready`、`/metrics` | 审核、评测、健康 |
+| 管理 | `/api/v1/admin/*`、`/api/v1/admin/platform`、`/api/v1/eval`、`/api/ready`、`/metrics` | 审核、平台总览、评测、健康 |
 
 示例（占位符）：
 
@@ -338,7 +339,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 | S8 | 医生端只读（队列 + 360） | ✅ |
 | S9 | 医生端写入（草稿 + 签名门禁） | ✅ 草稿；签名待 HIS 透传 |
 | S10 | 运营端（概览 / 对账差异 / 人工接管） | ✅ |
-| S11 | 管理端只读 | 待做 |
+| S11 | 管理端只读（`/platform`） | ✅ |
 | S12 | 合规/告警/实验/评测 | 待做 |
 
 详细计划与完成定义见 [`docs/V3.3-ROLLOUT-PLAN.md`](docs/V3.3-ROLLOUT-PLAN.md)。
