@@ -10,7 +10,7 @@
 [![Live](https://img.shields.io/badge/live-hospital.kk.zhzepei.cn-0E9384)](https://hospital.kk.zhzepei.cn/)
 
 > **线上**：https://hospital.kk.zhzepei.cn/ （真实站，v3.1 基线）· https://hospital.kk.zhzepei.cn/preview/ （61 屏演示站，数据为模拟，已标注「演示数据」）
-> **版本状态（2026-11-10）**：**v3.3 滚动上线中**。真实站已合入 S1–S7：消息中心、随访、报告指标表、诊室失败重试等；后端 186 个测试全绿、ruff 干净。
+> **版本状态（2026-11-10）**：**v3.3 滚动上线中**。真实站已合入 S1–S8：消息中心、随访、报告指标表、诊室失败重试、医生端只读工作台；后端 188 个测试全绿、ruff 干净。
 > **新增接口**：`GET /api/v1/notifications`、单条/全部已读；随访创建与报告解读会自动写入站内通知。
 > **规划**：切片与完成定义见 [`docs/V3.3-ROLLOUT-PLAN.md`](docs/V3.3-ROLLOUT-PLAN.md)；四端 + 真 HIS 架构见 [`docs/V3.2-DUAL-END-PLAN.md`](docs/V3.2-DUAL-END-PLAN.md)。
 
@@ -30,7 +30,7 @@
 | S5 | 挂号支付（修复 5 个红测试，186 测试全绿） | ✅ |
 | S6 | 通知中心（后端通知表 + 消息页真实接口） | ✅ |
 | S7 | 随访（新增 `/followups`） | ✅ |
-| S8 | 医生端只读（队列 / 360 / 诊前摘要） | ⏳ 进行中 |
+| S8 | 医生端只读（`/clinician` 队列 + 患者 360） | ✅ |
 | S9–S12 | 医生端写入 / 运营端 / 管理端 / 合规评测 | 待做 |
 
 **部署**：`scripts/deploy_frontend.sh`（真实站，构建时强制 `NEXT_PUBLIC_API_BASE=""` 走同源）与 `scripts/deploy_preview.sh`（演示站）；每次发布前自动备份到 106 的 `hospital.bak-*` 目录，可整目录回滚。
