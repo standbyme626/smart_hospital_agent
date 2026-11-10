@@ -4,9 +4,18 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Cpu, Database, SlidersHorizontal } from "lucide-react";
 import { OfflineBanner, SourceBadge, StateBlock } from "@/components/ui";
-import { getPlatformOverview, type PlatformOverview } from "@/lib/api";
+import {
+  getCompliance,
+  getEvaluation,
+  getHealthSummary,
+  getPlatformOverview,
+  type ComplianceInfo,
+  type EvaluationData,
+  type HealthSummary,
+  type PlatformOverview,
+} from "@/lib/api";
 
-type Tab = "overview" | "config" | "capabilities";
+type Tab = "overview" | "config" | "capabilities" | "compliance" | "health" | "evaluation";
 
 const COUNT_LABEL: Record<string, string> = {
   users: "用户",
@@ -22,6 +31,9 @@ const COUNT_LABEL: Record<string, string> = {
 export default function PlatformPage() {
   const [tab, setTab] = useState<Tab>("overview");
   const [data, setData] = useState<PlatformOverview | null>(null);
+  const [compliance, setCompliance] = useState<ComplianceInfo | null>(null);
+  const [health, setHealth] = useState<HealthSummary | null>(null);
+  const [evaluation, setEvaluation] = useState<EvaluationData | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [denied, setDenied] = useState(false);
@@ -31,7 +43,16 @@ export default function PlatformPage() {
     setFailed(false);
     setDenied(false);
     try {
-      setData(await getPlatformOverview());
+      const [overview, complianceData, healthData, evaluationData] = await Promise.all([
+        getPlatformOverview(),
+        getCompliance().catch(() => null),
+        getHealthSummary().catch(() => null),
+        getEvaluation().catch(() => null),
+      ]);
+      setData(overview);
+      setCompliance(complianceData);
+      setHealth(healthData);
+      setEvaluation(evaluationData);
     } catch (error) {
       const status = (error as { status?: number } | null)?.status;
       if (status === 401 || status === 403) setDenied(true);
@@ -80,6 +101,9 @@ export default function PlatformPage() {
                 { key: "overview", label: "运行总览" },
                 { key: "config", label: "开关与配置" },
                 { key: "capabilities", label: "能力矩阵" },
+                { key: "compliance", label: "合规与数据" },
+                { key: "health", label: "告警与 SLO" },
+                { key: "evaluation", label: "质量评测" },
               ] as Array<{ key: Tab; label: string }>).map((item) => (
                 <button
                   key={item.key}
@@ -154,6 +178,97 @@ export default function PlatformPage() {
                 <p className="mt-3 text-[11px] leading-5 text-muted">
                   配置变更（Prompt、规则、索引发版）需要双人审批与快照回滚，属于后续切片；本页只读。
                 </p>
+              </section>
+            ) : tab === "compliance" && compliance ? (
+              <div className="grid gap-4 lg:grid-cols-2">
+                <section className="card p-5">
+                  <h2 className="section-title">留存策略</h2>
+                  <ul className="mt-3 space-y-2 text-[13px]">
+                    {Object.entries(compliance.retention).map(([key, value]) => (
+                      <li key={key} className="flex items-center justify-between rounded-2xl bg-canvas px-3 py-2">
+                        <span className="text-muted">{key}</span><span className="text-ink">{String(value)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+                <section className="card p-5">
+                  <h2 className="section-title">脱敏规则</h2>
+                  <ul className="mt-3 space-y-2 text-[13px] text-ink">
+                    {compliance.redaction.map((item) => (
+                      <li key={item} className="rounded-2xl bg-canvas px-3 py-2">{item}</li>
+                    ))}
+                  </ul>
+                </section>
+                <section className="card p-5">
+                  <h2 className="section-title">数据接口</h2>
+                  <ul className="mt-3 space-y-2 text-[13px]">
+                    {Object.entries(compliance.endpoints).map(([key, value]) => (
+                      <li key={key} className="flex items-center justify-between rounded-2xl bg-canvas px-3 py-2">
+                        <span className="text-muted">{key}</span><code className="text-ink">{value}</code>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+                <section className="card p-5">
+                  <h2 className="section-title">数据规模</h2>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    {Object.entries(compliance.counts).map(([key, value]) => (
+                      <div key={key} className="rounded-2xl bg-canvas p-3">
+                        <p className="text-[11px] text-muted">{key}</p>
+                        <p className="mt-1 text-[20px] font-semibold text-ink">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </div>
+            ) : tab === "health" && health ? (
+              <section className="card p-5">
+                <h2 className="section-title">告警与 SLO（实时检查）</h2>
+                <ul className="mt-3 space-y-2">
+                  {health.checks.map((item) => (
+                    <li key={item.name} className="flex flex-wrap items-center gap-2 rounded-2xl bg-canvas px-3 py-2 text-[13px]">
+                      <span className={item.status === "ok" ? "badge bg-emerald-50 text-emerald-700" : item.status === "warn" ? "badge bg-amber-50 text-amber-700" : item.status === "fail" ? "badge bg-rose-50 text-rose-700" : "badge"}>
+                        {item.status === "ok" ? "正常" : item.status === "warn" ? "关注" : item.status === "fail" ? "异常" : "信息"}
+                      </span>
+                      <span className="font-medium text-ink">{item.name}</span>
+                      <span className="text-muted">{item.detail}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-3 text-[11px] leading-5 text-muted">阈值与告警通知渠道（钉钉/企业微信/电话）在后续切片接入；当前为规则实时检查。</p>
+              </section>
+            ) : tab === "evaluation" && evaluation ? (
+              <section className="card overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3">
+                  <h2 className="section-title">质量评测</h2>
+                  <span className="text-[11px] text-muted">共 {evaluation.total} 次</span>
+                </div>
+                {evaluation.runs.length === 0 ? (
+                  <div className="border-t border-line p-3">
+                    <StateBlock kind="empty" title="还没有评测记录" description="运行评测后会在这里留下批次与指标" />
+                  </div>
+                ) : (
+                  <table className="w-full text-left text-[12px]">
+                    <thead className="bg-canvas text-muted">
+                      <tr>
+                        <th className="px-3 py-2 font-medium">批次</th>
+                        <th className="px-3 py-2 font-medium">时间</th>
+                        <th className="px-3 py-2 font-medium">指标</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {evaluation.runs.map((run) => (
+                        <tr key={run.id} className="border-t border-line">
+                          <td className="px-3 py-2 text-ink">{run.name}</td>
+                          <td className="px-3 py-2 text-muted">{run.created_at?.slice(0, 19).replace("T", " ")}</td>
+                          <td className="px-3 py-2 text-muted">
+                            {Object.entries(run.metrics || {}).slice(0, 3).map(([key, value]) => key + "=" + String(value)).join(" · ") || "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </section>
             ) : data ? (
               <section className="card overflow-hidden">

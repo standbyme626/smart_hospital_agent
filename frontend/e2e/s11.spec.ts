@@ -46,6 +46,18 @@ test("platform console loads for admin and is denied for patient", async ({ page
   await expect(page.getByText("医保结算 / 电子处方")).toBeVisible();
   await expect(page.getByText("待确认", { exact: true })).toBeVisible();
 
+  await page.getByRole("button", { name: "合规与数据" }).click();
+  await expect(page.getByRole("heading", { name: "留存策略" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "脱敏规则" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "数据接口" })).toBeVisible();
+
+  await page.getByRole("button", { name: "告警与 SLO" }).click();
+  await expect(page.getByText("数据库与 Schema")).toBeVisible();
+  await expect(page.getByText("医生写入门禁")).toBeVisible();
+
+  await page.getByRole("button", { name: "质量评测" }).click();
+  await expect(page.getByRole("heading", { name: "质量评测" })).toBeVisible();
+
   await page.evaluate(() => window.localStorage.clear());
   await login(page, PATIENT_USER, PATIENT_PASSWORD);
 

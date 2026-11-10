@@ -514,6 +514,49 @@ export async function getPlatformOverview(): Promise<PlatformOverview> {
   return apiFetch<PlatformOverview>("/api/v1/admin/platform");
 }
 
+export type ComplianceInfo = {
+  retention: Record<string, string | number>;
+  redaction: string[];
+  endpoints: Record<string, string>;
+  counts: Record<string, number>;
+};
+
+export type HealthCheck = {
+  name: string;
+  status: "ok" | "warn" | "fail" | "info";
+  detail: string;
+};
+
+export type HealthSummary = {
+  checks: HealthCheck[];
+  counts: Record<string, number>;
+};
+
+export type EvaluationRun = {
+  id: number;
+  name: string;
+  metrics: Record<string, unknown>;
+  created_at: string;
+};
+
+export type EvaluationData = {
+  runs: EvaluationRun[];
+  latest: EvaluationRun | null;
+  total: number;
+};
+
+export async function getCompliance(): Promise<ComplianceInfo> {
+  return apiFetch<ComplianceInfo>("/api/v1/admin/compliance");
+}
+
+export async function getHealthSummary(): Promise<HealthSummary> {
+  return apiFetch<HealthSummary>("/api/v1/admin/health-summary");
+}
+
+export async function getEvaluation(): Promise<EvaluationData> {
+  return apiFetch<EvaluationData>("/api/v1/admin/evaluation");
+}
+
 export async function getTimeline(memberId?: string): Promise<TimelineEvent[]> {
   const query = memberId ? `?member_id=${encodeURIComponent(memberId)}` : "";
   const data = await apiFetch<{ timeline: TimelineEvent[] }>(`/api/v1/health/timeline${query}`);
