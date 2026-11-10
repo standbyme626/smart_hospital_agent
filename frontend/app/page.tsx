@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
+  BellRing,
   CalendarClock,
   Camera,
   CheckCircle2,
@@ -99,7 +100,15 @@ export default function HomePage() {
     <AppShell
       title={`${greeting}，${memberName}`}
       subtitle="今天想先解决哪件事？"
-      actions={<span className="hidden rounded-full bg-primary-soft px-3 py-1 text-[11px] text-primary sm:inline-flex">AI 分诊 · 证据可查</span>}
+      actions={
+        <div className="flex items-center gap-2">
+          <span className="hidden rounded-full bg-primary-soft px-3 py-1 text-[11px] text-primary sm:inline-flex">AI 分诊 · 证据可查</span>
+          <Link href="/messages/" className="relative flex h-9 w-9 items-center justify-center rounded-full bg-white text-muted ring-1 ring-line hover:text-primary" aria-label="消息">
+            <BellRing size={16} />
+            {summary?.followups?.length ? <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-rose-500" /> : null}
+          </Link>
+        </div>
+      }
     >
       <div className="space-y-5">
         {loadError ? (

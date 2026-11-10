@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import {
   Activity,
+  Bell,
   CalendarClock,
   ChevronRight,
   ClipboardList,
@@ -24,6 +25,7 @@ import { FamilySwitcher } from "./FamilySwitcher";
 
 const navItems = [
   { href: "/", label: "首页", icon: Home },
+  { href: "/messages", label: "消息", icon: Bell },
   { href: "/consult", label: "AI 诊室", icon: Stethoscope },
   { href: "/reports", label: "报告解读", icon: FileText },
   { href: "/meds", label: "药管家", icon: Pill },
