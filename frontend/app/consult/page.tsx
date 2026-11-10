@@ -21,6 +21,7 @@ import { AppShell } from "@/components/AppShell";
 import { ResultView } from "@/components/ResultView";
 import { useApp } from "@/lib/app-context";
 import { getSession, streamChat, track } from "@/lib/api";
+import { OfflineBanner, SourceBadge } from "@/components/ui";
 import { memberMismatch } from "@/lib/session-guard";
 import type { ChatMessage, Citation, Report, Safety, StreamEvent, Triage } from "@/lib/types";
 import {
@@ -91,6 +92,8 @@ export default function ConsultPage() {
   const [crisisAcknowledged, setCrisisAcknowledged] = useState(false);
   const [unknownAcknowledged, setUnknownAcknowledged] = useState(false);
   const crisisModeRef = useRef(false);
+  const [streamError, setStreamError] = useState<string | null>(null);
+  const lastStreamRef = useRef<{ message: string; title?: string; sessionId: string | null } | null>(null);
 
   useEffect(() => {
     const saved = window.sessionStorage.getItem("consult_draft");
@@ -258,16 +261,18 @@ export default function ConsultPage() {
     const title = [bodyArea, symptoms.join("、"), duration].filter(Boolean).join(" · ") || draft.trim().slice(0, 40) || "问诊";
     setSessionMemberId(memberId || null);
     setMessages((prev) => [...prev, { role: "user", content: message }]);
+    setStreamError(null);
+    lastStreamRef.current = { message, title, sessionId: sessionId || null };
     try {
       for await (const event of streamChat({ message, title, session_id: sessionId || undefined, member_id: memberId || undefined })) {
         applyStreamEvent(event);
       }
     } catch (err) {
-      showToast(
-        crisis
-          ? "网络异常；已按危急情况处理，请立即拨打 120 或前往急诊"
-          : err instanceof Error ? err.message : "请求失败，请稍后再试",
-      );
+      if (crisis) {
+        showToast("网络异常；已按危急情况处理，请立即拨打 120 或前往急诊");
+      } else {
+        setStreamError(err instanceof Error ? err.message : "请求失败，请稍后再试");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -286,12 +291,36 @@ export default function ConsultPage() {
     setStatusLines([]);
     setStreamingText("");
     track("consult_followup", { session_id: sessionId });
+    setStreamError(null);
+    lastStreamRef.current = { message: text, sessionId };
     try {
       for await (const event of streamChat({ message: text, session_id: sessionId, member_id: memberId || undefined })) {
         applyStreamEvent(event);
       }
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "请求失败，请稍后再试");
+      setStreamError(err instanceof Error ? err.message : "请求失败，请稍后再试");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function retryStream() {
+    const last = lastStreamRef.current;
+    if (!last || submitting) return;
+    setStreamError(null);
+    setSubmitting(true);
+    setStatusLines([]);
+    try {
+      for await (const event of streamChat({
+        message: last.message,
+        title: last.title,
+        session_id: last.sessionId || undefined,
+        member_id: memberId || undefined,
+      })) {
+        applyStreamEvent(event);
+      }
+    } catch (err) {
+      setStreamError(err instanceof Error ? err.message : "重试失败，请稍后再试");
     } finally {
       setSubmitting(false);
     }
@@ -332,9 +361,22 @@ export default function ConsultPage() {
   }
 
   return (
-    <AppShell title="AI 诊室" subtitle="一屏一问，先分诊再决定下一步">
+    <AppShell
+      title="AI 诊室"
+      subtitle="一屏一问，先分诊再决定下一步"
+      actions={<SourceBadge live />}
+    >
       <div className="mx-auto max-w-3xl space-y-4">
         <h1 className="text-xl font-semibold text-ink lg:hidden">AI 诊室</h1>
+        <OfflineBanner />
+        {streamError ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-800">
+            <span>{streamError}</span>
+            <button onClick={retryStream} disabled={submitting} className="min-h-9 rounded-full bg-white px-4 text-[12px] font-medium text-amber-800 disabled:opacity-50">
+              重试
+            </button>
+          </div>
+        ) : null}
         <div className="flex items-center gap-2">
           {["就诊人", "症状", "结果"].map((label, index) => (
             <div key={label} className="flex flex-1 items-center gap-2">
