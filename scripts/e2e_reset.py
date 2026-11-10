@@ -17,7 +17,17 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 BACKEND_DIR = REPO_ROOT / "backend"
 sys.path.insert(0, str(BACKEND_DIR))
 
-DEFAULT_DSN = "postgresql://sha:sha_pwd@127.0.0.1:5434/sha_e2e"
+def _default_dsn() -> str:
+    env_file = REPO_ROOT / ".env"
+    if env_file.exists():
+        for line in env_file.read_text(encoding="utf-8").splitlines():
+            if line.startswith("DATABASE_URL="):
+                url = line.split("=", 1)[1].strip()
+                return url.rsplit("/", 1)[0] + "/sha_e2e"
+    return "postgresql://sha:change-me@127.0.0.1:5434/sha_e2e"
+
+
+DEFAULT_DSN = _default_dsn()
 
 APP_TABLES = (
     "users",
@@ -39,6 +49,13 @@ APP_TABLES = (
     "mcp_locks",
     "mcp_orders",
     "mcp_booked",
+    "appointment_projection",
+    "human_task",
+    "his_patient_map",
+    "his_encounter_map",
+    "his_prescription_map",
+    "sync_outbox",
+    "reconciliation_finding",
 )
 
 

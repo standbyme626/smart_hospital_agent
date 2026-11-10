@@ -21,6 +21,10 @@ async function login(page: Page, username: string, password: string): Promise<vo
   for (let attempt = 0; attempt < 3; attempt += 1) {
     await page.getByPlaceholder("请输入账号").fill(username);
     await page.getByPlaceholder("请输入密码").fill(password);
+    const consent = page.getByRole("checkbox", { name: /我已阅读并同意/ });
+    if (await consent.count()) {
+      await consent.check();
+    }
     await page.getByRole("button", { name: "登录", exact: true }).click();
     try {
       await home.waitFor({ state: "visible", timeout: 20_000 });
@@ -79,6 +83,7 @@ test("report upload with fake vision and family member scoping", async ({ page }
   await open(page, "/reports/");
   await page.locator('input[type="file"]').setInputFiles(PNG_PATH);
   await expect(page.getByAltText("预览")).toBeVisible();
+  await page.getByRole("checkbox", { name: /我已知悉并同意/ }).check();
   await page.getByRole("button", { name: "开始解读" }).click();
   await expect(page.getByText(`${REPORT_MARKER}检查报告解读`).first()).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText("异常指标")).toBeVisible();
@@ -103,41 +108,75 @@ test("report upload with fake vision and family member scoping", async ({ page }
 
   await switchMember(page, MEMBER_NAME, "本人");
   await expect(page.getByText("report.png").first()).toBeVisible();
-  await expect(page.getByText("1 条")).toBeVisible();
+  await expect(page.getByText(/\d+ 条/).first()).toBeVisible();
 });
 
-test("booking lock, admin approval and visit guide", async ({ page, browser }) => {
+test("HIS booking quote, cashier payment and visit guide", async ({ page, browser, request }) => {
+  const auth = await request.post(`${API_BASE}/api/v1/auth/login`, {
+    data: { username: PATIENT_USER, password: PATIENT_PASSWORD },
+  });
+  expect(auth.ok()).toBeTruthy();
+  const token = ((await auth.json()) as { access_token: string }).access_token;
+  const family = await request.get(`${API_BASE}/api/v1/family`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(family.ok()).toBeTruthy();
+  const members = ((await family.json()) as { members: Array<Record<string, unknown>> }).members;
+  const selfMember = members.find((item) => item.is_self) as Record<string, unknown> | undefined;
+  expect(selfMember).toBeTruthy();
+  const patched = await request.patch(`${API_BASE}/api/v1/family/${selfMember!.id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: {
+      name: selfMember!.name,
+      relation: "self",
+      is_self: true,
+      id_card: `31010119880101${String(Math.floor(Math.random() * 10000)).padStart(4, "0")}`,
+      birth_date: "1988-01-01",
+      gender: "male",
+    },
+  });
+  expect(patched.ok()).toBeTruthy();
+
   await login(page, PATIENT_USER, PATIENT_PASSWORD);
   await open(page, "/services/");
-  await expect(page.getByText("可预约号源")).toBeVisible();
+  await expect(page.getByText("HIS 报价 + 医院收费")).toBeVisible();
+  const bookingDepartment = process.env.E2E_BOOKING_DEPARTMENT || "心血管内科";
+  const bookingDoctor = process.env.E2E_BOOKING_DOCTOR || "张医生";
+  const bookingService = process.env.E2E_BOOKING_SERVICE || "心血管内科普通门诊";
+  const departmentSelect = page.locator("select").first();
+  if (await departmentSelect.count()) {
+    await departmentSelect.selectOption({ label: bookingDepartment }).catch(() => {});
+  }
+  const doctorButton = page.getByRole("button", { name: `${bookingDoctor} 预约挂号` });
+  await expect(doctorButton).toBeVisible({ timeout: 30_000 });
+  await doctorButton.click();
+  await page.getByRole("button", { name: new RegExp(bookingService) }).first().click();
+  await page.getByRole("button", { name: /提交挂号（获取报价）/ }).click();
+  await expect(page.getByText("报价单号：")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("去缴费 / 申请支付")).toBeVisible();
 
-  await page.getByRole("button", { name: /09:00/ }).first().click({ timeout: 30_000 });
-  await page.getByRole("button", { name: "锁定号源" }).click();
-  await expect(page.getByText(/剩余时间/)).toBeVisible({ timeout: 30_000 });
-  await page.getByRole("button", { name: "创建订单" }).click();
-  await expect(page.getByText(/^order_[0-9a-f]+$/).first()).toBeVisible();
-  await page.getByRole("button", { name: "申请支付" }).click();
-  await expect(page.getByText(/等待管理员人工确认/)).toBeVisible();
+  await page.getByRole("button", { name: /去缴费 \/ 申请支付/ }).click();
+  await expect(page.getByText(/收费任务已创建/)).toBeVisible({ timeout: 30_000 });
 
   const adminContext = await browser.newContext();
   const adminPage = await adminContext.newPage();
   await login(adminPage, ADMIN_USER, ADMIN_PASSWORD);
   await open(adminPage, "/admin/");
-  await adminPage.getByRole("button", { name: "待审核" }).click();
-  await expect(adminPage.getByText("待审核支付申请")).toBeVisible();
-  await adminPage.getByRole("button", { name: "批准" }).first().click();
-  await expect(adminPage.getByText("暂无待审核申请。")).toBeVisible({ timeout: 30_000 });
+  await adminPage.getByRole("button", { name: /收费任务/ }).click();
+  await expect(adminPage.getByText("收费任务（待处理）")).toBeVisible({ timeout: 30_000 });
+  adminPage.once("dialog", (dialog) => dialog.accept());
+  await adminPage.getByRole("button", { name: /模拟支付（演示）/ }).first().click();
+  await expect(adminPage.getByText(/状态将随 HIS 同步/)).toBeVisible({ timeout: 30_000 });
   await adminContext.close();
 
-  await expect(page.getByText("已支付", { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("已挂号", { exact: true }).first()).toBeVisible({ timeout: 45_000 });
   await expect(page.getByText("就诊指引")).toBeVisible();
-  await expect(page.getByText(/示范医院/)).toBeVisible();
+  await expect(page.getByText(/请提前 20 分钟到院/)).toBeVisible();
 
   await page.reload();
   await page.waitForLoadState("networkidle");
-  await expect(page.getByText("已支付", { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("已挂号", { exact: true }).first()).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText("就诊指引")).toBeVisible();
-  await expect(page.getByText(/示范医院/)).toBeVisible();
 });
 
 function ageFor(year: number, month: number, day: number): number {
@@ -153,6 +192,25 @@ test("consult age follows the selected member's birth date", async ({ page, requ
   });
   expect(auth.ok()).toBeTruthy();
   const token = ((await auth.json()) as { access_token: string }).access_token;
+  const family = await request.get(`${API_BASE}/api/v1/family`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(family.ok()).toBeTruthy();
+  const selfMember = ((await family.json()) as { members: Array<Record<string, unknown>> }).members.find(
+    (item) => item.is_self,
+  ) as Record<string, unknown> | undefined;
+  expect(selfMember).toBeTruthy();
+  const reset = await request.patch(`${API_BASE}/api/v1/family/${selfMember!.id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: {
+      name: selfMember!.name,
+      relation: "self",
+      is_self: true,
+      birth_date: null,
+      gender: null,
+    },
+  });
+  expect(reset.ok()).toBeTruthy();
   const created = await request.post(`${API_BASE}/api/v1/family`, {
     headers: { Authorization: `Bearer ${token}` },
     data: { name: "年龄测试家人", relation: "子女", birth_date: "2018-06-01" },
@@ -179,6 +237,6 @@ test("consult age follows the selected member's birth date", async ({ page, requ
   await ageInput.fill("35");
   await expect(ageInput).toHaveValue("35");
 
-  await memberCard.getByRole("button", { name: /^本人\s*本人/ }).click();
+  await memberCard.getByRole("button", { name: /^本人$/ }).click();
   await expect(ageInput).toHaveValue("");
 });

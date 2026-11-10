@@ -18,11 +18,12 @@ import {
   Stethoscope,
   Users,
 } from "lucide-react";
+import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { TaskCard } from "@/components/TaskCard";
 import { useApp } from "@/lib/app-context";
 import { completeFollowup, getHomeSummary, track } from "@/lib/api";
-import { formatDate, formatSessionTitle, kindMeta, relativeTime } from "@/lib/format";
+import { formatDate, formatSessionTitle, kindMeta, relativeTime, timelineHref } from "@/lib/format";
 import type { HomeSummary } from "@/lib/types";
 
 export default function HomePage() {
@@ -30,14 +31,19 @@ export default function HomePage() {
   const { activeMember, showToast, refreshFamily } = useApp();
   const [summary, setSummary] = useState<HomeSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [draft, setDraft] = useState("");
 
   async function load() {
+    setLoading(true);
+    setLoadError(false);
+    setSummary(null);
     try {
       const data = await getHomeSummary(activeMember?.id);
       setSummary(data);
     } catch {
       setSummary(null);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -96,6 +102,12 @@ export default function HomePage() {
       actions={<span className="hidden rounded-full bg-primary-soft px-3 py-1 text-[11px] text-primary sm:inline-flex">AI 分诊 · 证据可查</span>}
     >
       <div className="space-y-5">
+        {loadError ? (
+          <div className="card flex flex-wrap items-center justify-between gap-2 border-rose-200 bg-rose-50 p-3 text-[13px] text-rose-700">
+            <span>加载失败，请重试</span>
+            <button onClick={load} className="min-h-11 rounded-full bg-white px-4 text-[12px] font-medium text-rose-700">重试</button>
+          </div>
+        ) : null}
         <section className="card overflow-hidden p-5 sm:p-7">
           <div className="flex items-center gap-2 text-[12px] text-muted">
             <Sparkles size={14} className="text-primary" />
@@ -183,26 +195,27 @@ export default function HomePage() {
                 </span>
                 <ChevronRight size={16} className="shrink-0 text-muted" />
               </button>
-            ) : (
+            ) : !loadError ? (
               <div className="mt-4 rounded-2xl bg-canvas p-4 text-[13px] text-muted">
                 还没有问诊记录。说说哪里不舒服，大医帮你先分诊。
               </div>
-            )}
+            ) : null}
           </section>
 
           <section className="card p-5">
             <div className="flex items-center justify-between">
               <h2 className="section-title">今日待办</h2>
-              <span className="text-[11px] text-muted">{summary ? summary.followups.length + summary.medications.length : 0} 项</span>
+              <span className="text-[11px] text-muted">{loading || loadError || !summary ? "—" : `${summary.followups.length + summary.medications.length} 项`}</span>
             </div>
             <div className="mt-3 space-y-2">
+              {loading ? <div className="h-16 animate-pulse rounded-2xl bg-canvas" /> : null}
               {summary?.followups?.slice(0, 2).map((item) => (
                 <div key={item.id} className="flex items-center justify-between gap-2 rounded-2xl bg-canvas p-3">
                   <span className="min-w-0">
                     <span className="block truncate text-[13px] font-medium text-ink">{item.title}</span>
                     <span className="mt-0.5 flex items-center gap-1 text-[11px] text-muted"><Clock size={11} /> {item.due_date ? formatDate(item.due_date) : "待安排"}</span>
                   </span>
-                  <button onClick={() => finishFollowup(item.id)} className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-primary hover:bg-primary-soft" aria-label="完成随访">
+                  <button onClick={() => finishFollowup(item.id)} className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-primary hover:bg-primary-soft" aria-label="完成随访">
                     <CheckCircle2 size={15} />
                   </button>
                 </div>
@@ -216,7 +229,7 @@ export default function HomePage() {
                   </span>
                 </div>
               ))}
-              {!summary?.followups?.length && !summary?.medications?.length ? (
+              {!loading && !loadError && !summary?.followups?.length && !summary?.medications?.length ? (
                 <div className="rounded-2xl bg-canvas p-4 text-[13px] text-muted">今天没有待办，保持好作息。</div>
               ) : null}
             </div>
@@ -229,17 +242,27 @@ export default function HomePage() {
             <button onClick={() => router.push("/health/")} className="text-[12px] text-primary">查看全部</button>
           </div>
           <div className="mt-3 space-y-2">
+            {loading ? <div className="h-16 animate-pulse rounded-2xl bg-canvas" /> : null}
             {summary?.timeline?.slice(0, 3).map((event) => {
               const meta = kindMeta[event.kind] || kindMeta.consult;
-              return (
-                <div key={event.id} className="flex items-center gap-3 rounded-2xl bg-canvas p-3">
+              const href = timelineHref(event.kind, event.detail);
+              const content = (
+                <>
                   <span className={`badge ${meta.color}`}>{meta.label}</span>
                   <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{event.title}</span>
                   <span className="shrink-0 text-[11px] text-muted">{relativeTime(event.occurred_at)}</span>
-                </div>
+                </>
+              );
+              return href ? (
+                <Link key={event.id} href={href} className="flex items-center gap-3 rounded-2xl bg-canvas p-3 transition hover:bg-primary-soft/50">
+                  {content}
+                  <ChevronRight size={14} className="shrink-0 text-muted" />
+                </Link>
+              ) : (
+                <div key={event.id} className="flex items-center gap-3 rounded-2xl bg-canvas p-3">{content}</div>
               );
             })}
-            {!summary?.timeline?.length ? (
+            {!loading && !loadError && !summary?.timeline?.length ? (
               <p className="rounded-2xl bg-canvas p-4 text-[13px] text-muted">你的问诊、报告、用药和挂号记录会显示在这里。</p>
             ) : null}
           </div>
@@ -247,7 +270,7 @@ export default function HomePage() {
 
         <section className="grid gap-3 sm:grid-cols-3">
           {[
-            { icon: ShieldCheck, title: "证据可追溯", text: "每条建议都有医学来源" },
+            { icon: ShieldCheck, title: "证据可追溯", text: "关键建议附本地知识库依据（如有）" },
             { icon: Users, title: "家庭档案", text: "为老人孩子分别建档" },
             { icon: CalendarClock, title: "服务闭环", text: "分诊 → 挂号 → 健康档案" },
           ].map((item) => (

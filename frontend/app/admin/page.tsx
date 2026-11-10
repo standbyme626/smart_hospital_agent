@@ -4,7 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Activity,
   BarChart3,
+  CheckCircle2,
   ClipboardList,
+  CreditCard,
   Database,
   Gauge,
   Loader2,
@@ -19,23 +21,35 @@ import { AppShell } from "@/components/AppShell";
 import { ReviewQueue } from "@/components/ReviewQueue";
 import { useApp } from "@/lib/app-context";
 import {
+  ackPaymentTask,
   createUser,
   getAnalytics,
   getAudit,
   getEvalResults,
   getModelCalls,
+  getBookingConfig,
+  getPaymentTasks,
   getRagStatus,
   getUsers,
   runEval,
+  simulateAppointmentPayment,
   updateUser,
 } from "@/lib/api";
-import type { AdminUser, AuditEntry, EvalResult, ModelCall, RagStatus } from "@/lib/types";
+import type {
+  AdminUser,
+  AuditEntry,
+  EvalResult,
+  ModelCall,
+  PaymentTask,
+  RagStatus,
+} from "@/lib/types";
 
-type Tab = "overview" | "reviews" | "users" | "audit";
+type Tab = "overview" | "reviews" | "payments" | "users" | "audit";
 
 const TABS: { key: Tab; label: string; icon: typeof Activity }[] = [
   { key: "overview", label: "概览", icon: Gauge },
   { key: "reviews", label: "待审核", icon: ClipboardList },
+  { key: "payments", label: "收费任务", icon: CreditCard },
   { key: "users", label: "用户", icon: Users },
   { key: "audit", label: "审计", icon: ShieldCheck },
 ];
@@ -49,6 +63,10 @@ export default function AdminPage() {
   const [analytics, setAnalytics] = useState<{ name: string; count: number }[]>([]);
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
+  const [tasks, setTasks] = useState<PaymentTask[]>([]);
+  const [paymentMode, setPaymentMode] = useState<string>("");
+  const [tasksError, setTasksError] = useState<string | null>(null);
+  const [taskBusy, setTaskBusy] = useState<string | null>(null);
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -95,13 +113,69 @@ export default function AdminPage() {
     }
   }, [showToast]);
 
+  const loadPaymentTasks = useCallback(async () => {
+    setLoading(true);
+    setTasksError(null);
+    try {
+      setTasks(await getPaymentTasks("requested"));
+    } catch (err) {
+      setTasksError(err instanceof Error ? err.message : "加载收费任务失败");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (user?.role !== "admin") return;
+    getBookingConfig()
+      .then((config) => setPaymentMode(config.payment_mode))
+      .catch(() => setPaymentMode(""));
     if (tab === "overview") load();
+    if (tab === "payments") loadPaymentTasks();
     if (tab === "users") loadUsers();
     if (tab === "audit") loadAudit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.role, tab]);
+
+  async function completeTask(task: PaymentTask) {
+    if (!task.id) return;
+    setTaskBusy(task.id);
+    try {
+      await ackPaymentTask(task.id, "completed");
+      showToast("收费任务已标记完成");
+      await loadPaymentTasks();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "标记失败");
+    } finally {
+      setTaskBusy(null);
+    }
+  }
+
+  async function simulatePayment(task: PaymentTask) {
+    const payloadAppointmentId = task.payload?.appointment_id;
+    const appointmentId =
+      typeof payloadAppointmentId === "string" && payloadAppointmentId
+        ? payloadAppointmentId
+        : task.ref_id;
+    if (!appointmentId) {
+      showToast("任务缺少挂号单号");
+      return;
+    }
+    const confirmed = window.confirm(
+      `模拟支付仅用于演示（mock 模式），会直接标记该挂号已支付。\n挂号单：${appointmentId}\n\n确认继续？`,
+    );
+    if (!confirmed) return;
+    setTaskBusy(task.id || appointmentId);
+    try {
+      await simulateAppointmentPayment(appointmentId);
+      showToast("已模拟支付，状态将随 HIS 同步");
+      await loadPaymentTasks();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "模拟支付失败");
+    } finally {
+      setTaskBusy(null);
+    }
+  }
 
   async function run() {
     setLoading(true);
@@ -157,7 +231,7 @@ export default function AdminPage() {
   }
 
   return (
-    <AppShell title="运营后台" subtitle="审核、用户、检索、模型与评测">
+    <AppShell title="运营后台" subtitle="收费任务、审核、用户、检索、模型与评测">
       <div className="space-y-4">
         <div className="flex flex-wrap gap-2">
           {TABS.map((item) => {
@@ -174,7 +248,104 @@ export default function AdminPage() {
           })}
         </div>
 
-        {tab === "reviews" ? <ReviewQueue /> : null}
+        {tab === "reviews" ? (
+          <>
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-[11px] leading-5 text-amber-800">
+              旧本地支付流程（仅兼容）：新挂号已改为 HIS 报价 + 医院收费窗口支付，本队列只处理历史订单。
+            </div>
+            <ReviewQueue />
+          </>
+        ) : null}
+
+        {tab === "payments" ? (
+          <section className="card overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-3">
+              <div>
+                <p className="flex items-center gap-1.5 text-[12px] font-medium text-muted">
+                  <CreditCard size={14} className="text-primary" />收费任务（待处理）
+                </p>
+                <p className="mt-0.5 text-[11px] text-muted">
+                  HIS 报价后由患者发起缴费，收费窗口完成支付。当前为 HIS 适配器 mock/试点模式，支付以医院收费窗口为准。
+                </p>
+              </div>
+              <button onClick={() => void loadPaymentTasks()} disabled={loading} className="btn-ghost">
+                <RefreshCw size={14} className={loading ? "animate-spin" : ""} />刷新
+              </button>
+            </div>
+
+            {tasksError ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-rose-50 px-4 py-2 text-[11px] text-rose-700">
+                <span>收费任务加载失败：{tasksError}</span>
+                <button onClick={() => void loadPaymentTasks()} className="btn-ghost">
+                  <RefreshCw size={14} />重试
+                </button>
+              </div>
+            ) : null}
+
+            {loading && tasks.length === 0 ? (
+              <div className="flex items-center gap-2 px-4 py-6 text-[12px] text-muted">
+                <Loader2 size={14} className="animate-spin" />加载收费任务…
+              </div>
+            ) : tasks.length === 0 ? (
+              <p className="px-4 py-6 text-[12px] text-muted">暂无待处理收费任务。</p>
+            ) : (
+              <div className="divide-y divide-line/60">
+                {tasks.map((task) => {
+                  const payload = task.payload || {};
+                  const amount = Number(payload.amount ?? 0);
+                  const quoteId = payload.quote_id ? String(payload.quote_id) : "—";
+                  const instructions = payload.instructions ? String(payload.instructions) : "";
+                  const key = task.id || task.ref_id || "";
+                  return (
+                    <div key={key} className="px-4 py-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="badge bg-amber-50 text-amber-700">{task.status}</span>
+                        <span className="text-[13px] font-semibold text-ink">
+                          ¥{amount.toFixed(2)}
+                        </span>
+                        <span className="text-[11px] text-muted">报价 {quoteId}</span>
+                        <span className="text-[11px] text-muted">挂号 {task.ref_id || "—"}</span>
+                        <span className="text-[11px] text-muted">用户 {task.user_id || "—"}</span>
+                        <span className="text-[11px] text-muted">成员 {task.member_id || "—"}</span>
+                        <span className="text-[11px] text-muted">
+                          SLA {task.sla_due_at ? new Date(task.sla_due_at).toLocaleString() : "—"}
+                        </span>
+                        <span className="text-[11px] text-muted">
+                          创建 {task.created_at ? new Date(task.created_at).toLocaleString() : "—"}
+                        </span>
+                      </div>
+                      {instructions ? (
+                        <p className="mt-2 rounded-xl bg-canvas p-2 text-[11px] text-ink">{instructions}</p>
+                      ) : null}
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <button
+                          onClick={() => void completeTask(task)}
+                          disabled={!task.id || taskBusy === key}
+                          className="btn-primary"
+                        >
+                          <CheckCircle2 size={14} />标记已完成
+                        </button>
+                        {paymentMode !== "cashier" ? (
+                          <button
+                            onClick={() => void simulatePayment(task)}
+                            disabled={taskBusy === key}
+                            className="btn-ghost"
+                          >
+                            <CreditCard size={14} />模拟支付（演示）
+                          </button>
+                        ) : (
+                          <span className="text-[11px] text-muted">
+                            真实 HIS 收费模式：请到 OpenHIS 收费窗口完成挂号/收款
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        ) : null}
 
         {tab === "users" ? (
           <section className="card overflow-hidden">
@@ -368,7 +539,7 @@ export default function AdminPage() {
 
             <div className="flex items-start gap-2 rounded-2xl border border-line bg-card p-3 text-[11px] leading-5 text-muted">
               <Activity size={14} className="mt-0.5 shrink-0 text-primary" />
-              这是内部运营台，不属于消费者导航。支付申请必须在这里人工批准后才会调用医院 MCP 完成扣款。
+              新挂号走 HIS 报价 + 医院收费窗口支付；「审核」tab 的旧本地支付流程仅保留兼容，不再用于新订单。
             </div>
           </>
         ) : null}

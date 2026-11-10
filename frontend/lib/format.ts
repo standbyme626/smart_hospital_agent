@@ -106,11 +106,62 @@ export function relativeTime(value?: string | null): string {
   return formatDate(value);
 }
 
+export const POLICY_VERSION = "v2026-11";
+export const POLICY_EFFECTIVE_DATE = "2026-11-01";
+
+export function timelineHref(
+  kind: string,
+  detail?: Record<string, unknown> | null,
+): string | null {
+  if (!detail) return null;
+  const reportId = detail.report_id;
+  const sessionId = detail.session_id;
+  const orderId = detail.order_id;
+  if (kind === "report" && reportId) return `/reports/?id=${encodeURIComponent(String(reportId))}`;
+  if (kind === "consult" && sessionId) return `/consult/?session=${encodeURIComponent(String(sessionId))}`;
+  if (kind === "booking" && orderId) return `/services/?order=${encodeURIComponent(String(orderId))}`;
+  if (reportId) return `/reports/?id=${encodeURIComponent(String(reportId))}`;
+  if (sessionId) return `/consult/?session=${encodeURIComponent(String(sessionId))}`;
+  if (orderId) return `/services/?order=${encodeURIComponent(String(orderId))}`;
+  return null;
+}
+
 export const urgencyMeta: Record<string, { label: string; tone: string; hint: string }> = {
   normal: { label: "可先观察 / 普通门诊", tone: "mint", hint: "目前未见明确急危信号，建议按建议就诊。" },
   urgent: { label: "建议尽快就诊", tone: "amber", hint: "建议今天或明天内就医，若加重请随时急诊。" },
   critical: { label: "危急 · 立即急诊", tone: "coral", hint: "请立即拨打 120 或前往最近急诊。" },
 };
+
+export type AbnormalStatusMeta = {
+  key: "high" | "low" | "normal" | "unknown";
+  label: string;
+  className: string;
+};
+
+export function abnormalStatusMeta(status?: string | null): AbnormalStatusMeta {
+  const value = String(status || "").trim().toLowerCase();
+  if (value === "high") return { key: "high", label: "偏高", className: "bg-rose-50 text-rose-600" };
+  if (value === "low") return { key: "low", label: "偏低", className: "bg-amber-50 text-amber-700" };
+  if (value === "normal") return { key: "normal", label: "正常", className: "bg-emerald-50 text-emerald-700" };
+  return { key: "unknown", label: "未知", className: "bg-canvas text-muted" };
+}
+
+export type SeverityMeta = {
+  key: "contraindicated" | "major" | "moderate" | "minor" | "none" | "unknown";
+  label: string;
+  className: string;
+  dangerous: boolean;
+};
+
+export function severityMeta(severity?: string | null): SeverityMeta {
+  const value = String(severity || "").trim().toLowerCase();
+  if (value === "contraindicated") return { key: "contraindicated", label: "禁用 / 禁忌", className: "border-rose-200 bg-rose-50 text-rose-700", dangerous: true };
+  if (value === "major") return { key: "major", label: "严重", className: "border-rose-200 bg-rose-50 text-rose-700", dangerous: true };
+  if (value === "moderate") return { key: "moderate", label: "中等", className: "border-amber-200 bg-amber-50 text-amber-800", dangerous: true };
+  if (value === "minor") return { key: "minor", label: "轻微", className: "border-sky-200 bg-sky-50 text-sky-700", dangerous: false };
+  if (value === "none") return { key: "none", label: "未发现已知相互作用", className: "border-emerald-200 bg-emerald-50 text-emerald-700", dangerous: false };
+  return { key: "unknown", label: "未知", className: "border-line bg-canvas text-muted", dangerous: false };
+}
 
 export const kindMeta: Record<string, { label: string; color: string }> = {
   consult: { label: "问诊", color: "bg-primary-soft text-primary" },

@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 
 export const FRONTEND_DIR = path.resolve(__dirname, "..");
@@ -12,9 +13,25 @@ export const BACKEND_PORT = Number(process.env.E2E_BACKEND_PORT || 8020);
 export const FRONTEND_PORT = Number(process.env.E2E_FRONTEND_PORT || 3000);
 export const MODEL_PORT = Number(process.env.E2E_MODEL_PORT || 9999);
 export const MCP_PORT = Number(process.env.E2E_MCP_PORT || 9101);
+export const ADAPTER_PORT = Number(process.env.E2E_ADAPTER_PORT || 9102);
 
-export const DATABASE_URL =
-  process.env.E2E_DATABASE_URL || "postgresql://sha:sha_pwd@127.0.0.1:5434/sha_e2e";
+function defaultE2eDatabase(): string {
+  const envFile = path.join(REPO_ROOT, ".env");
+  if (fs.existsSync(envFile)) {
+    const line = fs
+      .readFileSync(envFile, "utf-8")
+      .split("\n")
+      .find((item) => item.startsWith("DATABASE_URL="));
+    if (line) {
+      const url = line.slice("DATABASE_URL=".length).trim();
+      const base = url.includes("/") ? url.slice(0, url.lastIndexOf("/")) : url;
+      return `${base}/sha_e2e`;
+    }
+  }
+  return "postgresql://sha:change-me@127.0.0.1:5434/sha_e2e";
+}
+
+export const DATABASE_URL = process.env.E2E_DATABASE_URL || defaultE2eDatabase();
 
 function assertE2eDatabase(url: string): void {
   let database = "";

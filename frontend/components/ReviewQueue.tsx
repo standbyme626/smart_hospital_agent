@@ -34,6 +34,10 @@ export function ReviewQueue({ onChanged }: { onChanged?: () => void }) {
     setError(null);
     try {
       if (action === "approve") {
+        const ok = window.confirm(
+          `确认批准这笔支付？\n成员：${review.member_name || review.user_id}\n科室：${review.department || "未知"}\n金额：¥${review.amount ?? 0}\n订单：${review.order_id || review.ref_id}`,
+        );
+        if (!ok) return;
         await approveReview(review.id);
       } else {
         await rejectReview(review.id, notes[review.id] || "");

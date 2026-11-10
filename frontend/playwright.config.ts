@@ -3,6 +3,7 @@ import path from "node:path";
 import { defineConfig } from "@playwright/test";
 
 import {
+  ADAPTER_PORT,
   ADMIN_PASSWORD,
   API_BASE,
   BACKEND_PORT,
@@ -10,7 +11,6 @@ import {
   FRONTEND_DIR,
   FRONTEND_PORT,
   FRONTEND_URL,
-  MCP_PORT,
   MODEL_PORT,
   PATIENT_PASSWORD,
   PYTHON,
@@ -44,10 +44,16 @@ export default defineConfig({
       timeout: 30_000,
     },
     {
-      command: `"${PYTHON}" -m uvicorn mcp_mock.server:app --host 127.0.0.1 --port ${MCP_PORT}`,
+      command: `"${PYTHON}" -m his_adapter`,
       cwd: BACKEND_DIR,
-      url: `http://127.0.0.1:${MCP_PORT}/health`,
-      env: { DATABASE_URL, HITL_CONFIRM_TOKEN },
+      url: `http://127.0.0.1:${ADAPTER_PORT}/health`,
+      env: {
+        HIS_ADAPTER_MODE: "mock",
+        HIS_PAYMENT_MODE: "cashier",
+        ADAPTER_DATABASE_URL: DATABASE_URL,
+        ADAPTER_HOST: "127.0.0.1",
+        ADAPTER_PORT: String(ADAPTER_PORT),
+      },
       reuseExistingServer: false,
       timeout: 60_000,
     },
@@ -68,8 +74,9 @@ export default defineConfig({
         SILICONFLOW_API_BASE: MODEL_BASE,
         SILICONFLOW_API_KEY: "fake-key",
         OLLAMA_ENABLED: "false",
-        HOSPITAL_MCP_URL: `http://127.0.0.1:${MCP_PORT}/mcp`,
+        HOSPITAL_MCP_URL: `http://127.0.0.1:${ADAPTER_PORT}/mcp`,
         HITL_CONFIRM_TOKEN,
+        HIS_PAYMENT_MODE: "mock",
         RATE_LIMIT_PER_MINUTE: "10000",
         CHAT_DAILY_LIMIT: "1000",
         CORS_ORIGINS: `http://localhost:${FRONTEND_PORT},http://127.0.0.1:${FRONTEND_PORT}`,

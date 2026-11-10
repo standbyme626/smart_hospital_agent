@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -9,6 +9,7 @@ import {
   Check,
   CheckCircle2,
   Loader2,
+  Phone,
   Send,
   ShieldCheck,
   Sparkles,
@@ -36,6 +37,25 @@ type SymptomStep = 0 | 1 | 2 | 3 | 4;
 
 function displayContent(content: string): string {
   return stripMemberContext(content);
+}
+
+function crisisReport(): Report {
+  return {
+    department: "急诊科",
+    urgency: "critical",
+    summary:
+      "你在危险信号筛查中选择了“有”。请立即拨打 120 或前往最近的急诊科，不要等待在线问诊结果。",
+    advice: [
+      "立即拨打 120，或由他人护送去最近医院急诊科",
+      "不要自行驾车；保持电话畅通",
+      "如意识不清或呼吸困难，请让他人协助并保持气道通畅",
+      "带上正在服用的药物、既往病历与检查报告",
+    ],
+    medications: [],
+    citations: [],
+    confidence: 1,
+    followup_question: "",
+  };
 }
 
 export default function ConsultPage() {
@@ -67,6 +87,10 @@ export default function ConsultPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [followup, setFollowup] = useState("");
   const [restoring, setRestoring] = useState(false);
+  const [crisisOpen, setCrisisOpen] = useState(false);
+  const [crisisAcknowledged, setCrisisAcknowledged] = useState(false);
+  const [unknownAcknowledged, setUnknownAcknowledged] = useState(false);
+  const crisisModeRef = useRef(false);
 
   useEffect(() => {
     const saved = window.sessionStorage.getItem("consult_draft");
@@ -135,6 +159,18 @@ export default function ConsultPage() {
     setSymptoms((prev) => (prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value]));
   }
 
+  function chooseRedFlag(value: string) {
+    setRedFlag(value);
+    setCrisisAcknowledged(false);
+    setUnknownAcknowledged(false);
+    if (value === "yes") setCrisisOpen(true);
+  }
+
+  const redFlagResolved =
+    redFlag === "no" ||
+    (redFlag === "yes" && crisisAcknowledged) ||
+    (redFlag === "unknown" && unknownAcknowledged);
+
   function applyStreamEvent(event: StreamEvent) {
     if (event.type === "session") {
       const id = String(event.data.session_id || "");
@@ -161,11 +197,15 @@ export default function ConsultPage() {
       setStreamingText((prev) => prev + String(event.data.text || ""));
     } else if (event.type === "final") {
       const nextReport = event.data.report as Report;
-      setReport(nextReport);
       setCitations((event.data.citations as unknown as Citation[]) || []);
       setSafety(event.data.safety as Safety);
       setTriage(event.data.triage as Triage);
       setStep(2);
+      if (crisisModeRef.current) {
+        track("consult_complete", { department: "急诊科", crisis: true });
+        return;
+      }
+      setReport(nextReport);
       if (nextReport?.summary) {
         setMessages((prev) => [...prev, { role: "assistant", content: nextReport.summary }]);
       }
@@ -182,12 +222,25 @@ export default function ConsultPage() {
       setSymptomStep(0);
       return;
     }
+    if (!redFlagResolved) {
+      showToast("请先明确选择是否有危险信号");
+      setStep(1);
+      setSymptomStep(4);
+      return;
+    }
+    const crisis = redFlag === "yes";
+    crisisModeRef.current = crisis;
     setSubmitting(true);
     setStatusLines([]);
     setStreamingText("");
-    setReport(null);
+    setReport(crisis ? crisisReport() : null);
     setCitations([]);
-    track("consult_submit", { member_id: memberId, body_area: bodyArea, symptoms: symptoms.join(",") });
+    if (crisis) {
+      setSafety({ requires_human_review: true, issues: ["危险信号筛查：有"], severity: "critical" });
+      setTriage({ intent: "CRISIS", department: "急诊科", urgency: "critical", symptoms: symptoms.join("、"), reason: "危险信号筛查选择“有”", confidence: 1 });
+      setStep(2);
+    }
+    track("consult_submit", { member_id: memberId, body_area: bodyArea, symptoms: symptoms.join(","), red_flag: redFlag });
     const symptomBits = [
       memberAge === null && age ? `年龄：${age}` : "",
       gender && gender !== (member?.gender || "") ? `性别：${gender}` : "",
@@ -210,7 +263,11 @@ export default function ConsultPage() {
         applyStreamEvent(event);
       }
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "请求失败，请稍后再试");
+      showToast(
+        crisis
+          ? "网络异常；已按危急情况处理，请立即拨打 120 或前往急诊"
+          : err instanceof Error ? err.message : "请求失败，请稍后再试",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -262,6 +319,10 @@ export default function ConsultPage() {
     setGender(member?.gender || "");
     setAllergies(member?.allergies || "");
     setConditions(member?.conditions || "");
+    setCrisisOpen(false);
+    setCrisisAcknowledged(false);
+    setUnknownAcknowledged(false);
+    crisisModeRef.current = false;
     window.history.replaceState(null, "", "/consult/");
   }
 
@@ -273,6 +334,7 @@ export default function ConsultPage() {
   return (
     <AppShell title="AI 诊室" subtitle="一屏一问，先分诊再决定下一步">
       <div className="mx-auto max-w-3xl space-y-4">
+        <h1 className="text-xl font-semibold text-ink lg:hidden">AI 诊室</h1>
         <div className="flex items-center gap-2">
           {["就诊人", "症状", "结果"].map((label, index) => (
             <div key={label} className="flex flex-1 items-center gap-2">
@@ -428,16 +490,45 @@ export default function ConsultPage() {
                 <p className="mt-1 text-[12px] leading-5 text-muted">胸痛伴出汗、呼吸困难、意识不清、大出血、抽搐、剧烈头痛伴颈项强直等。</p>
                 <div className="mt-3 space-y-2">
                   {redFlagOptions.map((item) => (
-                    <button key={item.value} onClick={() => setRedFlag(item.value)} className={clsx("flex min-h-12 w-full items-center gap-2 rounded-2xl border px-3 text-left text-[13px]", redFlag === item.value ? "border-primary bg-primary-soft text-primary" : "border-line bg-white text-ink")}>
+                    <button key={item.value} onClick={() => chooseRedFlag(item.value)} aria-pressed={redFlag === item.value} className={clsx("flex min-h-12 w-full items-center gap-2 rounded-2xl border px-3 text-left text-[13px]", redFlag === item.value ? "border-primary bg-primary-soft text-primary" : "border-line bg-white text-ink")}>
                       <span className={clsx("flex h-4 w-4 items-center justify-center rounded-full border", redFlag === item.value ? "border-primary bg-primary" : "border-line")}>{redFlag === item.value ? <Check size={10} className="text-white" /> : null}</span>
                       {item.label}
                     </button>
                   ))}
                 </div>
+
+                {redFlag === "yes" ? (
+                  <div role="alert" className="mt-3 rounded-2xl border border-rose-300 bg-rose-50 p-3 text-[12px] leading-5 text-rose-800">
+                    <p className="flex items-center gap-1.5 font-semibold"><AlertTriangle size={14} />请立即拨打 120 或前往最近急诊科</p>
+                    <p className="mt-1">不要等待在线问诊结果；如已关闭弹窗，可重新打开急诊指引。</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <a href="tel:120" className="inline-flex min-h-11 items-center gap-1.5 rounded-full bg-rose-600 px-4 text-[12px] font-medium text-white"><Phone size={13} />拨打 120</a>
+                      <button onClick={() => setCrisisOpen(true)} className="inline-flex min-h-11 items-center rounded-full border border-rose-300 bg-white px-4 text-[12px] font-medium text-rose-700">查看急诊指引</button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {redFlag === "unknown" ? (
+                  <div role="alert" className="mt-3 rounded-2xl border border-amber-300 bg-amber-50 p-3 text-[12px] leading-5 text-amber-800">
+                    <p className="flex items-center gap-1.5 font-semibold"><AlertTriangle size={14} />无法判断时请按急诊处理</p>
+                    <p className="mt-1">“不确定”不能当作“没有”。请选择拨打 120 / 去急诊，或在知情后明确继续在线咨询。</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <a href="tel:120" className="inline-flex min-h-11 items-center gap-1.5 rounded-full bg-amber-600 px-4 text-[12px] font-medium text-white"><Phone size={13} />拨打 120</a>
+                      {!unknownAcknowledged ? (
+                        <button onClick={() => setUnknownAcknowledged(true)} className="inline-flex min-h-11 items-center rounded-full border border-amber-300 bg-white px-4 text-[12px] font-medium text-amber-800">我仍要继续在线咨询</button>
+                      ) : (
+                        <span className="inline-flex min-h-11 items-center rounded-full bg-white px-4 text-[12px] font-medium text-amber-800">已确认继续在线咨询</span>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="mt-5 flex gap-2">
                   <button onClick={() => setStep(0)} className="btn-ghost flex-1"><ArrowLeft size={15} />上一步</button>
-                  <button onClick={() => setStep(2)} className="btn-primary flex-1">补充病史<ArrowRight size={15} /></button>
+                  <button onClick={() => setStep(2)} disabled={!redFlagResolved} className="btn-primary flex-1">补充病史<ArrowRight size={15} /></button>
                 </div>
+                {!redFlag ? <p className="mt-2 text-center text-[11px] text-muted">请选择是否有危险信号。</p> : null}
+                {redFlag === "unknown" && !unknownAcknowledged ? <p className="mt-2 text-center text-[11px] text-amber-700">请先明确选择：拨打 120 / 去急诊，或确认继续在线咨询。</p> : null}
               </div>
             ) : null}
 
@@ -546,6 +637,45 @@ export default function ConsultPage() {
           </div>
         ) : null}
       </div>
+
+      {crisisOpen ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="crisis-title"
+        >
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 text-center shadow-2xl">
+            <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-rose-100 text-rose-600">
+              <AlertTriangle size={28} />
+            </span>
+            <h2 id="crisis-title" className="mt-3 text-2xl font-bold text-rose-700">立即拨打 120</h2>
+            <p className="mt-2 text-[13px] leading-6 text-ink">
+              你选择了危险信号：胸痛伴出汗 / 呼吸困难 / 意识不清 / 大出血 / 抽搐。
+            </p>
+            <p className="mt-1 text-[12px] leading-5 text-muted">
+              请立即拨打 120 或前往最近的急诊科。不要自行驾车，保持电话畅通；如意识不清，请让他人协助。
+            </p>
+            <a href="tel:120" className="mt-5 flex min-h-14 w-full items-center justify-center gap-2 rounded-full bg-rose-600 px-5 text-[16px] font-semibold text-white transition hover:bg-rose-700">
+              <Phone size={20} />
+              立即拨打 120
+            </a>
+            <p className="mt-3 text-[11px] leading-5 text-muted">
+              急诊指引：前往最近医院急诊科，带上正在服用的药物、既往病历与检查报告。
+            </p>
+            <button
+              onClick={() => {
+                setCrisisAcknowledged(true);
+                setCrisisOpen(false);
+              }}
+              className="mt-4 min-h-11 w-full rounded-full border border-line bg-white px-4 text-[13px] text-muted transition hover:text-ink"
+            >
+              我仍要继续在线咨询
+            </button>
+            <p className="mt-2 text-[11px] text-muted">在线咨询不能替代急救，选择继续将自行承担延误风险。</p>
+          </div>
+        </div>
+      ) : null}
     </AppShell>
   );
 }

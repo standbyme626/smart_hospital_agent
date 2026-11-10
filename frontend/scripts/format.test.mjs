@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ageFromBirthDate, formatSessionTitle, stripMemberContext } from "../lib/format.ts";
+import {
+  abnormalStatusMeta,
+  ageFromBirthDate,
+  formatSessionTitle,
+  severityMeta,
+  stripMemberContext,
+  timelineHref,
+} from "../lib/format.ts";
 
 function expectedAge(year, month, day) {
   const now = new Date();
@@ -104,4 +111,33 @@ test("formatSessionTitle trims trailing separators and short fragments", () => {
   assert.equal(formatSessionTitle(legacyTruncated), "头面部 · 疼");
   assert.equal(formatSessionTitle("症状：痛"), "上次问诊");
   assert.equal(formatSessionTitle("主要部位：头面部，"), "头面部");
+});
+
+test("timelineHref deep-links reports, consults and orders", () => {
+  assert.equal(timelineHref("report", { report_id: "r1" }), "/reports/?id=r1");
+  assert.equal(timelineHref("consult", { session_id: "s 1" }), "/consult/?session=s%201");
+  assert.equal(timelineHref("booking", { order_id: "o1" }), "/services/?order=o1");
+  assert.equal(timelineHref("followup", { summary: "x" }), null);
+  assert.equal(timelineHref("report", null), null);
+});
+
+test("abnormalStatusMeta only colors known states", () => {
+  assert.equal(abnormalStatusMeta("high").label, "偏高");
+  assert.equal(abnormalStatusMeta("HIGH").label, "偏高");
+  assert.equal(abnormalStatusMeta("low").label, "偏低");
+  assert.equal(abnormalStatusMeta("normal").label, "正常");
+  const unknown = abnormalStatusMeta("pending");
+  assert.equal(unknown.label, "未知");
+  assert.equal(unknown.key, "unknown");
+  assert.equal(abnormalStatusMeta(null).label, "未知");
+});
+
+test("severityMeta maps drug risk levels to Chinese", () => {
+  assert.equal(severityMeta("contraindicated").label, "禁用 / 禁忌");
+  assert.equal(severityMeta("major").label, "严重");
+  assert.equal(severityMeta("moderate").label, "中等");
+  assert.equal(severityMeta("minor").label, "轻微");
+  assert.equal(severityMeta("none").label, "未发现已知相互作用");
+  assert.equal(severityMeta("weird").label, "未知");
+  assert.ok(severityMeta("major").dangerous);
 });

@@ -12,6 +12,8 @@ export type Member = {
   conditions?: string | null;
   is_self: boolean;
   hospital_patient_id?: string | null;
+  id_card_last4?: string | null;
+  has_id_card?: boolean;
   created_at?: string;
   updated_at?: string;
 };
@@ -124,6 +126,8 @@ export type ReportRecord = {
   questions: string[];
   created_at: string;
   has_image?: boolean;
+  urgency?: string;
+  critical_flags?: string[];
 };
 
 export type Followup = {
@@ -272,6 +276,128 @@ export type EvalResult = {
   name: string;
   metrics: Record<string, unknown>;
   created_at: string;
+};
+
+export type CatalogDepartment = {
+  org_id: string;
+  name: string;
+};
+
+export type CatalogDoctor = {
+  practitioner_id: string;
+  name: string;
+  org_id: string;
+};
+
+export type CatalogService = {
+  service_id: string;
+  definition_id?: string | null;
+  name: string;
+  org_id: string;
+  price: number;
+};
+
+export type BookingCatalog = {
+  departments: CatalogDepartment[];
+  doctors: CatalogDoctor[];
+  services: CatalogService[];
+  date?: string | null;
+  availability_mode?: string;
+  source?: string;
+  stale?: boolean;
+};
+
+export type Appointment = {
+  id: string;
+  appointment_id?: string;
+  user_id?: string;
+  member_id?: string | null;
+  his_patient_id?: string | null;
+  quote_id?: string | null;
+  amount: number;
+  status: string;
+  payment_status: string;
+  his_status?: string | null;
+  department?: string | null;
+  org_id?: string | null;
+  practitioner_id?: string | null;
+  service_id?: string | null;
+  appointment_date?: string | null;
+  doctor_name?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  stale?: boolean;
+  legacy_demo?: boolean;
+};
+
+export type VisitStatus = {
+  state: string;
+  payment_status?: string | null;
+  encounter_id?: string | null;
+  guide?: string | null;
+  next_action?: string | null;
+  stale?: boolean;
+};
+
+export type AppointmentPayment = {
+  payment_status: string;
+  amount?: number | null;
+  paid_at?: string | null;
+  payment_id?: string | null;
+  invoice_no?: string | null;
+  stale?: boolean;
+};
+
+export type AppointmentDetail = {
+  appointment: Appointment;
+  visit: VisitStatus;
+  payment: AppointmentPayment;
+};
+
+export type AppointmentCreateResult = {
+  appointment: Appointment;
+  instructions?: string;
+  payment_mode?: string;
+};
+
+export type AppointmentCancelResult = {
+  status: string;
+  encounter_id?: string | null;
+  refund_id?: string | null;
+};
+
+export type PaymentTask = {
+  id?: string;
+  task_id?: string | null;
+  kind?: string;
+  ref_id?: string;
+  user_id?: string;
+  member_id?: string | null;
+  status: string;
+  payload?: Record<string, unknown>;
+  instructions?: string | null;
+  sla_due_at?: string | null;
+  assignee?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type Prescription = {
+  his_prescription_no: string;
+  status?: string | null;
+  issued_at?: string | null;
+  items?: unknown[] | null;
+};
+
+export type AppointmentGuide = {
+  hospital: string;
+  address: string;
+  floor: string;
+  checkin: string;
+  items: string[];
+  support: string;
+  source?: string;
+  stale?: boolean;
 };
 
 export type ConsultPayload = {

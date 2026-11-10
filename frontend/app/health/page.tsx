@@ -16,7 +16,7 @@ import clsx from "clsx";
 import { AppShell } from "@/components/AppShell";
 import { useApp } from "@/lib/app-context";
 import { completeFollowup, getFollowups, getMedications, getReports, getTimeline } from "@/lib/api";
-import { formatDate, kindMeta, relativeTime } from "@/lib/format";
+import { formatDate, kindMeta, relativeTime, timelineHref } from "@/lib/format";
 import type { Followup, Medication, ReportRecord, TimelineEvent } from "@/lib/types";
 
 export default function HealthPage() {
@@ -26,6 +26,7 @@ export default function HealthPage() {
   const [followups, setFollowups] = useState<Followup[]>([]);
   const [reports, setReports] = useState<ReportRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [filter, setFilter] = useState("all");
 
   useEffect(() => {
@@ -35,6 +36,7 @@ export default function HealthPage() {
 
   async function load() {
     setLoading(true);
+    setLoadError(false);
     try {
       const [t, m, f, r] = await Promise.all([
         getTimeline(activeMember?.id),
@@ -47,7 +49,11 @@ export default function HealthPage() {
       setFollowups(f);
       setReports(r);
     } catch {
-      // keep empty
+      setTimeline([]);
+      setMeds([]);
+      setFollowups([]);
+      setReports([]);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -69,6 +75,13 @@ export default function HealthPage() {
   return (
     <AppShell title="健康档案" subtitle={`${activeMember?.name || "本人"}的健康时间线与家庭档案`}>
       <div className="mx-auto max-w-4xl space-y-4">
+        <h1 className="text-xl font-semibold text-ink lg:hidden">健康档案</h1>
+        {loadError ? (
+          <div className="card flex flex-wrap items-center justify-between gap-2 border-rose-200 bg-rose-50 p-3 text-[13px] text-rose-700">
+            <span>加载失败，请重试</span>
+            <button onClick={load} className="min-h-11 rounded-full bg-white px-4 text-[12px] font-medium text-rose-700">重试</button>
+          </div>
+        ) : null}
         <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
             { label: "用药中", value: activeMeds.length, icon: Pill, href: "/meds/" },
@@ -78,7 +91,7 @@ export default function HealthPage() {
           ].map((item) => (
             <Link key={item.label} href={item.href} className="card p-4 transition hover:border-primary/30">
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-soft text-primary"><item.icon size={16} /></span>
-              <p className="mt-2 text-2xl font-semibold text-ink">{item.value}</p>
+              <p className="mt-2 text-2xl font-semibold text-ink">{loading || loadError ? "—" : item.value}</p>
               <p className="text-[11px] text-muted">{item.label}</p>
             </Link>
           ))}
@@ -98,7 +111,7 @@ export default function HealthPage() {
                     <p className="truncate text-[13px] font-medium text-ink">{item.title}</p>
                     <p className="mt-0.5 text-[11px] text-muted">{item.due_date ? formatDate(item.due_date) : "待安排"} · {item.notes || "按医嘱随访"}</p>
                   </div>
-                  <button onClick={() => finish(item.id)} className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-primary" aria-label="完成">
+                  <button onClick={() => finish(item.id)} className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-primary" aria-label="完成">
                     <CheckCircle2 size={15} />
                   </button>
                 </div>
@@ -119,29 +132,42 @@ export default function HealthPage() {
                 ["booking", "挂号"],
                 ["followup", "随访"],
               ].map(([value, label]) => (
-                <button key={value} onClick={() => setFilter(value)} className={clsx("chip min-h-7 px-2.5 text-[11px]", filter === value ? "chip-active" : "")}>{label}</button>
+                <button key={value} onClick={() => setFilter(value)} aria-pressed={filter === value} className={clsx("chip min-h-11 px-3 text-[11px]", filter === value ? "chip-active" : "")}>{label}</button>
               ))}
             </div>
           </div>
 
           <div className="mt-4 space-y-3">
             {loading ? <div className="h-20 animate-pulse rounded-2xl bg-canvas" /> : null}
-            {!loading && filtered.length === 0 ? <p className="rounded-2xl bg-canvas p-4 text-[13px] text-muted">还没有记录。完成一次问诊或上传报告后，这里会自动生成时间线。</p> : null}
+            {!loading && !loadError && filtered.length === 0 ? <p className="rounded-2xl bg-canvas p-4 text-[13px] text-muted">还没有记录。完成一次问诊或上传报告后，这里会自动生成时间线。</p> : null}
             {filtered.map((event) => {
               const meta = kindMeta[event.kind] || kindMeta.consult;
+              const href = timelineHref(event.kind, event.detail);
+              const body = (
+                <>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="badge bg-white text-muted">{meta.label}</span>
+                    <span className="flex items-center gap-1 text-[11px] text-muted">
+                      {relativeTime(event.occurred_at)}
+                      {href ? <ChevronRight size={13} /> : null}
+                    </span>
+                  </div>
+                  <p className="mt-1.5 text-[13px] font-medium text-ink">{event.title}</p>
+                  {typeof event.detail?.summary === "string" ? <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-muted">{String(event.detail.summary)}</p> : null}
+                </>
+              );
               return (
                 <div key={event.id} className="relative flex gap-3 pl-1">
                   <span className={clsx("z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full", meta.color)}>
                     {event.kind === "report" ? <FileText size={14} /> : event.kind === "medication" ? <Pill size={14} /> : event.kind === "booking" ? <CalendarClock size={14} /> : event.kind === "followup" ? <HeartPulse size={14} /> : <Stethoscope size={14} />}
                   </span>
-                  <div className="min-w-0 flex-1 rounded-2xl bg-canvas p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="badge bg-white text-muted">{meta.label}</span>
-                      <span className="text-[11px] text-muted">{relativeTime(event.occurred_at)}</span>
-                    </div>
-                    <p className="mt-1.5 text-[13px] font-medium text-ink">{event.title}</p>
-                    {typeof event.detail?.summary === "string" ? <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-muted">{String(event.detail.summary)}</p> : null}
-                  </div>
+                  {href ? (
+                    <Link href={href} className="block min-w-0 flex-1 rounded-2xl bg-canvas p-3 transition hover:bg-primary-soft/50">
+                      {body}
+                    </Link>
+                  ) : (
+                    <div className="min-w-0 flex-1 rounded-2xl bg-canvas p-3">{body}</div>
+                  )}
                 </div>
               );
             })}
@@ -155,14 +181,14 @@ export default function HealthPage() {
           </div>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             {members.map((item) => (
-              <div key={item.id} className="flex items-center gap-3 rounded-2xl bg-canvas p-3">
+              <Link key={item.id} href="/profile/" className="flex items-center gap-3 rounded-2xl bg-canvas p-3 transition hover:bg-primary-soft/50">
                 <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-soft text-primary"><Users size={15} /></span>
                 <div className="min-w-0 flex-1">
                   <p className="text-[13px] font-medium text-ink">{item.name} <span className="text-[11px] text-muted">{item.relation === "self" ? "本人" : item.relation}</span></p>
                   <p className="mt-0.5 truncate text-[11px] text-muted">{item.conditions || item.allergies || "暂无档案信息"}</p>
                 </div>
                 <ChevronRight size={15} className="text-muted" />
-              </div>
+              </Link>
             ))}
           </div>
         </section>

@@ -4,10 +4,11 @@ services:
     container_name: sha_v2_db
     environment:
       POSTGRES_USER: sha
-      POSTGRES_PASSWORD: sha_pwd
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sha_pwd}
       POSTGRES_DB: sha
+      TZ: Asia/Shanghai
     ports:
-      - "5434:5432"
+      - "127.0.0.1:5434:5432"
     volumes:
       - sha_v2_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -20,15 +21,38 @@ services:
   redis:
     image: redis:7-alpine
     container_name: sha_v2_redis
+    environment:
+      TZ: Asia/Shanghai
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-sha_redis_pwd}
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-sha_redis_pwd}"]
     ports:
-      - "6381:6379"
+      - "127.0.0.1:6381:6379"
     volumes:
       - sha_v2_redis:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
+
+  his_adapter:
+    build:
+      context: ./backend
+    container_name: sha_v2_his_adapter
+    command: python -m his_adapter
+    environment:
+      TZ: Asia/Shanghai
+      HIS_ADAPTER_MODE: ${HIS_ADAPTER_MODE:-mock}
+      HIS_PAYMENT_MODE: ${HIS_PAYMENT_MODE:-cashier}
+      ADAPTER_DATABASE_URL: postgresql://sha:${POSTGRES_PASSWORD:-sha_pwd}@db:5432/sha
+      ADAPTER_HOST: 0.0.0.0
+      ADAPTER_PORT: 9101
+    ports:
+      - "127.0.0.1:9101:9101"
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
 
   mcp:
@@ -36,8 +60,10 @@ services:
       context: ./backend
     container_name: sha_v2_mcp
     command: uvicorn mcp_mock.server:app --host 0.0.0.0 --port 9100
+    environment:
+      TZ: Asia/Shanghai
     ports:
-      - "9100:9100"
+      - "127.0.0.1:9100:9100"
     restart: unless-stopped
 
   api:
@@ -47,12 +73,13 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql://sha:sha_pwd@db:5432/sha
+      DATABASE_URL: postgresql://sha:${POSTGRES_PASSWORD:-sha_pwd}@db:5432/sha
       HOSPITAL_MCP_URL: http://mcp:9100/mcp
       CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+      TZ: Asia/Shanghai
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       db:
         condition: service_healthy

@@ -1,15 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Activity, ArrowRight, Loader2, LockKeyhole, ShieldCheck, UserRound } from "lucide-react";
 import { useApp } from "@/lib/app-context";
+import { ApiError, UnauthorizedError, recordConsent } from "@/lib/api";
+import { POLICY_VERSION } from "@/lib/format";
+
+const CONSENT_KEY = "sha_consent";
 
 export default function LoginPage() {
   const router = useRouter();
   const { user, authReady, login } = useApp();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [agreed, setAgreed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -19,19 +25,36 @@ export default function LoginPage() {
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (!agreed) {
+      setError("请先阅读并同意《用户协议》与《隐私政策》");
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
       await login(username.trim(), password);
+      try {
+        await recordConsent(POLICY_VERSION);
+      } catch {
+        // consent recording is best-effort; login must not be blocked
+      }
+      try {
+        window.localStorage.setItem(
+          CONSENT_KEY,
+          JSON.stringify({ version: POLICY_VERSION, at: new Date().toISOString() }),
+        );
+      } catch {
+        // localStorage may be unavailable; login still succeeds
+      }
       router.replace("/");
     } catch (err) {
-      const message = err instanceof Error ? err.message : "";
-      if (message.includes("401") || message.includes("unauthorized") || message.includes("invalid credentials")) {
+      if (err instanceof UnauthorizedError) {
         setError("账号或密码不正确，请重试");
-      } else if (message.includes("429") || message.includes("rate limit")) {
-        setError("请求过于频繁，请稍后再试");
+      } else if (err instanceof ApiError) {
+        setError(err.message);
       } else {
-        setError("网络连接失败，请重试");
+        const message = err instanceof Error ? err.message : "";
+        setError(message.includes("网络") ? message : "网络连接失败，请检查网络后重试");
       }
     } finally {
       setLoading(false);
@@ -55,11 +78,11 @@ export default function LoginPage() {
             先分诊，<br />再决定下一步。
           </h1>
           <p className="mt-4 max-w-md text-[14px] leading-7 text-white/80">
-            从症状到科室，从报告到用药，从挂号到就诊指引。每条建议都可以查看医学依据，危机情况直接走急诊通道。
+            从症状到科室，从报告到用药，从挂号到就诊指引。关键建议可查看本地医学依据（如有），危机信号会立即提示急诊与 120。
           </p>
           <div className="mt-8 grid gap-3 text-[13px] text-white/85">
-            <p className="flex items-center gap-2"><ShieldCheck size={15} /> 健康数据仅用于问诊服务；可在设置与家庭中导出或删除</p>
-            <p className="flex items-center gap-2"><ShieldCheck size={15} /> AI 不确诊、不开处方，危机情况转人工/急诊</p>
+            <p className="flex items-center gap-2"><ShieldCheck size={15} /> 健康数据用于问诊、健康档案与家庭成员管理；可导出或删除</p>
+            <p className="flex items-center gap-2"><ShieldCheck size={15} /> AI 不确诊、不开处方；危机信号会立即提示拨打 120 / 急诊</p>
             <p className="flex items-center gap-2"><ShieldCheck size={15} /> 挂号支付由管理员人工审核后生效，批准前不会扣款</p>
           </div>
         </div>
@@ -111,6 +134,21 @@ export default function LoginPage() {
               </div>
             </label>
             {error ? <p className="rounded-xl bg-rose-50 px-3 py-2 text-[12px] text-rose-600">{error}</p> : null}
+            <label className="flex items-start gap-2 text-[12px] leading-5 text-muted">
+              <input
+                type="checkbox"
+                checked={agreed}
+                onChange={(event) => setAgreed(event.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-primary)]"
+              />
+              <span>
+                我已阅读并同意
+                <Link href="/terms/" className="text-primary underline underline-offset-2">《用户协议》</Link>
+                与
+                <Link href="/privacy/" className="text-primary underline underline-offset-2">《隐私政策》</Link>
+                （{POLICY_VERSION}）
+              </span>
+            </label>
             <button className="btn-primary w-full" disabled={loading} type="submit">
               {loading ? <Loader2 size={16} className="animate-spin" /> : <ArrowRight size={16} />}
               登录
@@ -118,8 +156,7 @@ export default function LoginPage() {
           </form>
 
           <p className="mt-5 text-center text-[11px] leading-5 text-muted">
-            登录即表示同意《用户协议》与《隐私政策》。<br />
-            演示账号请向管理员获取；管理员可使用后台账号登录。
+            登录会记录你同意的协议版本；演示账号请向管理员获取。
           </p>
         </div>
       </div>

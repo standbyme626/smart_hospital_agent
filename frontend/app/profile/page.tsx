@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Activity,
@@ -25,7 +25,7 @@ import clsx from "clsx";
 import { AppShell } from "@/components/AppShell";
 import { useApp } from "@/lib/app-context";
 import { createMember, deleteAccount, deleteMember, exportMyData, updateMember } from "@/lib/api";
-import { relationOptions } from "@/lib/format";
+import { POLICY_VERSION, relationOptions } from "@/lib/format";
 import type { Member } from "@/lib/types";
 
 type FormState = {
@@ -35,6 +35,7 @@ type FormState = {
   birth_date: string;
   allergies: string;
   conditions: string;
+  id_card: string;
 };
 
 const emptyForm: FormState = {
@@ -44,6 +45,7 @@ const emptyForm: FormState = {
   birth_date: "",
   allergies: "",
   conditions: "",
+  id_card: "",
 };
 
 export default function ProfilePage() {
@@ -56,6 +58,18 @@ export default function ProfilePage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [consentVersion, setConsentVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("sha_consent");
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { version?: unknown };
+      if (typeof parsed?.version === "string") setConsentVersion(parsed.version);
+    } catch {
+      // ignore malformed consent record
+    }
+  }, []);
 
   async function exportData() {
     setExporting(true);
@@ -103,6 +117,7 @@ export default function ProfilePage() {
       birth_date: member.birth_date || "",
       allergies: member.allergies || "",
       conditions: member.conditions || "",
+      id_card: "",
     });
     setOpen(true);
   }
@@ -127,6 +142,7 @@ export default function ProfilePage() {
         birth_date: form.birth_date || null,
         allergies: form.allergies || null,
         conditions: form.conditions || null,
+        id_card: form.id_card.trim() || undefined,
         is_self: editingId ? members.find((item) => item.id === editingId)?.is_self || false : false,
       };
       if (editingId) await updateMember(editingId, payload);
@@ -158,6 +174,7 @@ export default function ProfilePage() {
   return (
     <AppShell title="我的" subtitle="家庭档案、隐私与显示设置">
       <div className="mx-auto max-w-3xl space-y-4">
+        <h1 className="text-xl font-semibold text-ink lg:hidden">我的</h1>
         <section className="card p-5">
           <div className="flex items-center gap-3">
             <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-emerald-400 text-white">
@@ -194,9 +211,9 @@ export default function ProfilePage() {
                   </p>
                   <p className="mt-0.5 text-[11px] text-muted">就诊人ID：{member.hospital_patient_id || "—"}</p>
                 </div>
-                <button onClick={() => startEdit(member)} className="text-muted hover:text-primary" aria-label="编辑"><Pencil size={15} /></button>
+                <button onClick={() => startEdit(member)} className="flex h-11 w-11 items-center justify-center rounded-full text-muted hover:bg-white hover:text-primary" aria-label="编辑"><Pencil size={15} /></button>
                 {!member.is_self ? (
-                  <button onClick={() => remove(member)} className="text-muted hover:text-rose-500" aria-label="删除"><Trash2 size={15} /></button>
+                  <button onClick={() => remove(member)} className="flex h-11 w-11 items-center justify-center rounded-full text-muted hover:bg-white hover:text-rose-500" aria-label="删除"><Trash2 size={15} /></button>
                 ) : null}
               </div>
             ))}
@@ -212,6 +229,22 @@ export default function ProfilePage() {
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <label className="block"><span className="label">姓名</span><input className="input" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="例如：张三" /></label>
               <label className="block"><span className="label">关系</span><select className="input" value={form.relation} onChange={(event) => setForm({ ...form, relation: event.target.value })}>{["本人", ...relationOptions.filter((item) => item !== "self")].map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
+              <label className="block sm:col-span-2">
+                <span className="label">身份证号（挂号实名制需要）</span>
+                <input
+                  className="input"
+                  value={form.id_card}
+                  onChange={(event) => setForm({ ...form, id_card: event.target.value })}
+                  placeholder={
+                    editingId && members.find((item) => item.id === editingId)?.has_id_card
+                      ? `已保存（尾号 ${members.find((item) => item.id === editingId)?.id_card_last4 || "****"}），留空则不修改`
+                      : "例如：310101198801019876"
+                  }
+                />
+                <span className="mt-1 block text-[11px] text-muted">
+                  仅用于医院实名建档与挂号；App 侧只展示尾号。
+                </span>
+              </label>
               <label className="block"><span className="label">性别</span><select className="input" value={form.gender} onChange={(event) => setForm({ ...form, gender: event.target.value })}><option value="">未填写</option><option value="男">男</option><option value="女">女</option><option value="其他">其他</option></select></label>
               <label className="block"><span className="label">出生日期</span><input className="input" type="date" value={form.birth_date} onChange={(event) => setForm({ ...form, birth_date: event.target.value })} /></label>
               <label className="block sm:col-span-2"><span className="label">过敏史</span><input className="input" value={form.allergies} onChange={(event) => setForm({ ...form, allergies: event.target.value })} placeholder="例如：青霉素过敏" /></label>
@@ -237,7 +270,17 @@ export default function ProfilePage() {
           <div className="flex items-center gap-2"><ShieldCheck size={17} className="text-primary" /><h2 className="section-title">隐私与数据</h2></div>
           <p className="mt-2 text-[12px] leading-6 text-muted">
             你可以随时导出自己的全部健康数据（JSON + 报告图片），或永久删除账号及关联记录。
-            家庭成员档案需要你授权后使用。
+            家庭成员档案需要获得本人（未成年人则为监护人）授权后使用。
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Link href="/terms/" className="chip text-primary">用户协议<ChevronRight size={13} /></Link>
+            <Link href="/privacy/" className="chip text-primary">隐私政策<ChevronRight size={13} /></Link>
+          </div>
+          <p className="mt-2 text-[11px] leading-5 text-muted">
+            当前同意版本：{consentVersion || "未记录（历史账号）"} · 最新版本 {POLICY_VERSION}
+          </p>
+          <p className="mt-1 text-[11px] leading-5 text-muted">
+            撤回说明：如需撤回同意，可在此删除账号或联系管理员；撤回后将停止使用在线问诊、报告解读等服务，已有数据按《隐私政策》处理。
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <button onClick={exportData} disabled={exporting} className="chip text-primary disabled:opacity-40">
@@ -324,7 +367,8 @@ function SettingRow({
           <button
             key={optionValue}
             onClick={() => onChange(optionValue)}
-            className={clsx("min-h-8 rounded-full px-3 text-[11px]", value === optionValue ? "bg-primary text-white" : "text-muted")}
+            aria-pressed={value === optionValue}
+            className={clsx("min-h-11 rounded-full px-3 text-[11px]", value === optionValue ? "bg-primary text-white" : "text-muted")}
           >
             {optionLabel}
           </button>

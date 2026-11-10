@@ -3,4 +3,8 @@ global:
 scrape_configs:
   - job_name: smart-hospital-agent
     static_configs:
-      - targets: ["host.docker.internal:8000"]
+      # The API binds 127.0.0.1:8020 on the host. When Prometheus runs in a
+      # container, reach the host loopback through the host gateway (add
+      # extra_hosts: ["host.docker.internal:host-gateway"] on Linux), or run
+      # Prometheus with host networking and target 127.0.0.1:8020 instead.
+      - targets: ["host.docker.internal:8020"]

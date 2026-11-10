@@ -1,6 +1,12 @@
 import type {
   AdminUser,
+  Appointment,
+  AppointmentCancelResult,
+  AppointmentCreateResult,
+  AppointmentDetail,
+  AppointmentGuide,
   AuditEntry,
+  BookingCatalog,
   BookingOrder,
   Doctor,
   DocumentDetail,
@@ -11,6 +17,8 @@ import type {
   Member,
   ModelCall,
   OrderRecord,
+  PaymentTask,
+  Prescription,
   RagStatus,
   ReportRecord,
   ReviewRequest,
@@ -43,8 +51,54 @@ export function clearToken(): void {
 
 export class UnauthorizedError extends Error {
   constructor() {
-    super("unauthorized");
+    super("登录已过期，请重新登录");
   }
+}
+
+const STATUS_MESSAGES: Record<number, string> = {
+  400: "请求参数有误，请检查后重试",
+  401: "登录已过期，请重新登录",
+  403: "没有权限执行该操作",
+  404: "请求的内容不存在或已被删除",
+  409: "操作冲突，请刷新后重试",
+  422: "提交的信息不完整或有误，请检查后重试",
+  423: "尝试次数过多，请稍后再试",
+  429: "操作过于频繁，请稍后再试",
+};
+
+function statusMessage(status: number): string {
+  if (status >= 500) return "服务暂时不可用，请稍后重试";
+  return STATUS_MESSAGES[status] || `请求失败（HTTP ${status}）`;
+}
+
+function detailMessage(body: unknown): string {
+  const detail = (body as { detail?: unknown } | null)?.detail;
+  if (typeof detail === "string" && detail.trim()) return detail.trim();
+  if (Array.isArray(detail)) {
+    const first = detail[0] as { msg?: unknown } | undefined;
+    if (first && typeof first.msg === "string" && first.msg.trim()) return first.msg.trim();
+  }
+  return "";
+}
+
+export class ApiError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+    this.name = "ApiError";
+  }
+}
+
+async function readError(response: Response): Promise<ApiError> {
+  let message = "";
+  try {
+    message = detailMessage(await response.json());
+  } catch {
+    message = "";
+  }
+  return new ApiError(response.status, message || statusMessage(response.status));
 }
 
 function authHeaders(extra?: HeadersInit): Headers {
@@ -69,20 +123,20 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
         throw new UnauthorizedError();
       }
       if (!response.ok) {
-        const text = await response.text();
-        throw new Error(text || `HTTP ${response.status}`);
+        throw await readError(response);
       }
       return (await response.json()) as T;
     } catch (err) {
       if (err instanceof UnauthorizedError) throw err;
-      lastError = err;
+      if (err instanceof ApiError && err.status < 500) throw err;
+      lastError = err instanceof ApiError ? err : new Error("网络连接失败，请检查网络后重试");
       if (canRetry && attempt === 0) {
         await new Promise((resolve) => setTimeout(resolve, 400));
         continue;
       }
     }
   }
-  throw lastError instanceof Error ? lastError : new Error("network error");
+  throw lastError instanceof Error ? lastError : new Error("网络连接失败，请检查网络后重试");
 }
 
 export async function login(username: string, password: string): Promise<{ access_token: string; role: string }> {
@@ -92,6 +146,13 @@ export async function login(username: string, password: string): Promise<{ acces
   });
   setToken(result.access_token);
   return result;
+}
+
+export async function recordConsent(version: string): Promise<void> {
+  await apiFetch("/api/v1/consent", {
+    method: "POST",
+    body: JSON.stringify({ consent_type: "privacy_terms", version }),
+  });
 }
 
 export async function getMe(): Promise<User> {
@@ -173,6 +234,9 @@ export async function checkMedications(text: string, memberId?: string): Promise
   interactions: { drug_a: string; drug_b: string; severity: string; description: string }[];
   pregnancy_contraindications: { drug: string; description: string }[];
   highest_severity: string;
+  coverage?: string;
+  unrecognized?: string[];
+  included_medications?: string[];
 }> {
   return apiFetch("/api/v1/medications/check", {
     method: "POST",
@@ -210,12 +274,17 @@ export async function getReport(id: string): Promise<ReportRecord> {
 }
 
 async function fetchBlob(path: string): Promise<Blob> {
-  const response = await fetch(`${API_BASE}${path}`, { headers: authHeaders() });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, { headers: authHeaders() });
+  } catch {
+    throw new Error("网络连接失败，请检查网络后重试");
+  }
   if (response.status === 401) {
     clearToken();
     throw new UnauthorizedError();
   }
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  if (!response.ok) throw await readError(response);
   return response.blob();
 }
 
@@ -318,6 +387,103 @@ export async function getVisitGuide(orderId: string): Promise<VisitGuide> {
   return apiFetch(`/api/v1/services/visit-guide?order_id=${encodeURIComponent(orderId)}`);
 }
 
+export async function getBookingCatalog(params: {
+  department?: string;
+  org_id?: string;
+  date?: string;
+} = {}): Promise<BookingCatalog> {
+  const query = new URLSearchParams();
+  if (params.department) query.set("department", params.department);
+  if (params.org_id) query.set("org_id", params.org_id);
+  if (params.date) query.set("date", params.date);
+  const suffix = query.toString();
+  const url = suffix ? `/api/v1/booking/catalog?${suffix}` : "/api/v1/booking/catalog";
+  return apiFetch(url);
+}
+
+export async function createAppointment(payload: {
+  member_id?: string;
+  org_id: string;
+  practitioner_id: string;
+  service_id: string;
+  date: string;
+  idempotency_key?: string;
+}): Promise<AppointmentCreateResult> {
+  return apiFetch("/api/v1/booking/appointments", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getAppointments(memberId?: string): Promise<Appointment[]> {
+  const query = memberId ? `?member_id=${encodeURIComponent(memberId)}` : "";
+  const data = await apiFetch<{ appointments: Appointment[] }>(`/api/v1/booking/appointments${query}`);
+  return data.appointments;
+}
+
+export async function getAppointment(id: string): Promise<AppointmentDetail> {
+  return apiFetch(`/api/v1/booking/appointments/${encodeURIComponent(id)}`);
+}
+
+export async function requestAppointmentPayment(
+  id: string,
+): Promise<{ task: PaymentTask; appointment: Appointment }> {
+  return apiFetch(`/api/v1/booking/appointments/${encodeURIComponent(id)}/request-payment`, {
+    method: "POST",
+  });
+}
+
+export async function cancelAppointment(
+  id: string,
+  opts: { reason?: string; refund?: boolean } = {},
+): Promise<{ cancel: AppointmentCancelResult; appointment: Appointment }> {
+  return apiFetch(`/api/v1/booking/appointments/${encodeURIComponent(id)}/cancel`, {
+    method: "POST",
+    body: JSON.stringify({ reason: opts.reason ?? "user_cancelled", refund: opts.refund ?? true }),
+  });
+}
+
+export async function getAppointmentPrescriptions(
+  id: string,
+): Promise<{ prescriptions: Prescription[]; stale?: boolean }> {
+  return apiFetch(`/api/v1/booking/appointments/${encodeURIComponent(id)}/prescriptions`);
+}
+
+export async function getAppointmentGuide(
+  id: string,
+): Promise<{ guide: AppointmentGuide; appointment?: Appointment }> {
+  return apiFetch(`/api/v1/booking/appointments/${encodeURIComponent(id)}/guide`);
+}
+
+export async function getBookingConfig(): Promise<{ payment_mode: string }> {
+  return apiFetch<{ payment_mode: string }>("/api/v1/booking/config");
+}
+
+export async function getPaymentTasks(status = "requested"): Promise<PaymentTask[]> {
+  const data = await apiFetch<{ tasks: PaymentTask[] }>(
+    `/api/v1/admin/payment-tasks?status=${encodeURIComponent(status)}`,
+  );
+  return data.tasks;
+}
+
+export async function ackPaymentTask(taskId: string, status = "completed"): Promise<PaymentTask> {
+  const data = await apiFetch<{ task: PaymentTask }>(
+    `/api/v1/admin/payment-tasks/${encodeURIComponent(taskId)}/ack`,
+    { method: "POST", body: JSON.stringify({ status }) },
+  );
+  return data.task;
+}
+
+export async function simulateAppointmentPayment(
+  appointmentId: string,
+): Promise<Record<string, unknown>> {
+  const data = await apiFetch<{ payment: Record<string, unknown> }>(
+    `/api/v1/admin/appointments/${encodeURIComponent(appointmentId)}/simulate-payment`,
+    { method: "POST" },
+  );
+  return data.payment;
+}
+
 export async function track(name: string, props: Record<string, unknown> = {}, sessionId?: string): Promise<void> {
   try {
     await apiFetch("/api/v1/analytics/event", {
@@ -347,7 +513,10 @@ export async function getReviews(status = "pending"): Promise<ReviewRequest[]> {
 export async function approveReview(
   reviewId: string,
 ): Promise<{ review: ReviewRequest; mcp_called: boolean }> {
-  return apiFetch(`/api/v1/admin/reviews/${reviewId}/approve`, { method: "POST" });
+  return apiFetch(`/api/v1/admin/reviews/${reviewId}/approve`, {
+    method: "POST",
+    body: JSON.stringify({ confirm: true }),
+  });
 }
 
 export async function rejectReview(
@@ -442,11 +611,16 @@ export async function* streamChat(payload: {
   member_id?: string;
 }): AsyncGenerator<StreamEvent> {
   const headers = authHeaders({ "Content-Type": "application/json" });
-  const response = await fetch(`${API_BASE}/api/v1/chat/stream`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(payload),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}/api/v1/chat/stream`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    throw new Error("网络连接失败，请检查网络后重试");
+  }
   if (response.status === 401) {
     clearToken();
     throw new UnauthorizedError();
@@ -454,12 +628,11 @@ export async function* streamChat(payload: {
   if (!response.ok || !response.body) {
     let detail = "";
     try {
-      const body = (await response.json()) as { detail?: unknown };
-      if (typeof body?.detail === "string") detail = body.detail;
+      detail = detailMessage(await response.json());
     } catch {
       // non-JSON error body
     }
-    throw new Error(detail || `chat failed: HTTP ${response.status}`);
+    throw new Error(detail || statusMessage(response.status));
   }
   const reader = response.body.getReader();
   const decoder = new TextDecoder();

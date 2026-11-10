@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import {
   AlertTriangle,
   Camera,
@@ -17,8 +18,8 @@ import {
 import clsx from "clsx";
 import { AppShell } from "@/components/AppShell";
 import { useApp } from "@/lib/app-context";
-import { deleteReport, getReportImage, getReports, interpretReport, track } from "@/lib/api";
-import { formatDate } from "@/lib/format";
+import { deleteReport, getReport, getReportImage, getReports, interpretReport, track } from "@/lib/api";
+import { abnormalStatusMeta, formatDate, POLICY_VERSION } from "@/lib/format";
 import type { ReportRecord } from "@/lib/types";
 
 export default function ReportsPage() {
@@ -28,7 +29,10 @@ export default function ReportsPage() {
   const [preview, setPreview] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [loading, setLoading] = useState(false);
+  const [uploadConsent, setUploadConsent] = useState(false);
   const [reports, setReports] = useState<ReportRecord[]>([]);
+  const [loadingReports, setLoadingReports] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [selected, setSelected] = useState<ReportRecord | null>(null);
   const [detailImage, setDetailImage] = useState<string | null>(null);
   const [detailImageError, setDetailImageError] = useState(false);
@@ -79,10 +83,26 @@ export default function ReportsPage() {
   }, [viewerUrl]);
 
   async function load() {
+    setLoadingReports(true);
+    setLoadError(false);
     try {
-      setReports(await getReports(activeMember?.id));
+      const list = await getReports(activeMember?.id);
+      setReports(list);
+      const target = new URLSearchParams(window.location.search).get("id");
+      if (target) {
+        const found = list.find((item) => item.id === target);
+        if (found) {
+          setSelected(found);
+        } else {
+          const single = await getReport(target).catch(() => null);
+          if (single) setSelected(single);
+        }
+      }
     } catch {
       setReports([]);
+      setLoadError(true);
+    } finally {
+      setLoadingReports(false);
     }
   }
 
@@ -137,6 +157,10 @@ export default function ReportsPage() {
       showToast("先上传一张图片");
       return;
     }
+    if (!uploadConsent) {
+      showToast("请先阅读并勾选同意后再解读");
+      return;
+    }
     setLoading(true);
     track("report_interpret", { mode, has_title: Boolean(title) });
     try {
@@ -154,9 +178,10 @@ export default function ReportsPage() {
   return (
     <AppShell title="报告解读" subtitle="上传检查报告或皮肤照片，用普通人能懂的话解释">
       <div className="mx-auto max-w-4xl space-y-4">
+        <h1 className="text-xl font-semibold text-ink lg:hidden">报告解读</h1>
         <div className="flex gap-2">
-          <button onClick={() => { setMode("report"); setSelected(null); }} className={clsx("chip min-h-10 px-4", mode === "report" ? "chip-active" : "")}>检查报告</button>
-          <button onClick={() => { setMode("skin"); setSelected(null); }} className={clsx("chip min-h-10 px-4", mode === "skin" ? "chip-active" : "")}>皮肤照片</button>
+          <button onClick={() => { setMode("report"); setSelected(null); }} aria-pressed={mode === "report"} className={clsx("chip min-h-11 px-4", mode === "report" ? "chip-active" : "")}>检查报告</button>
+          <button onClick={() => { setMode("skin"); setSelected(null); }} aria-pressed={mode === "skin"} className={clsx("chip min-h-11 px-4", mode === "skin" ? "chip-active" : "")}>皮肤照片</button>
         </div>
 
         <div className="card p-5">
@@ -181,7 +206,7 @@ export default function ReportsPage() {
                       setPreview(null);
                       if (inputRef.current) inputRef.current.value = "";
                     }}
-                    className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white"
+                    className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-white"
                     aria-label="移除图片"
                   >
                     <X size={15} />
@@ -213,13 +238,25 @@ export default function ReportsPage() {
                 <input className="input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder={mode === "skin" ? "例如：手臂皮疹" : "例如：血常规检查报告"} />
               </label>
               <div className="rounded-2xl bg-canvas p-3 text-[11px] leading-5 text-muted">
-                <p className="flex items-center gap-1.5 text-ink"><ShieldCheckIcon /> 隐私提示</p>
-                <p className="mt-1">图片仅用于本次解读，不对外分享；可在健康档案中查看记录。</p>
+                <p className="flex items-center gap-1.5 text-ink"><ShieldCheckIcon /> 隐私与数据说明（{POLICY_VERSION}）</p>
+                <p className="mt-1">图片会保存到你的健康档案，可随时删除；解读会调用第三方 AI 服务。详见
+                  <Link href="/privacy/" className="mx-1 text-primary underline underline-offset-2">《隐私政策》</Link>。
+                </p>
               </div>
-              <button onClick={submit} disabled={loading || !file} className="btn-primary w-full">
+              <label className="flex items-start gap-2 rounded-2xl border border-line p-3 text-[11px] leading-5 text-muted">
+                <input
+                  type="checkbox"
+                  checked={uploadConsent}
+                  onChange={(event) => setUploadConsent(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-primary)]"
+                />
+                <span>我已知悉并同意：图片会保存到健康档案（可随时删除），解读会调用第三方 AI 服务。</span>
+              </label>
+              <button onClick={submit} disabled={loading || !file || !uploadConsent} className="btn-primary w-full">
                 {loading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
                 {loading ? "解读中…" : mode === "skin" ? "开始观察" : "开始解读"}
               </button>
+              {!uploadConsent && file ? <p className="text-center text-[11px] text-muted">请先勾选同意后再开始解读。</p> : null}
             </div>
           </div>
         </div>
@@ -236,13 +273,25 @@ export default function ReportsPage() {
                 <button
                   onClick={() => removeReport(selected)}
                   disabled={deleting}
-                  className="flex h-8 w-8 items-center justify-center rounded-full text-muted transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"
+                  className="flex h-11 w-11 items-center justify-center rounded-full text-muted transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"
                   aria-label="删除报告"
                 >
                   {deleting ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
                 </button>
               </div>
             </div>
+            {(() => {
+              const flags = Array.isArray(selected.critical_flags) ? selected.critical_flags.filter(Boolean) : [];
+              const isCritical = String(selected.urgency || "").toLowerCase() === "critical" || flags.length > 0;
+              if (!isCritical) return null;
+              return (
+                <div role="alert" className="mt-3 rounded-2xl border border-rose-300 bg-rose-50 p-3 text-[12px] leading-5 text-rose-800">
+                  <p className="flex items-center gap-1.5 text-[13px] font-semibold"><AlertTriangle size={15} />危急值提醒：请立即联系医生或前往急诊</p>
+                  {flags.length ? <p className="mt-1">危急项：{flags.join("；")}</p> : null}
+                  <a href="tel:120" className="mt-2 inline-flex min-h-11 items-center gap-1.5 rounded-full bg-rose-600 px-4 text-[12px] font-medium text-white">拨打 120</a>
+                </div>
+              );
+            })()}
             {selected.has_image ? (
               <div className="mt-3 overflow-hidden rounded-2xl border border-line bg-canvas">
                 {detailImage ? (
@@ -270,18 +319,19 @@ export default function ReportsPage() {
             {selected.abnormal_values?.length ? (
               <div className="mt-4 space-y-2">
                 <p className="text-[12px] font-medium text-muted">异常指标</p>
-                {selected.abnormal_values.map((item, index) => (
-                  <div key={index} className="rounded-2xl border border-line bg-canvas p-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-[13px] font-medium text-ink">{item.name}</span>
-                      <span className={clsx("badge", item.status === "high" ? "bg-rose-50 text-rose-600" : item.status === "low" ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700")}>
-                        {item.status === "high" ? "偏高" : item.status === "low" ? "偏低" : "正常"}
-                      </span>
-                      <span className="text-[12px] text-muted">{item.value} · 参考 {item.reference}</span>
+                {selected.abnormal_values.map((item, index) => {
+                  const status = abnormalStatusMeta(item.status);
+                  return (
+                    <div key={index} className="rounded-2xl border border-line bg-canvas p-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[13px] font-medium text-ink">{item.name}</span>
+                        <span className={clsx("badge", status.className)}>{status.label}</span>
+                        <span className="text-[12px] text-muted">{item.value} · 参考 {item.reference}</span>
+                      </div>
+                      <p className="mt-1 text-[12px] leading-5 text-muted">{item.explanation}</p>
                     </div>
-                    <p className="mt-1 text-[12px] leading-5 text-muted">{item.explanation}</p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : null}
 
@@ -308,20 +358,33 @@ export default function ReportsPage() {
         <div className="card p-5">
           <div className="flex items-center justify-between">
             <h2 className="section-title">历史记录</h2>
-            <span className="text-[11px] text-muted">{reports.length} 条</span>
+            <span className="text-[11px] text-muted">{loadingReports || loadError ? "—" : `${reports.length} 条`}</span>
           </div>
           <div className="mt-3 space-y-2">
-            {reports.length === 0 ? (
+            {loadingReports ? <div className="h-16 animate-pulse rounded-2xl bg-canvas" /> : null}
+            {!loadingReports && loadError ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-[13px] text-rose-700">
+                <span>加载失败，请重试</span>
+                <button onClick={load} className="min-h-11 rounded-full bg-white px-4 text-[12px] font-medium text-rose-700">重试</button>
+              </div>
+            ) : null}
+            {!loadingReports && !loadError && reports.length === 0 ? (
               <p className="rounded-2xl bg-canvas p-4 text-[13px] text-muted">还没有报告记录，上传一份试试。</p>
-            ) : (
-              reports.map((item) => (
+            ) : null}
+            {!loadError ? (
+              reports.map((item) => {
+                const critical = String(item.urgency || "").toLowerCase() === "critical" || Boolean(item.critical_flags?.length);
+                return (
                 <div key={item.id} className="flex items-center gap-2 rounded-2xl bg-canvas p-3">
                   <button
                     onClick={() => { setSelected(item); window.scrollTo({ top: 0, behavior: "smooth" }); }}
                     className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left"
                   >
                     <span className="min-w-0">
-                      <span className="block truncate text-[13px] font-medium text-ink">{item.title}</span>
+                      <span className="flex items-center gap-1.5 text-[13px] font-medium text-ink">
+                        {critical ? <span className="badge bg-rose-100 text-rose-700">危急</span> : null}
+                        <span className="truncate">{item.title}</span>
+                      </span>
                       <span className="mt-0.5 block truncate text-[11px] text-muted">{item.summary}</span>
                     </span>
                     <span className="shrink-0 text-[11px] text-muted">{formatDate(item.created_at)}</span>
@@ -330,7 +393,7 @@ export default function ReportsPage() {
                   {item.has_image ? (
                     <button
                       onClick={() => openViewer(item)}
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted transition hover:bg-white hover:text-primary"
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted transition hover:bg-white hover:text-primary"
                       aria-label="查看图片"
                     >
                       <ImageIcon size={15} />
@@ -339,14 +402,15 @@ export default function ReportsPage() {
                   <button
                     onClick={() => removeReport(item)}
                     disabled={deleting}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted transition hover:bg-white hover:text-rose-600 disabled:opacity-40"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted transition hover:bg-white hover:text-rose-600 disabled:opacity-40"
                     aria-label="删除报告"
                   >
                     <Trash2 size={15} />
                   </button>
                 </div>
-              ))
-            )}
+                );
+              })
+            ) : null}
           </div>
         </div>
 
@@ -366,7 +430,7 @@ export default function ReportsPage() {
           />
           <button
             onClick={closeViewer}
-            className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white"
+            className="absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-white"
             aria-label="关闭图片"
           >
             <X size={18} />

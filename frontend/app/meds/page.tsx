@@ -21,6 +21,7 @@ import {
   toggleMedication,
   track,
 } from "@/lib/api";
+import { severityMeta } from "@/lib/format";
 import type { Medication } from "@/lib/types";
 
 type CheckResult = {
@@ -28,12 +29,16 @@ type CheckResult = {
   interactions: { drug_a: string; drug_b: string; severity: string; description: string }[];
   pregnancy_contraindications: { drug: string; description: string }[];
   highest_severity: string;
+  coverage?: string;
+  unrecognized?: string[];
+  included_medications?: string[];
 };
 
 export default function MedsPage() {
   const { activeMember, showToast } = useApp();
   const [meds, setMeds] = useState<Medication[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [name, setName] = useState("");
   const [dose, setDose] = useState("");
   const [frequency, setFrequency] = useState("");
@@ -49,10 +54,12 @@ export default function MedsPage() {
 
   async function load() {
     setLoading(true);
+    setLoadError(false);
     try {
       setMeds(await getMedications(activeMember?.id));
     } catch {
       setMeds([]);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -122,14 +129,21 @@ export default function MedsPage() {
   return (
     <AppShell title="药管家" subtitle="用药清单、相互作用与妊娠禁忌检查">
       <div className="mx-auto max-w-4xl space-y-4">
+        <h1 className="text-xl font-semibold text-ink lg:hidden">药管家</h1>
         <section className="card p-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-primary"><Pill size={18} /><h2 className="text-[17px] font-semibold">正在服用</h2></div>
-            <span className="text-[11px] text-muted">{activeMeds.length} 种</span>
+            <span className="text-[11px] text-muted">{loading || loadError ? "—" : `${activeMeds.length} 种`}</span>
           </div>
           <div className="mt-4 space-y-2">
             {loading ? <div className="h-16 animate-pulse rounded-2xl bg-canvas" /> : null}
-            {!loading && activeMeds.length === 0 ? (
+            {!loading && loadError ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-[13px] text-rose-700">
+                <span>加载失败，请重试</span>
+                <button onClick={load} className="min-h-11 rounded-full bg-white px-4 text-[12px] font-medium text-rose-700">重试</button>
+              </div>
+            ) : null}
+            {!loading && !loadError && activeMeds.length === 0 ? (
               <p className="rounded-2xl bg-canvas p-4 text-[13px] text-muted">还没有用药记录。添加后可以检查相互作用。</p>
             ) : null}
             {activeMeds.map((item) => (
@@ -193,29 +207,54 @@ export default function MedsPage() {
             检查
           </button>
 
-          {result ? (
-            <div className="mt-4 space-y-2">
-              <div className={clsx("rounded-2xl p-3 text-[13px]", result.highest_severity === "major" || result.highest_severity === "contraindicated" ? "bg-rose-50 text-rose-700" : result.highest_severity === "moderate" ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-700")}>
-                <p className="flex items-center gap-1.5 font-medium">
-                  {result.highest_severity === "none" ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
-                  最高风险：{result.highest_severity === "none" ? "未发现已知相互作用" : result.highest_severity}
-                </p>
-                <p className="mt-1 text-[12px] opacity-80">识别到的药物：{result.drugs.length ? result.drugs.join("、") : "未识别"}</p>
+          {result ? (() => {
+            const severity = severityMeta(result.highest_severity);
+            const partial = String(result.coverage || "").toLowerCase() === "partial" || Boolean(result.unrecognized?.length);
+            const noneButPartial = partial && severity.key === "none";
+            return (
+              <div className="mt-4 space-y-2">
+                <div className={clsx("rounded-2xl border p-3 text-[13px]", noneButPartial ? "border-amber-200 bg-amber-50 text-amber-800" : severity.className)}>
+                  <p className="flex items-center gap-1.5 font-medium">
+                    {noneButPartial || severity.dangerous ? <AlertTriangle size={14} /> : severity.key === "none" ? <CheckCircle2 size={14} /> : <ShieldAlert size={14} />}
+                    {noneButPartial ? "仅检查了部分药物，不能据此判断安全" : `最高风险：${severity.label}`}
+                  </p>
+                  <p className="mt-1 text-[12px] opacity-80">
+                    识别到的药物：{result.drugs.length ? result.drugs.join("、") : "未识别"}
+                  </p>
+                  {result.included_medications?.length ? (
+                    <p className="mt-1 text-[12px] opacity-80">已纳入检查：{result.included_medications.join("、")}</p>
+                  ) : null}
+                  {result.unrecognized?.length ? (
+                    <p className="mt-1 text-[12px] opacity-80">未识别：{result.unrecognized.join("、")}（请核对药名或咨询药师）</p>
+                  ) : null}
+                  {partial ? (
+                    <p className="mt-1 text-[12px] font-medium opacity-90">仅检查了部分药物或存在未识别药物，不能据此判断安全。</p>
+                  ) : null}
+                </div>
+                {result.interactions.map((item, index) => {
+                  const itemSeverity = severityMeta(item.severity);
+                  return (
+                    <div key={index} className="rounded-2xl border border-line bg-canvas p-3">
+                      <p className="flex flex-wrap items-center gap-2 text-[13px] font-medium text-ink">
+                        <span>{item.drug_a} + {item.drug_b}</span>
+                        <span className={clsx("badge border", itemSeverity.className)}>
+                          {itemSeverity.dangerous ? <AlertTriangle size={11} /> : itemSeverity.key === "none" ? <CheckCircle2 size={11} /> : <ShieldAlert size={11} />}
+                          {itemSeverity.label}
+                        </span>
+                      </p>
+                      <p className="mt-1 text-[12px] leading-5 text-muted">{item.description}</p>
+                    </div>
+                  );
+                })}
+                {result.pregnancy_contraindications.map((item, index) => (
+                  <div key={index} className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-[12px] leading-5 text-rose-700">
+                    <p className="flex items-center gap-1.5 font-medium"><AlertTriangle size={12} />妊娠禁忌：{item.drug}</p>
+                    <p className="mt-1">{item.description}</p>
+                  </div>
+                ))}
               </div>
-              {result.interactions.map((item, index) => (
-                <div key={index} className="rounded-2xl border border-line bg-canvas p-3">
-                  <p className="text-[13px] font-medium text-ink">{item.drug_a} + {item.drug_b} · {item.severity}</p>
-                  <p className="mt-1 text-[12px] leading-5 text-muted">{item.description}</p>
-                </div>
-              ))}
-              {result.pregnancy_contraindications.map((item, index) => (
-                <div key={index} className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-[12px] leading-5 text-rose-700">
-                  <p className="font-medium">妊娠禁忌：{item.drug}</p>
-                  <p className="mt-1">{item.description}</p>
-                </div>
-              ))}
-            </div>
-          ) : null}
+            );
+          })() : null}
         </section>
 
         <p className="text-center text-[11px] leading-5 text-muted">
