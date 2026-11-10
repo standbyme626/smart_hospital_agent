@@ -445,6 +445,58 @@ export async function signClinicianDraft(id: string): Promise<ClinicianDraft> {
   return data.draft;
 }
 
+// -------------------------------------------------------------------- ops
+export type OpsSummary = {
+  pending_reviews: number;
+  open_findings: number;
+  handoff_waiting: number;
+  paid_today: number;
+};
+
+export type OpsFinding = {
+  id: string;
+  kind: string;
+  severity: string;
+  local_ref?: string | null;
+  his_ref?: string | null;
+  detail?: string | null;
+  status: string;
+  detected_at: string;
+  resolved_at?: string | null;
+};
+
+export type OpsHandoff = {
+  id: string;
+  ref_id: string;
+  status: string;
+  assignee?: string | null;
+  payload?: Record<string, unknown>;
+  sla_due_at?: string | null;
+  created_at: string;
+};
+
+export async function getOpsSummary(): Promise<OpsSummary> {
+  return apiFetch<OpsSummary>("/api/v1/ops/summary");
+}
+
+export async function getOpsFindings(): Promise<OpsFinding[]> {
+  const data = await apiFetch<{ items: OpsFinding[] }>("/api/v1/ops/reconciliation");
+  return data.items;
+}
+
+export async function resolveOpsFinding(id: string): Promise<void> {
+  await apiFetch(`/api/v1/ops/reconciliation/${encodeURIComponent(id)}/resolve`, { method: "POST" });
+}
+
+export async function getOpsHandoff(): Promise<OpsHandoff[]> {
+  const data = await apiFetch<{ items: OpsHandoff[] }>("/api/v1/ops/handoff");
+  return data.items;
+}
+
+export async function claimOpsHandoff(id: string): Promise<void> {
+  await apiFetch(`/api/v1/ops/handoff/${encodeURIComponent(id)}/claim`, { method: "POST" });
+}
+
 export async function getTimeline(memberId?: string): Promise<TimelineEvent[]> {
   const query = memberId ? `?member_id=${encodeURIComponent(memberId)}` : "";
   const data = await apiFetch<{ timeline: TimelineEvent[] }>(`/api/v1/health/timeline${query}`);
