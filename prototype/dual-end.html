@@ -176,7 +176,7 @@ tr:hover td{background:#FAFCFB}
 .entry-head{text-align:center;margin-bottom:26px}
 .entry-head h1{font-size:26px;margin:0 0 8px;letter-spacing:.02em}
 .entry-head p{margin:0;color:var(--muted);font-size:13px}
-.entry-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.entry-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
 .entry-card{border:1px solid var(--line);background:#fff;border-radius:18px;padding:22px;text-align:left;
   box-shadow:var(--shadow);transition:transform .15s ease,box-shadow .15s ease}
 .entry-card:hover{transform:translateY(-2px);box-shadow:0 12px 30px rgba(16,40,34,.10)}
@@ -204,7 +204,7 @@ tr:hover td{background:#FAFCFB}
 <header class="topbar">
   <div class="brand">
     <div class="logo">医</div>
-    <div>Smart Hospital Agent<small>双端 + 真 HIS · 界面原型 v0.1</small></div>
+    <div>Smart Hospital Agent<small>四端 + 真 HIS · 界面原型 v0.2</small></div>
   </div>
   <div class="entry-chip" id="entryChip">patient.hospital.kk.zhzepei.cn</div>
   <div class="who">
@@ -237,6 +237,14 @@ tr:hover td{background:#FAFCFB}
       <button class="nav active" data-screen="o-review"><span class="dot"></span>审核队列</button>
       <button class="nav" data-screen="o-recon"><span class="dot"></span>对账看板</button>
       <button class="nav" data-screen="o-audit"><span class="dot"></span>审计复盘</button>
+    </div>
+    <div class="sider-group" data-sider="admin">
+      <div class="sider-title">管理端（平台）</div>
+      <button class="nav active" data-screen="a-overview"><span class="dot"></span>运行总览</button>
+      <button class="nav" data-screen="a-agent"><span class="dot"></span>Agent 配置</button>
+      <button class="nav" data-screen="a-rag"><span class="dot"></span>语料与索引</button>
+      <button class="nav" data-screen="a-debug"><span class="dot"></span>检索调试</button>
+      <button class="nav" data-screen="a-audit"><span class="dot"></span>配置审计</button>
     </div>
   </aside>
 
@@ -747,6 +755,218 @@ tr:hover td{background:#FAFCFB}
       </div>
     </section>
 
+
+
+    <!-- ============ 管理端（平台） ============ -->
+    <section class="screen" id="a-overview">
+      <div class="page-head">
+        <div><h1>运行总览</h1><p>平台管理 · 仅运维网段可达 · 所有变更留痕</p></div>
+        <div class="right"><span class="badge teal">内核 v0.9.3</span><span class="badge amber">2 条告警</span></div>
+      </div>
+      <div class="grid g4" style="margin-bottom:14px">
+        <div class="card pad kpi"><div class="n">1,284</div><div class="l">今日会话</div></div>
+        <div class="card pad kpi"><div class="n">99.4%</div><div class="l">工具调用成功率</div></div>
+        <div class="card pad kpi"><div class="n">1.8s</div><div class="l">首 token P95</div></div>
+        <div class="card pad kpi"><div class="n">¥12.40</div><div class="l">今日模型成本</div></div>
+      </div>
+      <div class="grid" style="grid-template-columns:1fr 380px;align-items:start">
+        <div class="card">
+          <div class="pad"><div class="h2">组件状态</div></div>
+          <table>
+            <thead><tr><th>组件</th><th>版本 / 标识</th><th>状态</th><th>最近心跳</th></tr></thead>
+            <tbody>
+              <tr><td>Agent 内核</td><td>v0.9.3 · 单循环</td><td><span class="badge teal">健康</span></td><td>刚刚</td></tr>
+              <tr><td>模型网关</td><td>目录 #8812 · 3 provider</td><td><span class="badge teal">健康</span></td><td>12 秒前</td></tr>
+              <tr><td>RAG 索引</td><td>#2026-11-10.3 · 527 篇</td><td><span class="badge amber">召回率下降 7%</span></td><td>1 分钟前</td></tr>
+              <tr><td>MCP Adapter</td><td>OpenHIS · 22 工具</td><td><span class="badge teal">健康</span></td><td>3 秒前</td></tr>
+              <tr><td>同步与对账</td><td>游标 #184,203 · 每 30s</td><td><span class="badge amber">2 条差异待处理</span></td><td>12 秒前</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card pad">
+          <div class="h2">告警</div>
+          <div class="alert amber" style="margin-bottom:8px"><b>检索</b><span>心血管内科召回率 0.78 → 0.71（近 24h）</span></div>
+          <div class="alert rose"><b>语料</b><span>5 个科室 0 文档：精准药剂科 / 内分泌 / 普通外科 / 急诊 / 康复</span></div>
+          <div class="divider"></div>
+          <div class="h2">当前生效配置快照</div>
+          <div class="kv">
+            <dt>Prompt 集</dt><dd>#2026-11-10 · triage v12</dd>
+            <dt>规则集</dt><dd>危机 v5 · DDI v3 · 危急值 v2</dd>
+            <dt>索引</dt><dd>#2026-11-10.3</dd>
+            <dt>模型目录</dt><dd>#8812</dd>
+          </div>
+          <div class="hint" style="margin-top:8px">任何配置变更都会生成新快照，可按快照回放历史会话。</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" id="a-agent">
+      <div class="page-head">
+        <div><h1>Agent 配置</h1><p>模型路由 · 工具授权 · Prompt 版本 · 护栏参数</p></div>
+        <div class="right"><span class="badge amber">待发布 1 项变更</span><button class="btn sm">回滚</button><button class="btn sm primary">发布（需审批）</button></div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px">
+        <div class="pad"><div class="h2">模型路由</div></div>
+        <table>
+          <thead><tr><th>任务</th><th>主模型</th><th>温度</th><th>超时 / 重试</th><th>降级</th><th>当前</th></tr></thead>
+          <tbody>
+            <tr><td>分诊 triage</td><td>deepseek-v4.1-flash</td><td>0.1</td><td>8s / 2</td><td>Qwen3-0.6B（无工具）</td><td><span class="badge teal">生效</span></td></tr>
+            <tr><td>诊断 diagnosis</td><td>deepseek-v4.1-flash</td><td>0.2</td><td>20s / 1</td><td>同主模型重试一次</td><td><span class="badge teal">生效</span></td></tr>
+            <tr><td>报告解读</td><td>deepseek-v4.1-flash（视觉）</td><td>0.1</td><td>30s / 1</td><td>降级到文本说明</td><td><span class="badge amber">灰度 20%</span></td></tr>
+            <tr><td>摘要 summary</td><td>本地 Qwen3-8B</td><td>0.0</td><td>5s / 2</td><td>云端小模型</td><td><span class="badge teal">生效</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="grid g2" style="margin-bottom:14px">
+        <div class="card pad">
+          <div class="h2">工具授权矩阵</div>
+          <div class="kv">
+            <dt>患者端</dt><dd>9 个工具 · 事务写 · 无临床写</dd>
+            <dt>医生端</dt><dd>12 个工具 · 临床写需签名</dd>
+            <dt>运营端</dt><dd>3 个工具 · 审批与对账</dd>
+            <dt>管理端</dt><dd>4 个工具 · 只读 + 需审批的执行</dd>
+          </div>
+          <div class="divider"></div>
+          <div class="tiny muted">越权调用在网关层拦截，并写入安全审计。</div>
+        </div>
+        <div class="card pad">
+          <div class="h2">护栏与阈值</div>
+          <div class="kv">
+            <dt>引用门槛</dt><dd>0.20（患者端） / 0.35（医生端）</dd>
+            <dt>危机规则</dt><dd>v5 · 否定/既往史消歧开启</dd>
+            <dt>输出门禁</dt><dd>确诊 / 处方 / 剂量 关键词拦截</dd>
+            <dt>HITL</dt><dd>临床写全部需签名</dd>
+          </div>
+        </div>
+      </div>
+
+      <div class="card pad">
+        <div class="between"><div class="h2" style="margin:0">Prompt 版本与灰度</div><span class="badge">4 个 prompt 集</span></div>
+        <table style="margin-top:8px">
+          <thead><tr><th>用途</th><th>版本</th><th>状态</th><th>最近变更</th><th></th></tr></thead>
+          <tbody>
+            <tr><td>分诊 triage</td><td>v12</td><td><span class="badge teal">全量</span></td><td>11-09 · 加入红旗即时升级</td><td><button class="btn sm">对比</button></td></tr>
+            <tr><td>医生摘要</td><td>v3 → v4</td><td><span class="badge amber">灰度 20%</span></td><td>今天 · 增加来源角标</td><td><button class="btn sm">对比</button></td></tr>
+            <tr><td>报告解读</td><td>v7</td><td><span class="badge teal">全量</span></td><td>11-08</td><td><button class="btn sm">对比</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="screen" id="a-rag">
+      <div class="page-head">
+        <div><h1>语料与索引</h1><p>来源 · 许可 · 证据等级 · 入库流水线</p></div>
+        <div class="right"><button class="btn sm">重建索引</button><button class="btn sm primary">上传语料</button></div>
+      </div>
+      <div class="grid g4" style="margin-bottom:14px">
+        <div class="card pad kpi"><div class="n">527</div><div class="l">已发布文档</div></div>
+        <div class="card pad kpi"><div class="n">16 / 21</div><div class="l">科室覆盖率</div></div>
+        <div class="card pad kpi"><div class="n" style="color:#C77A15">2.1%</div><div class="l">重复率（待清理 11 篇）</div></div>
+        <div class="card pad kpi"><div class="n">#11.10.3</div><div class="l">当前索引版本</div></div>
+      </div>
+
+      <div class="card pad" style="margin-bottom:14px">
+        <div class="between"><div class="h2" style="margin:0">入库流水线</div><span class="badge">今日处理 34 篇</span></div>
+        <div class="row" style="gap:18px;margin-top:12px">
+          <div class="step done"><span class="n">1</span>上传 34</div>
+          <div class="step done"><span class="n">2</span>解析 33</div>
+          <div class="step done"><span class="n">3</span>切片 33</div>
+          <div class="step on"><span class="n">4</span>向量化 30</div>
+          <div class="step"><span class="n">5</span>索引 30</div>
+          <div class="step"><span class="n">6</span>发布 30</div>
+        </div>
+        <div class="alert amber" style="margin-top:12px"><b>阻塞</b><span>3 篇解析失败（扫描版 PDF 无文本层）· <b>2 篇许可未标注</b>，禁止发布</span></div>
+      </div>
+
+      <div class="card">
+        <table>
+          <thead><tr><th>文档</th><th>来源 / 许可</th><th>科室</th><th>证据等级</th><th>状态</th><th>引用次数</th></tr></thead>
+          <tbody>
+            <tr><td>稳定性冠心病诊断与治疗指南（2023）</td><td>中华医学会 · 内部授权</td><td>心血管内科</td><td>A</td><td><span class="badge teal">已发布</span></td><td>128</td></tr>
+            <tr><td>胸痛中心急诊分诊共识</td><td>胸痛中心 · 内部授权</td><td>急诊</td><td>B</td><td><span class="badge teal">已发布</span></td><td>86</td></tr>
+            <tr><td>高血压患者心血管风险评估</td><td>院内知识库 · 自有</td><td>心血管内科</td><td>C</td><td><span class="badge teal">已发布</span></td><td>41</td></tr>
+            <tr><td>MSD 诊疗手册（节选）</td><td>外部版权 · <b>仅限内部</b></td><td>多科室</td><td>B</td><td><span class="badge rose">禁止对外发布</span></td><td>0</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="hint" style="margin-top:10px">许可字段是硬门槛：未标注许可或仅限内部的语料，不会进入对外问答；院内使用单独标记。</div>
+    </section>
+
+    <section class="screen" id="a-debug">
+      <div class="page-head">
+        <div><h1>检索调试</h1><p>同一个检索接口，按端策略返回证据包</p></div>
+        <div class="right"><span class="badge">知识库 knowledge.search</span></div>
+      </div>
+      <div class="card pad" style="margin-bottom:14px">
+        <div class="field"><label>Query</label><div class="input">胸痛 30 分钟 活动后 压榨性<span class="cursor"></span></div></div>
+        <div class="chips">
+          <span class="chip sel">科室：心血管内科</span><span class="chip">top_k 8</span>
+          <span class="chip">门槛 0.20（患者端）</span><span class="chip">重排：Qwen3-Reranker</span>
+        </div>
+      </div>
+      <div class="grid" style="grid-template-columns:1fr 320px;align-items:start">
+        <div class="card">
+          <table>
+            <thead><tr><th>#</th><th>文档片段</th><th>来源</th><th>相关度</th><th>结果</th></tr></thead>
+            <tbody>
+              <tr><td>1</td><td>典型心绞痛表现为胸骨后压榨性疼痛，常由体力活动诱发…</td><td>指南 2023</td><td><b>0.82</b></td><td><span class="badge teal">引用</span></td></tr>
+              <tr><td>2</td><td>持续 20 分钟以上不缓解的胸痛应按高危处理…</td><td>胸痛共识</td><td><b>0.71</b></td><td><span class="badge teal">引用</span></td></tr>
+              <tr><td>3</td><td>高血压病程超过 5 年者，出现活动后胸痛应优先排查…</td><td>院内知识库</td><td><b>0.44</b></td><td><span class="badge teal">引用</span></td></tr>
+              <tr><td>4</td><td>心电图的适应证与禁忌证…</td><td>操作规范</td><td>0.19</td><td><span class="badge">低于门槛</span></td></tr>
+              <tr><td>5</td><td>患者问答：我胸痛要紧吗（重复 3 条）</td><td>历史问答</td><td>0.17</td><td><span class="badge rose">重复 + 低质</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card pad">
+          <div class="h2">本轮结果</div>
+          <div class="kv">
+            <dt>召回</dt><dd>8 条（向量 6 / BM25 4，去重后 8）</dd>
+            <dt>重排后</dt><dd>5 条</dd>
+            <dt>过门槛</dt><dd>3 条</dd>
+            <dt>被过滤</dt><dd>3 条（低相关 2 / 重复 1）</dd>
+          </div>
+          <div class="divider"></div>
+          <div class="alert teal"><b>结论</b><span>证据足够，可回答；引用 3 条，其中院内知识库 1 条需标注来源等级 C。</span></div>
+          <div class="hint" style="margin-top:8px">同一 query 切到医生端策略，门槛升到 0.35，只保留 2 条。</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" id="a-audit">
+      <div class="page-head">
+        <div><h1>配置审计</h1><p>谁改了什么 · 双人审批 · 一键回滚</p></div>
+        <div class="right"><button class="btn sm">导出</button></div>
+      </div>
+      <div class="card" style="margin-bottom:14px">
+        <table>
+          <thead><tr><th>时间</th><th>操作人</th><th>对象</th><th>变更</th><th>审批</th><th></th></tr></thead>
+          <tbody>
+            <tr><td>今天 10:12</td><td>admin_zhang</td><td>prompt:doctor-summary</td><td>v3 → v4（来源角标）</td><td><span class="badge teal">已审批</span></td><td><button class="btn sm">回滚</button></td></tr>
+            <tr><td>今天 09:40</td><td>admin_li</td><td>rag:index</td><td>重建 #11.10.2 → #11.10.3</td><td><span class="badge teal">已审批</span></td><td><button class="btn sm">回滚</button></td></tr>
+            <tr><td>昨天 18:22</td><td>admin_zhang</td><td>rule:crisis</td><td>v4 → v5（否定词消歧）</td><td><span class="badge">单人（低风险）</span></td><td><button class="btn sm">回滚</button></td></tr>
+            <tr><td>昨天 15:07</td><td>admin_li</td><td>model:report</td><td>温度 0.2 → 0.1</td><td><span class="badge amber">驳回</span></td><td><button class="btn sm">查看</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="grid g2">
+        <div class="card pad">
+          <div class="h2">变更 diff（prompt:doctor-summary v3 → v4）</div>
+          <div class="draft" style="margin-bottom:8px"><b>+ 新增</b><br>每条结论后追加来源角标：[HIS] / [预问诊] / [指南]</div>
+          <div class="draft" style="margin-bottom:8px"><b>- 删除</b><br>「建议优先考虑急性冠脉综合征」（表述过强，改为"需排除"）</div>
+          <div class="draft"><b>影响范围</b><br>医生端诊前摘要 · 灰度 20% · 可 1 分钟回滚</div>
+        </div>
+        <div class="card pad">
+          <div class="h2">审批规则</div>
+          <div class="list-card" style="border-top:0;padding:8px 0"><span class="badge teal">双人</span><div class="grow">涉及临床输出（prompt / 规则 / 阈值）</div></div>
+          <div class="list-card" style="padding:8px 0"><span class="badge">单人</span><div class="grow">模型路由、超时、重试</div></div>
+          <div class="list-card" style="padding:8px 0"><span class="badge rose">禁止</span><div class="grow">直接改数据库、绕过网关调用</div></div>
+          <div class="divider"></div>
+          <div class="tiny muted">管理端看不到患者明细：会话回放默认脱敏，需额外授权且留痕。</div>
+        </div>
+      </div>
+    </section>
   </main>
 
   <aside class="agent">
@@ -792,13 +1012,27 @@ tr:hover td{background:#FAFCFB}
       <div class="agent-compose"><div class="box"><span>问我：今天有哪些差异没处理？</span><span class="badge">发送</span></div></div>
     </div>
 
+    <div class="agent-panel" data-agent="admin">
+      <div class="agent-head"><span class="dot-live"></span><span class="agent-title">平台 Agent</span><span class="agent-sub">运维助手 · 只读建议</span></div>
+      <div class="agent-sec"><div class="h">可用能力</div>
+        <div class="toolchips"><span>runtime.status</span><span>config.diff</span><span>rag.inspect</span><span>trace.replay</span></div></div>
+      <div class="agent-sec"><div class="h">最近调用</div>
+        <div class="callog"><div class="t"><span class="ok">✓</span> rag.inspect <span style="margin-left:auto">210ms</span></div><div class="m">527 篇 · 重复 11 · 5 科室 0 文档</div></div>
+        <div class="callog"><div class="t"><span class="ok">✓</span> config.diff <span style="margin-left:auto">18ms</span></div><div class="m">triage v11 → v12 · 3 处改动</div></div>
+        <div class="callog"><div class="t"><span class="ok">✓</span> runtime.status <span style="margin-left:auto">5ms</span></div><div class="m">内核/网关/索引/adapter 四组件健康</div></div>
+      </div>
+      <div class="agent-sec"><div class="h">边界</div>
+        <div class="tiny muted">只能提建议与生成变更单；发布、回滚、重建索引都需人工审批；默认看不到患者明细。</div></div>
+      <div class="agent-compose"><div class="box"><span>问我：这次召回率下降是什么原因？</span><span class="badge">发送</span></div></div>
+    </div>
+
   </aside>
 </div>
 
 <div class="overlay on" id="entry">
   <div class="entry-wrap">
     <div class="entry-head">
-      <h1>三个入口，同一个医疗 Agent 内核</h1>
+      <h1>四个入口，同一个医疗 Agent 内核</h1>
       <p>独立域名 · 独立登录 · 独立会话与静态资源；共享事实层（HIS）、工具面（MCP）与检索服务</p>
     </div>
     <div class="entry-cards">
@@ -823,8 +1057,15 @@ tr:hover td{background:#FAFCFB}
         <p>对账 · 审核 · 审计 · 账号 + 动态口令 · 仅内网 / VPN 可达</p>
         <div class="go">进入运营端 →</div>
       </button>
+      <button class="entry-card" data-entry="admin">
+        <div class="ic" style="background:#EAF0EE;color:#2C4A43">管</div>
+        <h3>管理端（平台）</h3>
+        <div class="dom">admin.hospital.internal</div>
+        <p>Agent 运行时 · RAG 语料与索引 · 模型路由 · 工具与规则 · 审计回滚 · 仅运维网段</p>
+        <div class="go">进入管理端 →</div>
+      </button>
     </div>
-    <div class="entry-foot">三入口可以独立发布、独立下线；数据与 Agent 内核不分裂</div>
+    <div class="entry-foot">四个入口可以独立发布、独立下线；数据与 Agent 内核不分裂</div>
   </div>
 </div>
 
@@ -848,7 +1089,8 @@ tr:hover td{background:#FAFCFB}
 <script>
 var currentEnd = 'patient';
 var pendingEnd = 'patient';
-var scopeMap = { patient: 'scope: patient_write', doctor: 'scope: clinician_write', ops: 'scope: ops_write' };
+var scopeMap = { patient: 'scope: patient_write', doctor: 'scope: clinician_write', ops: 'scope: ops_write', admin: 'scope: admin_write' };
+var avatarMap = { patient: '王', doctor: '张', ops: '质', admin: '管' };
 var entryMeta = {
   patient: { domain: 'patient.hospital.kk.zhzepei.cn', title: '患者端登录', sub: '手机号 + 短信验证码',
     aLabel: '手机号', aValue: '138 0000 8001', pLabel: '验证码', pValue: '• • • • • •',
@@ -858,7 +1100,10 @@ var entryMeta = {
     note: '医生身份以 HIS 为准；登录后获得 HIS 会话，签名在 HIS 侧可验证；退出 HIS 即失效。' },
   ops: { domain: 'ops.hospital.kk.zhzepei.cn', title: '运营 / 质控端登录', sub: '账号 + 密码 + 动态口令（仅内网 / VPN）',
     aLabel: '账号', aValue: 'ops_zhang', pLabel: '密码', pValue: '••••••••',
-    note: '所有操作留痕；审批、导出、改密等危险操作需二次验证。' }
+    note: '所有操作留痕；审批、导出、改密等危险操作需二次验证。' },
+  admin: { domain: 'admin.hospital.internal', title: '管理端（平台）登录', sub: '运维账号 + 密码 + 动态口令 · 仅运维网段',
+    aLabel: '运维账号', aValue: 'admin_zhang', pLabel: '密码', pValue: '••••••••',
+    note: '管理端默认看不到患者明细；配置变更需双人审批，全部记录可回滚。' }
 };
 
 function showScreen(name) {
@@ -875,7 +1120,7 @@ function switchEnd(end) {
   var groups = document.querySelectorAll('.sider-group');
   for (var j = 0; j < groups.length; j++) { groups[j].classList.toggle('on', groups[j].getAttribute('data-sider') === end); }
   document.getElementById('scopeLabel').textContent = scopeMap[end];
-  document.getElementById('whoAvatar').textContent = end === 'patient' ? '王' : (end === 'doctor' ? '张' : '质');
+  document.getElementById('whoAvatar').textContent = avatarMap[end];
   document.getElementById('entryChip').textContent = entryMeta[end].domain;
   var first = document.querySelector('.sider-group[data-sider="' + end + '"] .nav');
   if (first) { showScreen(first.getAttribute('data-screen')); }
@@ -896,7 +1141,7 @@ function openLogin(end) {
   document.getElementById('loginAccount').textContent = m.aValue;
   document.getElementById('loginPwd').textContent = m.pValue;
   document.getElementById('loginNote').textContent = m.note;
-  document.getElementById('loginTotpField').style.display = end === 'ops' ? 'block' : 'none';
+  document.getElementById('loginTotpField').style.display = (end === 'ops' || end === 'admin') ? 'block' : 'none';
   document.getElementById('entry').classList.remove('on');
   document.getElementById('login').classList.add('on');
 }
