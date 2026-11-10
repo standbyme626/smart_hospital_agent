@@ -42,3 +42,13 @@ async def require_admin(user: dict[str, Any] = Depends(get_current_user)) -> dic
     if user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="admin role required")
     return user
+
+
+async def require_clinician(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+    """医生端只读接口：试点期允许 admin 与 doctor 角色访问。
+
+    生产形态应由 HIS 医生账号登录并透传 operator token；这里先做角色门禁。
+    """
+    if user.get("role") not in {"admin", "doctor"}:
+        raise HTTPException(status_code=403, detail="clinician role required")
+    return user

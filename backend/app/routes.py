@@ -11,6 +11,7 @@ import zipfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import asyncpg
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
@@ -18,7 +19,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel
 
-from .api.deps import create_token, get_current_user, require_admin
+from .api.deps import create_token, get_current_user, require_admin, require_clinician
 from .conversation import append_message, load_history
 from .db import SCHEMA_VERSION
 from .policy import DEPARTMENT_NAMES, DRUG_CHECKER
@@ -2424,3 +2425,85 @@ async def health(request: Request) -> dict[str, Any]:
 @router.get("/metrics")
 async def metrics() -> Response:
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+# ----------------------------------------------------------------- clinician
+# 医生端只读（S8a）：先复用本地投影与档案，HIS 写操作留给 S9。
+@router.get("/api/v1/clinician/queue")
+async def clinician_queue(
+    request: Request,
+    date: str | None = Query(None),
+    user: dict[str, Any] = Depends(require_clinician),
+) -> dict[str, Any]:
+    db = _state(request).db
+    day = date or datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
+    rows = await db.fetch(
+        """
+        SELECT p.id, p.member_id, p.department, p.doctor_name, p.appointment_date,
+               p.status, p.payment_status, p.his_encounter_id, p.his_status,
+               f.name AS member_name, f.gender, f.birth_date
+        FROM appointment_projection p
+        LEFT JOIN family_members f ON f.id = p.member_id
+        WHERE p.appointment_date = $1
+        ORDER BY p.created_at ASC
+        """,
+        day,
+    )
+    return {"date": day, "items": [dict(row) for row in rows]}
+
+
+@router.get("/api/v1/clinician/patients/{member_id}")
+async def clinician_patient(
+    member_id: str,
+    request: Request,
+    user: dict[str, Any] = Depends(require_clinician),
+) -> dict[str, Any]:
+    db = _state(request).db
+    member = await db.fetchrow("SELECT * FROM family_members WHERE id=$1", member_id)
+    if not member:
+        raise HTTPException(status_code=404, detail="member not found")
+    reports = await db.fetch(
+        """
+        SELECT id, title, summary, created_at, critical_flags
+        FROM reports WHERE member_id=$1 ORDER BY created_at DESC LIMIT 10
+        """,
+        member_id,
+    )
+    medications = await db.fetch(
+        """
+        SELECT id, name, dose, frequency, active
+        FROM medications WHERE member_id=$1 ORDER BY created_at DESC LIMIT 30
+        """,
+        member_id,
+    )
+    followups = await db.fetch(
+        """
+        SELECT id, title, due_date, status
+        FROM followups WHERE member_id=$1
+        ORDER BY status, due_date NULLS LAST LIMIT 20
+        """,
+        member_id,
+    )
+    appointments = await db.fetch(
+        """
+        SELECT id, department, doctor_name, appointment_date, status, payment_status
+        FROM appointment_projection WHERE member_id=$1
+        ORDER BY created_at DESC LIMIT 10
+        """,
+        member_id,
+    )
+    return {
+        "member": {
+            "id": member["id"],
+            "name": member["name"],
+            "relation": member["relation"],
+            "gender": member["gender"],
+            "birth_date": member["birth_date"],
+            "allergies": member["allergies"],
+            "conditions": member["conditions"],
+        },
+        "reports": [dict(row) for row in reports],
+        "medications": [dict(row) for row in medications],
+        "followups": [dict(row) for row in followups],
+        "appointments": [dict(row) for row in appointments],
+    }
