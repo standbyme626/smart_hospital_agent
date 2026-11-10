@@ -69,7 +69,9 @@ button{font:inherit;color:inherit;cursor:pointer}
 .tiny{font-size:12px}
 .h2{font-size:13px;font-weight:700;letter-spacing:.02em;margin:0 0 12px}
 .badge{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;
-  padding:3px 9px;border-radius:999px;background:#EEF3F1;color:#4B5D57}
+  padding:3px 9px;border-radius:999px;background:#EEF3F1;color:#4B5D57;white-space:nowrap}
+#d-labs td:nth-child(5){white-space:nowrap}
+#a-kb td:nth-child(8){white-space:nowrap}
 .badge.teal{background:var(--primary-soft);color:#0B6C62}
 .badge.amber{background:var(--amber-soft);color:#8A5310}
 .badge.rose{background:var(--rose-soft);color:#8E2A39}
@@ -223,6 +225,8 @@ tr:hover td{background:#FAFCFB}
       <button class="nav" data-screen="p-result"><span class="dot"></span>结果与证据</button>
       <button class="nav" data-screen="p-prep"><span class="dot"></span>就诊准备</button>
       <button class="nav" data-screen="p-book"><span class="dot"></span>挂号服务</button>
+      <button class="nav" data-screen="p-report"><span class="dot"></span>报告详情</button>
+      <button class="nav" data-screen="p-meds"><span class="dot"></span>药管家</button>
     </div>
     <div class="sider-group" data-sider="doctor">
       <div class="sider-title">医生端</div>
@@ -230,6 +234,7 @@ tr:hover td{background:#FAFCFB}
       <button class="nav" data-screen="d-360"><span class="dot"></span>患者 360</button>
       <button class="nav" data-screen="d-note"><span class="dot"></span>接诊 / 病历</button>
       <button class="nav" data-screen="d-rx"><span class="dot"></span>医嘱 / 处方</button>
+      <button class="nav" data-screen="d-labs"><span class="dot"></span>检验 / 检查</button>
       <button class="nav" data-screen="d-follow"><span class="dot"></span>诊毕 / 随访</button>
     </div>
     <div class="sider-group" data-sider="ops">
@@ -242,9 +247,14 @@ tr:hover td{background:#FAFCFB}
       <div class="sider-title">管理端（平台）</div>
       <button class="nav active" data-screen="a-overview"><span class="dot"></span>运行总览</button>
       <button class="nav" data-screen="a-agent"><span class="dot"></span>Agent 配置</button>
+      <button class="nav" data-screen="a-kb"><span class="dot"></span>知识库策略</button>
       <button class="nav" data-screen="a-rag"><span class="dot"></span>语料与索引</button>
       <button class="nav" data-screen="a-debug"><span class="dot"></span>检索调试</button>
+      <button class="nav" data-screen="a-model"><span class="dot"></span>模型网关</button>
+      <button class="nav" data-screen="a-rules"><span class="dot"></span>规则库</button>
+      <button class="nav" data-screen="a-trace"><span class="dot"></span>会话回放</button>
       <button class="nav" data-screen="a-audit"><span class="dot"></span>配置审计</button>
+      <button class="nav" data-screen="a-access"><span class="dot"></span>权限与账号</button>
     </div>
   </aside>
 
@@ -964,6 +974,313 @@ tr:hover td{background:#FAFCFB}
           <div class="list-card" style="padding:8px 0"><span class="badge rose">禁止</span><div class="grow">直接改数据库、绕过网关调用</div></div>
           <div class="divider"></div>
           <div class="tiny muted">管理端看不到患者明细：会话回放默认脱敏，需额外授权且留痕。</div>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ============ 患者端补充 ============ -->
+    <section class="screen" id="p-meds">
+      <div class="page-head">
+        <div><h1>药管家</h1><p>王建国 · 3 种在用药物 · 数据来自 HIS 处方</p></div>
+        <div class="right"><span class="badge teal">相互作用检查通过</span><span class="badge amber">2 种未覆盖</span></div>
+      </div>
+      <div class="grid" style="grid-template-columns:1fr 340px;align-items:start">
+        <div class="card">
+          <div class="pad"><div class="h2">在用药物</div></div>
+          <table>
+            <thead><tr><th>药品</th><th>剂量</th><th>频次</th><th>开始</th><th>来源</th></tr></thead>
+            <tbody>
+              <tr><td>氨氯地平片</td><td>5mg</td><td>每日 1 次</td><td>2026-03-12</td><td><span class="badge teal">HIS 处方</span></td></tr>
+              <tr><td>阿托伐他汀钙片</td><td>20mg</td><td>每晚 1 次</td><td>2026-11-07</td><td><span class="badge teal">HIS 处方</span></td></tr>
+              <tr><td>复方丹参滴丸</td><td>10 丸</td><td>每日 3 次</td><td>2026-10-20</td><td><span class="badge amber">患者自述</span></td></tr>
+            </tbody>
+          </table>
+          <div class="pad" style="border-top:1px solid var(--line)">
+            <div class="alert amber"><b>未覆盖</b><span>复方丹参滴丸、银杏叶片不在相互作用规则库内，结果为「未知」而不是「安全」，建议咨询药师。</span></div>
+          </div>
+        </div>
+        <div class="card pad">
+          <div class="h2">相互作用检查</div>
+          <div class="list-card" style="border-top:0;padding:8px 0"><span class="badge teal">✓</span><div class="grow">氨氯地平 + 阿托伐他汀：无冲突</div></div>
+          <div class="list-card" style="padding:8px 0"><span class="badge amber">!</span><div class="grow">氨氯地平 + 辛伐他汀：若加用需限量 ≤20mg</div></div>
+          <div class="list-card" style="padding:8px 0"><span class="badge rose">?</span><div class="grow">复方丹参滴丸：规则库未覆盖</div></div>
+          <div class="divider"></div>
+          <div class="tiny muted">规则库版本 DDI v3 · 共 186 对 · 最近更新 11-09</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" id="p-report">
+      <div class="page-head">
+        <div><h1>检查报告 · 血脂四项</h1><p>2026-11-05 · 心血管内科 · 王建国</p></div>
+        <div class="right"><span class="badge amber">1 项偏高</span><button class="btn sm">下载原图</button></div>
+      </div>
+      <div class="grid" style="grid-template-columns:1fr 360px;align-items:start">
+        <div class="card">
+          <div class="pad"><div class="h2">指标</div></div>
+          <table>
+            <thead><tr><th>项目</th><th>结果</th><th>参考范围</th><th>状态</th></tr></thead>
+            <tbody>
+              <tr><td>总胆固醇 TC</td><td>5.2 mmol/L</td><td>3.1–5.7</td><td><span class="badge teal">正常</span></td></tr>
+              <tr><td>甘油三酯 TG</td><td>1.6 mmol/L</td><td>0.4–1.7</td><td><span class="badge teal">正常</span></td></tr>
+              <tr><td>低密度脂蛋白 LDL-C</td><td><b>3.8 mmol/L</b></td><td>&lt; 3.4</td><td><span class="badge amber">偏高</span></td></tr>
+              <tr><td>高密度脂蛋白 HDL-C</td><td>1.1 mmol/L</td><td>&gt; 1.0</td><td><span class="badge teal">正常</span></td></tr>
+            </tbody>
+          </table>
+          <div class="pad" style="border-top:1px solid var(--line)">
+            <div class="hint">参考范围来自报告原文；不同医院可能不同，以报告为准。</div>
+          </div>
+        </div>
+        <div class="card pad">
+          <div class="h2">这次偏高意味着什么</div>
+          <div class="evidence" style="margin-bottom:8px">
+            <div class="between"><h4>1. 指标含义</h4><span class="score">解读</span></div>
+            <p>LDL-C 俗称「坏胆固醇」，偏高与动脉粥样硬化风险相关。3.8 属于轻度升高。</p>
+          </div>
+          <div class="evidence" style="margin-bottom:8px">
+            <div class="between"><h4>2. 你的情况</h4><span class="badge">HIS</span></div>
+            <p>62 岁、高血压 8 年，属于心血管高危人群，目标值通常比普通人更严格。</p>
+          </div>
+          <div class="evidence">
+            <div class="between"><h4>3. 建议</h4><span class="score">0.81</span></div>
+            <p>带报告看心内科；是否用药由医生结合整体风险评估决定。</p>
+          </div>
+          <div class="alert teal" style="margin-top:10px"><b>说明</b><span>以上为参考解释，不是诊断，也不能替代医生判断。</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 医生端补充 ============ -->
+    <section class="screen" id="d-labs">
+      <div class="page-head">
+        <div><h1>检验 / 检查</h1><p>王建国 · 近 30 天 · 来自 HIS</p></div>
+        <div class="right"><span class="badge amber">3 项异常</span><span class="badge teal">危急值 0</span></div>
+      </div>
+      <div class="grid" style="grid-template-columns:1fr 340px;align-items:start">
+        <div class="card">
+          <div class="pad"><div class="h2">检验结果</div></div>
+          <table>
+            <thead><tr><th>项目</th><th>结果</th><th>参考</th><th>异常</th><th>时间</th></tr></thead>
+            <tbody>
+              <tr><td>低密度脂蛋白 LDL-C</td><td>3.8 mmol/L</td><td>&lt; 3.4</td><td><span class="badge amber">↑</span></td><td>11-05</td></tr>
+              <tr><td>空腹血糖</td><td>6.4 mmol/L</td><td>3.9–6.1</td><td><span class="badge amber">↑</span></td><td>11-05</td></tr>
+              <tr><td>肌酐</td><td>96 μmol/L</td><td>57–97</td><td><span class="badge teal">正常</span></td><td>11-05</td></tr>
+              <tr><td>血钾</td><td>4.2 mmol/L</td><td>3.5–5.3</td><td><span class="badge teal">正常</span></td><td>11-05</td></tr>
+              <tr><td>心电图</td><td>窦性心律，ST 段轻度压低</td><td>—</td><td><span class="badge rose">需结合症状</span></td><td>今天</td></tr>
+            </tbody>
+          </table>
+          <div class="pad" style="border-top:1px solid var(--line)">
+            <div class="h2" style="margin-bottom:6px">趋势（LDL-C）</div>
+            <div class="row" style="gap:18px">
+              <div class="kpi"><div class="l">07-12</div><div class="n" style="font-size:18px">3.2</div></div>
+              <div class="kpi"><div class="l">09-08</div><div class="n" style="font-size:18px">3.5</div></div>
+              <div class="kpi"><div class="l">11-05</div><div class="n" style="font-size:18px;color:#C77A15">3.8</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="card pad">
+          <div class="h2">AI 提示（未确认）</div>
+          <div class="draft" style="margin-bottom:8px"><b>需要关注</b><br>LDL-C 连续上升 + 今日心电图 ST 段轻度压低 → 建议结合症状排查心肌缺血。</div>
+          <div class="draft" style="margin-bottom:8px"><b>建议补充</b><br>心肌损伤标志物（肌钙蛋白）；2 小时内出结果。</div>
+          <div class="alert amber"><b>注意</b><span>提示基于规则与指南，不构成诊断；是否开检查由医生决定。</span></div>
+          <div class="divider"></div>
+          <div class="tiny muted">数据来源：HIS 检验/检查接口 · 只读 · 已脱敏至本患者范围。</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 管理端补充 ============ -->
+    <section class="screen" id="a-kb">
+      <div class="page-head">
+        <div><h1>知识库与检索策略</h1><p>一个检索服务 · 五个语料域 · 按端授权</p></div>
+        <div class="right"><span class="badge teal">knowledge.search 统一入口</span></div>
+      </div>
+      <div class="grid g4" style="margin-bottom:14px">
+        <div class="card pad kpi"><div class="n">5</div><div class="l">语料域（不是 5 个知识库）</div></div>
+        <div class="card pad kpi"><div class="n">1,842</div><div class="l">已发布文档</div></div>
+        <div class="card pad kpi"><div class="n" style="color:#C77A15">2</div><div class="l">未达覆盖的语料域</div></div>
+        <div class="card pad kpi"><div class="n">3,210</div><div class="l">今日检索次数</div></div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px">
+        <div class="pad"><div class="h2">语料域 × 角色可见性</div></div>
+        <table>
+          <thead><tr><th>语料域</th><th>内容</th><th>篇数</th><th>患者端</th><th>医生端</th><th>运营端</th><th>管理端</th><th>许可</th></tr></thead>
+          <tbody>
+            <tr><td><b>clinical-evidence</b></td><td>指南 / 共识 / 院内路径</td><td>412</td>
+              <td><span class="badge rose">禁用</span></td><td><span class="badge teal">可检索 · 门槛 0.35</span></td>
+              <td><span class="badge">只读引用</span></td><td><span class="badge">管理</span></td><td>内部授权</td></tr>
+            <tr><td><b>drug</b></td><td>说明书 / DDI / 妊娠禁忌</td><td>386</td>
+              <td><span class="badge amber">仅说明书简版</span></td><td><span class="badge teal">全部</span></td>
+              <td><span class="badge">只读</span></td><td><span class="badge">管理</span></td><td>公开 + 内部</td></tr>
+            <tr><td><b>patient-edu</b></td><td>科普 / 就诊须知 / 随访</td><td>268</td>
+              <td><span class="badge teal">全部</span></td><td><span class="badge teal">可引用</span></td>
+              <td><span class="badge">只读</span></td><td><span class="badge">管理</span></td><td>自有</td></tr>
+            <tr><td><b>hospital-pathway</b></td><td>院内制度 / 流程 / 排班</td><td>320</td>
+              <td><span class="badge rose">禁用</span></td><td><span class="badge teal">按科室</span></td>
+              <td><span class="badge teal">全部</span></td><td><span class="badge">管理</span></td><td>内部</td></tr>
+            <tr><td><b>platform-doc</b></td><td>平台 FAQ / runbook</td><td>96</td>
+              <td><span class="badge rose">禁用</span></td><td><span class="badge rose">禁用</span></td>
+              <td><span class="badge teal">全部</span></td><td><span class="badge">管理</span></td><td>自有</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="grid g2">
+        <div class="card pad">
+          <div class="h2">每端的检索策略</div>
+          <div class="kv">
+            <dt>患者端</dt><dd>allowlist = patient-edu + drug(简版)<br>门槛 0.20 · 不给诊断结论 · 无证据显示「暂无」</dd>
+            <dt>医生端</dt><dd>allowlist = clinical-evidence + drug + pathway(本科室)<br>门槛 0.35 · 必带证据等级与原文 · 标注「辅助」</dd>
+            <dt>运营端</dt><dd>allowlist = hospital-pathway（只读）<br>用于流程核对，不参与问答</dd>
+            <dt>管理端</dt><dd>不做业务检索；只做语料准入、索引发布、检索调试</dd>
+          </div>
+        </div>
+        <div class="card pad">
+          <div class="h2">为什么不是「四个知识库」</div>
+          <div class="list-card" style="border-top:0;padding:8px 0"><span class="badge teal">1</span><div class="grow">一份文档只存一份，按「语料域」打标，不按端复制</div></div>
+          <div class="list-card" style="padding:8px 0"><span class="badge teal">2</span><div class="grow">索引分区 = 语料域；检索必须带 allowlist，越权域在召回前就被排除</div></div>
+          <div class="list-card" style="padding:8px 0"><span class="badge teal">3</span><div class="grow">门槛、输出约束、免责话术按端配置，不复制语料</div></div>
+          <div class="list-card" style="padding:8px 0"><span class="badge teal">4</span><div class="grow">更新一次，四端即时一致；不会出现「患者端还是旧版」</div></div>
+          <div class="alert amber" style="margin-top:10px"><b>踩坑</b><span>如果按端各建一套库，最先坏的是「同一问题两个答案」，审计也无法归因。</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" id="a-model">
+      <div class="page-head">
+        <div><h1>模型网关</h1><p>目录 · 成本 · 限流 · 降级链</p></div>
+        <div class="right"><span class="badge teal">3 个 provider 健康</span><button class="btn sm">刷新目录</button></div>
+      </div>
+      <div class="card" style="margin-bottom:14px">
+        <table>
+          <thead><tr><th>用途</th><th>Provider / 模型</th><th>上下文</th><th>千 token 成本</th><th>P95 延迟</th><th>状态</th></tr></thead>
+          <tbody>
+            <tr><td>分诊 / 诊断</td><td>opencode-go · deepseek-v4.1-flash</td><td>1M</td><td>¥0.004</td><td>1.4s</td><td><span class="badge teal">健康</span></td></tr>
+            <tr><td>Embedding</td><td>SiliconFlow · Qwen3-Embedding-8B</td><td>8K</td><td>¥0.0005</td><td>210ms</td><td><span class="badge teal">健康</span></td></tr>
+            <tr><td>Rerank</td><td>SiliconFlow · Qwen3-Reranker-8B</td><td>4K</td><td>¥0.0008</td><td>180ms</td><td><span class="badge teal">健康</span></td></tr>
+            <tr><td>本地兜底</td><td>WinPC Ollama · qwen3-0.6b-dpo</td><td>32K</td><td>¥0</td><td>2.9s</td><td><span class="badge amber">无工具</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="grid g3">
+        <div class="card pad"><div class="h2">今日成本</div><div class="kpi"><div class="n">¥12.40</div><div class="l">预算 ¥50 / 日 · 已用 25%</div></div></div>
+        <div class="card pad"><div class="h2">限流</div><div class="kv"><dt>患者</dt><dd>60 次 / 日</dd><dt>医生</dt><dd>不限（审计）</dd><dt>运营</dt><dd>只读</dd></div></div>
+        <div class="card pad"><div class="h2">降级链</div><div class="tiny muted">主模型 → 同模型重试 1 次 → 本地 0.6B（无工具）→ 返回「暂时不可用」，不静默输出</div></div>
+      </div>
+    </section>
+
+    <section class="screen" id="a-rules">
+      <div class="page-head">
+        <div><h1>规则库</h1><p>危机识别 · 药物相互作用 · 危急值</p></div>
+        <div class="right"><span class="badge amber">1 项待审批</span></div>
+      </div>
+      <div class="card" style="margin-bottom:14px">
+        <table>
+          <thead><tr><th>规则集</th><th>版本</th><th>条目</th><th>最近变更</th><th>审批</th><th>状态</th></tr></thead>
+          <tbody>
+            <tr><td>危机识别词表</td><td>v5</td><td>12 概念 / 84 词</td><td>11-09 · 否定与既往史消歧</td><td><span class="badge teal">已审批</span></td><td><span class="badge teal">生效</span></td></tr>
+            <tr><td>药物相互作用</td><td>v3</td><td>186 对</td><td>11-09 · 增加酒精/造影剂</td><td><span class="badge teal">已审批</span></td><td><span class="badge teal">生效</span></td></tr>
+            <tr><td>妊娠禁忌</td><td>v2</td><td>64 条</td><td>11-09 · 补充华法林</td><td><span class="badge teal">已审批</span></td><td><span class="badge teal">生效</span></td></tr>
+            <tr><td>危急值阈值</td><td>v1</td><td>18 项</td><td>11-10 · 待上线</td><td><span class="badge amber">待审批</span></td><td><span class="badge">未生效</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="grid g2">
+        <div class="card pad">
+          <div class="h2">危机识别（v5）摘要</div>
+          <div class="kv">
+            <dt>概念</dt><dd>胸痛 / 卒中 / 呼吸困难 / 大出血 / 意识障碍 / 过敏休克 …</dd>
+            <dt>消歧</dt><dd>否定句（「没有胸痛」）与既往史（「以前中过风」）不触发</dd>
+            <dt>升级</dt><dd>命中即 urgent 以上；UI 立即引导 120</dd>
+          </div>
+        </div>
+        <div class="card pad">
+          <div class="h2">危急值（v1 · 待审批）</div>
+          <table>
+            <thead><tr><th>项目</th><th>阈值</th><th>动作</th></tr></thead>
+            <tbody>
+              <tr><td>血钾</td><td>&gt; 6.0 或 &lt; 2.8</td><td>立即报告医生</td></tr>
+              <tr><td>肌钙蛋白</td><td>&gt; 正常上限 5 倍</td><td>按 ACS 处理</td></tr>
+              <tr><td>血糖</td><td>&lt; 2.8 或 &gt; 22</td><td>立即处理</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" id="a-trace">
+      <div class="page-head">
+        <div><h1>会话回放</h1><p>按当时的配置快照复现 · 默认脱敏</p></div>
+        <div class="right"><span class="badge">最近 24 小时 · 1,284 条</span></div>
+      </div>
+      <div class="grid" style="grid-template-columns:280px 1fr 300px;align-items:start">
+        <div class="card">
+          <div class="pad"><div class="h2">会话</div></div>
+          <div class="list-card" style="padding:10px 14px"><div><b>sess_9f2a</b><div class="tiny muted">14:02 · 患者端 · 胸痛</div></div></div>
+          <div class="list-card" style="padding:10px 14px"><div><b>sess_8c11</b><div class="tiny muted">13:58 · 医生端 · 摘要</div></div></div>
+          <div class="list-card" style="padding:10px 14px"><div><b>sess_77bd</b><div class="tiny muted">13:41 · 患者端 · 报告解读</div></div></div>
+          <div class="pad" style="border-top:1px solid var(--line)"><div class="hint">只显示脱敏后的会话；看患者明细需单独授权。</div></div>
+        </div>
+        <div class="card pad">
+          <div class="h2">trace · sess_9f2a</div>
+          <div class="timeline">
+            <div class="tl on"><b>14:02:03 · 入口</b><div class="muted tiny">患者端 · scope patient_write</div></div>
+            <div class="tl"><b>14:02:03 · policy.crisis_scan</b><div class="muted tiny">12ms · 命中「胸痛 + 活动诱发」</div></div>
+            <div class="tl"><b>14:02:04 · knowledge.search</b><div class="muted tiny">340ms · 召回 8 → 引用 3（门槛 0.20）</div></div>
+            <div class="tl"><b>14:02:05 · llm.triage</b><div class="muted tiny">1.4s · 812 in / 306 out · ¥0.003</div></div>
+            <div class="tl"><b>14:02:06 · guard.output</b><div class="muted tiny">通过 · 无确诊/处方表述</div></div>
+            <div class="tl"><b>14:02:06 · SSE final</b><div class="muted tiny">1,208ms 首 token · 总 3.2s</div></div>
+          </div>
+        </div>
+        <div class="card pad">
+          <div class="h2">配置快照</div>
+          <div class="kv">
+            <dt>Prompt</dt><dd>triage v12</dd>
+            <dt>索引</dt><dd>#2026-11-10.3</dd>
+            <dt>模型</dt><dd>deepseek-v4.1-flash</dd>
+            <dt>规则</dt><dd>crisis v5 / DDI v3</dd>
+            <dt>门槛</dt><dd>0.20</dd>
+          </div>
+          <div class="divider"></div>
+          <div class="alert teal"><b>可以重放</b><span>用同一快照可完整复现这次回答，用于复盘与评测。</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" id="a-access">
+      <div class="page-head">
+        <div><h1>权限与账号</h1><p>四端账号 · scope · IP · 密钥轮换</p></div>
+        <div class="right"><span class="badge amber">1 个账号 90 天未改密</span></div>
+      </div>
+      <div class="card" style="margin-bottom:14px">
+        <table>
+          <thead><tr><th>账号</th><th>端</th><th>角色</th><th>scope</th><th>最近登录</th><th>IP 限制</th><th>状态</th></tr></thead>
+          <tbody>
+            <tr><td>wangjianguo</td><td>患者端</td><td>患者</td><td>patient_read / patient_write</td><td>今天 14:01</td><td>无</td><td><span class="badge teal">正常</span></td></tr>
+            <tr><td>ZM1024</td><td>医生端</td><td>主任医师</td><td>clinician_read / clinician_write</td><td>今天 14:00</td><td>院内网段</td><td><span class="badge teal">正常</span></td></tr>
+            <tr><td>ops_zhang</td><td>运营端</td><td>医务科</td><td>ops_read / ops_write</td><td>今天 13:52</td><td>10.8.0.0/16</td><td><span class="badge teal">正常</span></td></tr>
+            <tr><td>admin_zhang</td><td>管理端</td><td>平台运维</td><td>admin_read / admin_write</td><td>今天 10:12</td><td>运维网段</td><td><span class="badge amber">待改密</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="grid g2">
+        <div class="card pad">
+          <div class="h2">职责分离</div>
+          <div class="list-card" style="border-top:0;padding:8px 0"><span class="badge rose">禁止</span><div class="grow">同一账号同时拥有 ops_write 与 admin_write</div></div>
+          <div class="list-card" style="padding:8px 0"><span class="badge teal">双人</span><div class="grow">prompt / 规则 / 阈值 / 索引发布</div></div>
+          <div class="list-card" style="padding:8px 0"><span class="badge teal">单人</span><div class="grow">模型路由、超时、限流</div></div>
+        </div>
+        <div class="card pad">
+          <div class="h2">密钥与轮换</div>
+          <div class="kv">
+            <dt>JWT 签名</dt><dd>90 天轮换 · 上次 10-02</dd>
+            <dt>HIS 服务账号</dt><dd>只读 + 事务写分离</dd>
+            <dt>模型 Key</dt><dd>按环境隔离 · 不落日志</dd>
+            <dt>备份加密</dt><dd>gpg 对称 · 密钥在密钥管理</dd>
+          </div>
+          <div class="alert amber" style="margin-top:10px"><b>提醒</b><span>admin_zhang 的密码已 90 天未更换。</span></div>
         </div>
       </div>
     </section>
