@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,6 +11,8 @@ from app.main import app
 
 PATIENT_PASSWORD = "patient123456"
 ADMIN_PASSWORD = "admin123456"
+# OpenHIS V1.3 只允许当日挂号，测试用 Asia/Shanghai 的今天
+TODAY = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
 
 
 class FakeAdapterMCP:
@@ -192,7 +196,7 @@ def test_his_appointment_flow_never_marks_local_paid_without_his(client):
             "org_id": "101",
             "practitioner_id": "201",
             "service_id": "301",
-            "date": "2031-01-01",
+            "date": TODAY,
         },
     )
     assert created.status_code == 200, created.text
@@ -258,7 +262,7 @@ def test_appointment_requires_id_card_for_his_patient_mapping(client):
             "org_id": "101",
             "practitioner_id": "201",
             "service_id": "301",
-            "date": "2031-01-01",
+            "date": TODAY,
         },
     )
     assert created.status_code == 409

@@ -163,14 +163,15 @@ class BookingService:
         date: str,
         idempotency_key: str | None = None,
     ) -> dict[str, Any]:
+        member = await self._member(user_id, member_id)
+        patient = await self._ensure_patient(user_id, member)
+
         today = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
         if date != today:
             raise HTTPException(
                 status_code=400,
                 detail="OpenHIS V1.3 仅支持当日挂号，请选择今天",
             )
-        member = await self._member(user_id, member_id)
-        patient = await self._ensure_patient(user_id, member)
         his_patient_id = str(patient.get("his_patient_id") or "")
         if not his_patient_id:
             raise HTTPException(status_code=502, detail="医院患者映射失败")

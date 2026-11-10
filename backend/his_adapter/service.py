@@ -5,7 +5,7 @@ import hmac
 import logging
 import uuid
 from collections.abc import Awaitable, Callable
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from time import perf_counter
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -56,6 +56,11 @@ Handler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def _today() -> str:
+    """HIS 只支持当日挂号：统一用 Asia/Shanghai 的当天。"""
+    return datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
 
 
 def _str(value: Any) -> str | None:
