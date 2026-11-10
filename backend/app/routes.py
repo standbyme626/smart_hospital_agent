@@ -2740,3 +2740,61 @@ async def claim_handoff(
     if not row:
         raise HTTPException(status_code=404, detail="handoff task not found or already claimed")
     return {"task": dict(row)}
+
+
+# ------------------------------------------------------------------ platform
+CAPABILITY_MATRIX = [
+    {"name": "医保结算 / 电子处方", "owner": "HIS", "note": "yb_* 表与医保接口，平台只读状态与展示"},
+    {"name": "发药 / 取药进度", "owner": "HIS", "note": "pharmacy 配药与发药状态"},
+    {"name": "患者主索引 / 就诊 / 处方", "owner": "HIS", "note": "HIS 为唯一事实源"},
+    {"name": "多租户 / 多院区", "owner": "HIS", "note": "HIS 原生 tenant；平台做路由与隔离"},
+    {"name": "三方支付回调", "owner": "HIS", "note": "支付成功以回调驱动，不靠人工"},
+    {"name": "药师审方", "owner": "HIS", "note": "平台只读审方结果"},
+    {"name": "通知（站内/短信/微信）", "owner": "平台自建", "note": "通知表 + 已读状态；短信/微信留适配位"},
+    {"name": "随访与依从", "owner": "平台自建", "note": "随访计划与完成记录"},
+    {"name": "移动端 / 无障碍", "owner": "平台自建", "note": "患者端 PWA、字号与对比度"},
+    {"name": "运营分析", "owner": "平台自建", "note": "漏斗、留存、成本（S12）"},
+    {"name": "商保直付", "owner": "平台自建", "note": "需保司接口（未开始）"},
+    {"name": "医生排班 / 停诊", "owner": "待确认", "note": "HIS 只有当日号源，需院方确认归属"},
+]
+
+
+@router.get("/api/v1/admin/platform")
+async def admin_platform(
+    request: Request,
+    user: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    db = _state(request).db
+    settings = _state(request).settings
+    queries = {
+        "users": "SELECT count(*) FROM users",
+        "sessions": "SELECT count(*) FROM sessions",
+        "reports": "SELECT count(*) FROM reports",
+        "followups": "SELECT count(*) FROM followups",
+        "notifications": "SELECT count(*) FROM notifications",
+        "documents": "SELECT count(*) FROM documents",
+        "pending_reviews": "SELECT count(*) FROM review_requests WHERE status='pending'",
+        "open_findings": "SELECT count(*) FROM reconciliation_finding WHERE status='open'",
+    }
+    counts: dict[str, int] = {}
+    for key, sql in queries.items():
+        try:
+            counts[key] = int(await db.fetchval(sql) or 0)
+        except Exception:
+            counts[key] = 0
+    return {
+        "app": {
+            "name": settings.APP_NAME,
+            "version": settings.APP_VERSION,
+            "env": settings.ENV,
+            "schema_version": SCHEMA_VERSION,
+        },
+        "flags": {
+            "auth_enabled": bool(settings.AUTH_ENABLED),
+            "clinician_write_enabled": bool(settings.CLINICIAN_WRITE_ENABLED),
+            "rate_limit_per_minute": int(settings.RATE_LIMIT_PER_MINUTE),
+            "chat_daily_limit": int(settings.CHAT_DAILY_LIMIT),
+        },
+        "counts": counts,
+        "capabilities": CAPABILITY_MATRIX,
+    }
