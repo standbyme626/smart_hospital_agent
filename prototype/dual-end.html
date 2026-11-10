@@ -199,6 +199,73 @@ tr:hover td{background:#FAFCFB}
 #d-360 .grid{grid-template-columns:280px 1fr !important}
 #d-360 .grid > .card:nth-child(3){grid-column:1 / -1}
 #d-360 .card.pad{padding:16px}
+/* ---------- dark admin theme ---------- */
+body.dark{--canvas:#0b0f14;--card:#111821;--ink:#e6edf3;--muted:#93a1b1;--line:#26313d;
+  --primary:#3fb950;--primary-soft:#132b1c;--amber:#d9a441;--amber-soft:#2a2213;
+  --rose:#f0554e;--rose-soft:#2a1416;--violet:#a97bf0;--violet-soft:#221a33;
+  --sky:#4c9aff;--sky-soft:#101f33;--shadow:0 1px 2px rgba(0,0,0,.35)}
+body.dark .topbar{background:rgba(14,20,26,.92)}
+body.dark .sider{background:#0e141a}
+body.dark .nav{color:#aebbc7}
+body.dark .nav:hover{background:#16202a}
+body.dark .nav.active{background:#16202a;color:#e6edf3}
+body.dark .task,body.dark .bubble,body.dark .evidence{background:#131b24}
+body.dark .bubble.me{background:#132b1c;border-color:#1e4a2e}
+body.dark .input{background:#0f161d;color:#dbe4ec}
+body.dark .draft{background:#0f161d;border-color:#2b3946;color:#c3ceda}
+body.dark tr:hover td{background:#131b24}
+body.dark .agent{background:#0e141a}
+body.dark .callog,body.dark .agent-compose .box{background:#131b24}
+body.dark .btn{background:#131b24;border-color:#2b3946}
+body.dark .btn:hover{background:#1a2530}
+body.dark .entry-chip{background:#132b1c;border-color:#1e4a2e;color:#7ee2a8}
+body.dark .score{background:#132b1c;color:#7ee2a8}
+body.dark .tag-src{background:#1a2530;color:#9fb0be}
+body.dark .step .n{background:#1a2530;color:#93a1b1}
+body.dark .step.on .n{background:#3fb950;color:#0b0f14}
+body.dark .timeline:before{background:#26313d}
+body.dark .tl:before{background:#31404f}
+body.dark .overlay{background:rgba(11,15,20,.94)}
+body.dark .entry-card,body.dark .login-card{background:#111821;border-color:#26313d}
+body.dark .divider{background:#26313d}
+body.dark .kv dd{color:#dbe4ec}
+body.dark .kv dt{color:#93a1b1}
+body.dark .card,body.dark .login-card{box-shadow:none}
+#a-overview .kpi:nth-child(1){border-left:3px solid #3fb950}
+#a-overview .kpi:nth-child(2){border-left:3px solid #4c9aff}
+#a-overview .kpi:nth-child(3){border-left:3px solid #a97bf0}
+#a-overview .kpi:nth-child(4){border-left:3px solid #d9a441}
+/* ---------- dashboard widgets ---------- */
+.kpi-accent{border-left:3px solid var(--primary)}
+.kpi-accent.blue{border-left-color:#4c9aff}
+.kpi-accent.purple{border-left-color:#a97bf0}
+.kpi-accent.amber{border-left-color:#d9a441}
+.kpi-accent.red{border-left-color:#f0554e}
+.chart{width:100%;height:190px;display:block}
+.hrow{display:flex;align-items:center;gap:10px;font-size:12.5px;margin-bottom:6px}
+.hrow .grow{flex:1}
+.hrow b{font-weight:600;font-size:12px;color:#5F716B}
+body.dark .hrow b{color:#aebbc7}
+.track{height:7px;border-radius:999px;background:#EAF0ED;overflow:hidden}
+body.dark .track{background:#1a2530}
+.track i{display:block;height:100%;border-radius:999px}
+.hbar{margin-bottom:14px}
+.dist{display:flex;align-items:center;gap:10px;font-size:12.5px;margin-bottom:11px}
+.dist .nm{width:96px;color:#41544E}
+body.dark .dist .nm{color:#aebbc7}
+.dist .tr{flex:1;height:6px;border-radius:999px;background:#EAF0ED;overflow:hidden}
+body.dark .dist .tr{background:#1a2530}
+.dist .tr i{display:block;height:100%;border-radius:999px}
+.dist b{width:38px;text-align:right;font-size:12px}
+.dot-s{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:7px}
+.rec{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:7px 0;border-top:1px solid #EEF3F1}
+body.dark .rec{border-top-color:#1e2a35}
+.rec:first-child{border-top:0}
+.rec .t{margin-left:auto;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:#8A9A94}
+.todo-row{display:flex;gap:10px;padding:9px 0;border-top:1px solid #EEF3F1;font-size:12.5px}
+body.dark .todo-row{border-top-color:#1e2a35}
+.todo-row:first-child{border-top:0}
+.todo-row .ic2{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700;flex:none;margin-top:2px}
 </style>
 </head>
 <body>
@@ -779,6 +846,68 @@ tr:hover td{background:#FAFCFB}
         <div class="card pad kpi"><div class="n">1.8s</div><div class="l">首 token P95</div></div>
         <div class="card pad kpi"><div class="n">¥12.40</div><div class="l">今日模型成本</div></div>
       </div>
+      <div class="grid" style="grid-template-columns:1.55fr 1fr;margin-bottom:14px;align-items:start">
+        <div class="card pad">
+          <div class="between" style="margin-bottom:4px"><div class="h2" style="margin:0">调用趋势</div><span class="tiny muted">近 14 天 · 单位：次</span></div>
+          <svg class="chart" viewBox="0 0 640 190" preserveAspectRatio="none">
+            <defs><linearGradient id="gTrend" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#4c9aff" stop-opacity=".35"/><stop offset="100%" stop-color="#4c9aff" stop-opacity="0"/>
+            </linearGradient></defs>
+            <g stroke="#26313d" stroke-width="1">
+              <line x1="0" y1="40" x2="640" y2="40"/><line x1="0" y1="90" x2="640" y2="90"/><line x1="0" y1="140" x2="640" y2="140"/>
+            </g>
+            <path d="M0,132 L46,120 L92,128 L138,104 L184,112 L230,86 L276,96 L322,64 L368,74 L414,52 L460,60 L506,36 L552,48 L598,26 L640,34 L640,190 L0,190 Z" fill="url(#gTrend)"/>
+            <path d="M0,132 L46,120 L92,128 L138,104 L184,112 L230,86 L276,96 L322,64 L368,74 L414,52 L460,60 L506,36 L552,48 L598,26 L640,34" fill="none" stroke="#4c9aff" stroke-width="2.5" stroke-linecap="round"/>
+            <circle cx="640" cy="34" r="4" fill="#4c9aff"/>
+          </svg>
+          <div class="row" style="gap:22px;margin-top:4px">
+            <span class="tiny muted">会话 1,284</span><span class="tiny muted">首 token P95 1.8s</span><span class="tiny muted">错误率 0.6%</span>
+          </div>
+        </div>
+        <div class="card pad">
+          <div class="between" style="margin-bottom:14px"><div class="h2" style="margin:0">系统健康</div><span class="tiny muted">实时</span></div>
+          <div class="hbar"><div class="hrow"><span class="grow">模型网关 · 主模型</span><b>1.4s · 错误 0.3%</b><span class="badge teal">正常</span></div>
+            <div class="track"><i style="width:76%;background:#3fb950"></i></div></div>
+          <div class="hbar"><div class="hrow"><span class="grow">RAG 索引</span><b>527 篇 · 召回 0.71</b><span class="badge teal">正常</span></div>
+            <div class="track"><i style="width:71%;background:#3fb950"></i></div></div>
+          <div class="hbar"><div class="hrow"><span class="grow">MCP Adapter</span><b>22 工具 · 99.4%</b><span class="badge teal">正常</span></div>
+            <div class="track"><i style="width:99%;background:#4c9aff"></i></div></div>
+          <div class="hbar"><div class="hrow"><span class="grow">同步队列</span><b>待处理 2 · 30s</b><span class="badge amber">有积压</span></div>
+            <div class="track"><i style="width:46%;background:#d9a441"></i></div></div>
+        </div>
+      </div>
+
+      <div class="grid" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:14px;align-items:start">
+        <div class="card pad">
+          <div class="between" style="margin-bottom:12px"><div class="h2" style="margin:0">今日调用分布</div><span class="tiny muted">1,284</span></div>
+          <div class="dist"><span class="nm">临床分诊</span><div class="tr"><i style="width:72%;background:#3fb950"></i></div><b>612</b></div>
+          <div class="dist"><span class="nm">报告解读</span><div class="tr"><i style="width:34%;background:#4c9aff"></i></div><b>291</b></div>
+          <div class="dist"><span class="nm">药物检查</span><div class="tr"><i style="width:22%;background:#a97bf0"></i></div><b>186</b></div>
+          <div class="dist"><span class="nm">挂号缴费</span><div class="tr"><i style="width:14%;background:#d9a441"></i></div><b>120</b></div>
+          <div class="dist"><span class="nm">其他</span><div class="tr"><i style="width:9%;background:#8A9A94"></i></div><b>75</b></div>
+        </div>
+        <div class="card pad">
+          <div class="between" style="margin-bottom:10px"><div class="h2" style="margin:0">待办</div><span class="tiny muted">4 项</span></div>
+          <div class="todo-row"><span class="ic2" style="background:#2a1416;color:#f0554e">!</span>
+            <div><b>处方行缺失 2 条</b><div class="tiny muted">对账发现 · 13:58 · 需重新同步</div></div></div>
+          <div class="todo-row"><span class="ic2" style="background:#2a2213;color:#d9a441">?</span>
+            <div><b>检索召回率下降 7%</b><div class="tiny muted">心血管内科 · 近 24h</div></div></div>
+          <div class="todo-row"><span class="ic2" style="background:#1a2530;color:#93a1b1">·</span>
+            <div><b>5 个科室 0 文档</b><div class="tiny muted">精准药剂科 / 内分泌 / 普外 / 急诊 / 康复</div></div></div>
+          <div class="todo-row"><span class="ic2" style="background:#132b1c;color:#3fb950">✓</span>
+            <div><b>昨日备份完成</b><div class="tiny muted">03:30 · 已加密 · 校验通过</div></div></div>
+        </div>
+        <div class="card pad">
+          <div class="between" style="margin-bottom:8px"><div class="h2" style="margin:0">最近调用</div><span class="tiny muted">实时</span></div>
+          <div class="rec"><span class="dot-s" style="background:#3fb950"></span>knowledge.search<span class="t">340ms</span></div>
+          <div class="rec"><span class="dot-s" style="background:#3fb950"></span>llm.triage<span class="t">1.4s</span></div>
+          <div class="rec"><span class="dot-s" style="background:#3fb950"></span>patient.360<span class="t">96ms</span></div>
+          <div class="rec"><span class="dot-s" style="background:#d9a441"></span>payment.request<span class="t">2.1s</span></div>
+          <div class="rec"><span class="dot-s" style="background:#f0554e"></span>sync.reconcile<span class="t">超时</span></div>
+          <div class="rec"><span class="dot-s" style="background:#3fb950"></span>advice.sign<span class="t">210ms</span></div>
+        </div>
+      </div>
+
       <div class="grid" style="grid-template-columns:1fr 380px;align-items:start">
         <div class="card">
           <div class="pad"><div class="h2">组件状态</div></div>
@@ -1434,6 +1563,7 @@ function showScreen(name) {
 
 function switchEnd(end) {
   currentEnd = end;
+  document.body.classList.toggle('dark', end === 'admin');
   var groups = document.querySelectorAll('.sider-group');
   for (var j = 0; j < groups.length; j++) { groups[j].classList.toggle('on', groups[j].getAttribute('data-sider') === end); }
   document.getElementById('scopeLabel').textContent = scopeMap[end];
@@ -1444,12 +1574,14 @@ function switchEnd(end) {
 }
 
 function openEntry() {
+  document.body.classList.remove('dark');
   document.getElementById('login').classList.remove('on');
   document.getElementById('entry').classList.add('on');
 }
 
 function openLogin(end) {
   pendingEnd = end;
+  document.body.classList.toggle('dark', end === 'admin');
   var m = entryMeta[end];
   document.getElementById('loginDom').textContent = m.domain;
   document.getElementById('loginTitle').textContent = m.title;
