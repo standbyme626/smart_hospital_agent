@@ -353,6 +353,48 @@ export async function markAllNotificationsRead(): Promise<void> {
   await apiFetch("/api/v1/notifications/read-all", { method: "POST" });
 }
 
+// --------------------------------------------------------------- clinician
+export type ClinicianQueueItem = {
+  id: string;
+  member_id: string;
+  department?: string | null;
+  doctor_name?: string | null;
+  appointment_date?: string | null;
+  status: string;
+  payment_status: string;
+  his_encounter_id?: string | null;
+  his_status?: string | null;
+  member_name?: string | null;
+  gender?: string | null;
+  birth_date?: string | null;
+};
+
+export type ClinicianPatient = {
+  member: {
+    id: string;
+    name: string;
+    relation: string;
+    gender?: string | null;
+    birth_date?: string | null;
+    allergies?: string | null;
+    conditions?: string | null;
+  };
+  reports: Array<{ id: string; title: string; summary: string; created_at: string; critical_flags?: string[] | null }>;
+  medications: Array<{ id: string; name: string; dose?: string | null; frequency?: string | null; active: boolean }>;
+  followups: Array<{ id: string; title: string; due_date?: string | null; status: string }>;
+  appointments: Array<{ id: string; department?: string | null; doctor_name?: string | null; appointment_date?: string | null; status: string; payment_status: string }>;
+};
+
+export async function getClinicianQueue(date?: string): Promise<ClinicianQueueItem[]> {
+  const query = date ? `?date=${encodeURIComponent(date)}` : "";
+  const data = await apiFetch<{ items: ClinicianQueueItem[] }>(`/api/v1/clinician/queue${query}`);
+  return data.items;
+}
+
+export async function getClinicianPatient(memberId: string): Promise<ClinicianPatient> {
+  return apiFetch<ClinicianPatient>(`/api/v1/clinician/patients/${encodeURIComponent(memberId)}`);
+}
+
 export async function getTimeline(memberId?: string): Promise<TimelineEvent[]> {
   const query = memberId ? `?member_id=${encodeURIComponent(memberId)}` : "";
   const data = await apiFetch<{ timeline: TimelineEvent[] }>(`/api/v1/health/timeline${query}`);
