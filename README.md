@@ -1,4 +1,4 @@
-# smart_hospital_agent v3.1
+# smart_hospital_agent v3.3（滚动上线中）
 
 **一个有证据的就医助手**：分诊 · 报告解读 · 用药检查 · 挂号支付 · 家庭健康档案
 
@@ -9,10 +9,31 @@
 [![MCP](https://img.shields.io/badge/MCP-Hospital%20Tools-6E56CF)]()
 [![Live](https://img.shields.io/badge/live-hospital.kk.zhzepei.cn-0E9384)](https://hospital.kk.zhzepei.cn/)
 
-> **线上演示**：https://hospital.kk.zhzepei.cn/ （登录后使用，演示账号由管理员发放）
-> **版本状态（2026-11-09）**：**v3.1 已上线**（v3.1.1 hotfix，tag `v3.1.1`）；生产密码已轮换，106 nginx/Basic Auth/Kuma 已启用。真实医院 MCP 仍为 v3.2 范围。发布记录见 [`docs/V3.1-RELEASE.md`](docs/V3.1-RELEASE.md)。
-> **前端 v3**：2026 H2 消费级医疗 AI 界面，浅色「温暖临床 + 证据优先」；旧前端保留在 `frontend-legacy/`，不参与启动。
-> **唯一 mock**：医院 MCP（号源/订单/支付/就诊指引）。LLM、Embedding、Rerank、报告视觉解读均为真实调用；真实医院 MCP 尚未接入，排期 v3.2。
+> **线上**：https://hospital.kk.zhzepei.cn/ （真实站，v3.1 基线）· https://hospital.kk.zhzepei.cn/preview/ （61 屏演示站，数据为模拟，已标注「演示数据」）
+> **版本状态（2026-11-10）**：**v3.3 滚动上线中**。真实站已合入 S1–S7：消息中心、随访、报告指标表、诊室失败重试等；后端 186 个测试全绿、ruff 干净。
+> **新增接口**：`GET /api/v1/notifications`、单条/全部已读；随访创建与报告解读会自动写入站内通知。
+> **规划**：切片与完成定义见 [`docs/V3.3-ROLLOUT-PLAN.md`](docs/V3.3-ROLLOUT-PLAN.md)；四端 + 真 HIS 架构见 [`docs/V3.2-DUAL-END-PLAN.md`](docs/V3.2-DUAL-END-PLAN.md)。
+
+---
+
+## 0. V3.3 进度（2026-11-10）
+
+**原则：上线一个、接入一个；没接后端的一律标「演示」，不装成能用。**
+
+| 切片 | 内容 | 状态 |
+|---|---|---|
+| S0 | 部署通道 + 演示站 `/preview/` | ✅ |
+| S1 | 登录 + 首页 + 消息中心 | ✅ |
+| S2 | AI 诊室（断网提示、流式失败可重试） | ✅ |
+| S3 | 报告解读（异常指标表、危急值横幅） | ✅ |
+| S4 | 药管家（六态统一、未覆盖提示） | ✅ |
+| S5 | 挂号支付（修复 5 个红测试，186 测试全绿） | ✅ |
+| S6 | 通知中心（后端通知表 + 消息页真实接口） | ✅ |
+| S7 | 随访（新增 `/followups`） | ✅ |
+| S8 | 医生端只读（队列 / 360 / 诊前摘要） | ⏳ 进行中 |
+| S9–S12 | 医生端写入 / 运营端 / 管理端 / 合规评测 | 待做 |
+
+**部署**：`scripts/deploy_frontend.sh`（真实站，构建时强制 `NEXT_PUBLIC_API_BASE=""` 走同源）与 `scripts/deploy_preview.sh`（演示站）；每次发布前自动备份到 106 的 `hospital.bak-*` 目录，可整目录回滚。
 
 ---
 
