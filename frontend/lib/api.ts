@@ -317,6 +317,19 @@ export async function completeFollowup(id: string): Promise<void> {
   await apiFetch(`/api/v1/followups/${id}/complete`, { method: "PATCH" });
 }
 
+export async function createFollowup(input: {
+  title: string;
+  due_date?: string | null;
+  notes?: string | null;
+  member_id?: string;
+}): Promise<Followup> {
+  const data = await apiFetch<{ followup: Followup }>("/api/v1/followups", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return data.followup;
+}
+
 export async function getTimeline(memberId?: string): Promise<TimelineEvent[]> {
   const query = memberId ? `?member_id=${encodeURIComponent(memberId)}` : "";
   const data = await apiFetch<{ timeline: TimelineEvent[] }>(`/api/v1/health/timeline${query}`);
