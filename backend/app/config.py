@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     ENV: str = "dev"
     APP_ENV: str = ""
     DEBUG: bool = False
+    # 医生端写操作（接诊/医嘱/签名）需要医生 HIS 账号透传，默认关闭
+    CLINICIAN_WRITE_ENABLED: bool = False
 
     # Security
     AUTH_ENABLED: bool = True

@@ -463,6 +463,21 @@ SCHEMA = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications (user_id, created_at DESC)",
+    """
+    CREATE TABLE IF NOT EXISTS clinician_drafts (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        member_id TEXT NOT NULL,
+        appointment_id TEXT,
+        content TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft',
+        signed_by TEXT,
+        signed_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_clinician_drafts_member ON clinician_drafts (member_id, created_at DESC)",
 ]
 
 MIGRATIONS = [

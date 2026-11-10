@@ -2507,3 +2507,132 @@ async def clinician_patient(
         "followups": [dict(row) for row in followups],
         "appointments": [dict(row) for row in appointments],
     }
+
+
+class ClinicianDraftRequest(BaseModel):
+    member_id: str
+    appointment_id: str | None = None
+    content: str
+
+
+class ClinicianDraftUpdateRequest(BaseModel):
+    content: str
+
+
+@router.get("/api/v1/clinician/config")
+async def clinician_config(
+    request: Request,
+    user: dict[str, Any] = Depends(require_clinician),
+) -> dict[str, Any]:
+    settings = _state(request).settings
+    return {
+        "write_enabled": bool(settings.CLINICIAN_WRITE_ENABLED),
+        "note": "写操作需要医生 HIS 账号与签名透传；未启用时只能保存草稿",
+    }
+
+
+@router.get("/api/v1/clinician/drafts")
+async def list_clinician_drafts(
+    request: Request,
+    member_id: str | None = Query(None),
+    user: dict[str, Any] = Depends(require_clinician),
+) -> dict[str, Any]:
+    db = _state(request).db
+    if member_id:
+        rows = await db.fetch(
+            """
+            SELECT id, user_id, member_id, appointment_id, content, status,
+                   signed_by, signed_at, created_at, updated_at
+            FROM clinician_drafts WHERE member_id=$1
+            ORDER BY created_at DESC LIMIT 50
+            """,
+            member_id,
+        )
+    else:
+        rows = await db.fetch(
+            """
+            SELECT id, user_id, member_id, appointment_id, content, status,
+                   signed_by, signed_at, created_at, updated_at
+            FROM clinician_drafts ORDER BY created_at DESC LIMIT 50
+            """
+        )
+    return {"drafts": [dict(row) for row in rows]}
+
+
+@router.post("/api/v1/clinician/drafts")
+async def create_clinician_draft(
+    payload: ClinicianDraftRequest,
+    request: Request,
+    user: dict[str, Any] = Depends(require_clinician),
+) -> dict[str, Any]:
+    db = _state(request).db
+    member = await db.fetchrow("SELECT id FROM family_members WHERE id=$1", payload.member_id)
+    if not member:
+        raise HTTPException(status_code=404, detail="member not found")
+    draft_id = "cd_" + uuid.uuid4().hex[:12]
+    row = await db.fetchrow(
+        """
+        INSERT INTO clinician_drafts (id, user_id, member_id, appointment_id, content)
+        VALUES ($1,$2,$3,$4,$5)
+        RETURNING id, user_id, member_id, appointment_id, content, status,
+                  signed_by, signed_at, created_at, updated_at
+        """,
+        draft_id,
+        str(user["sub"]),
+        payload.member_id,
+        payload.appointment_id,
+        payload.content,
+    )
+    return {"draft": dict(row) if row else None}
+
+
+@router.patch("/api/v1/clinician/drafts/{draft_id}")
+async def update_clinician_draft(
+    draft_id: str,
+    payload: ClinicianDraftUpdateRequest,
+    request: Request,
+    user: dict[str, Any] = Depends(require_clinician),
+) -> dict[str, Any]:
+    db = _state(request).db
+    row = await db.fetchrow(
+        """
+        UPDATE clinician_drafts SET content=$2, updated_at=now()
+        WHERE id=$1 AND status='draft'
+        RETURNING id, user_id, member_id, appointment_id, content, status,
+                  signed_by, signed_at, created_at, updated_at
+        """,
+        draft_id,
+        payload.content,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="draft not found or already signed")
+    return {"draft": dict(row)}
+
+
+@router.post("/api/v1/clinician/drafts/{draft_id}/sign")
+async def sign_clinician_draft(
+    draft_id: str,
+    request: Request,
+    user: dict[str, Any] = Depends(require_clinician),
+) -> dict[str, Any]:
+    settings = _state(request).settings
+    if not settings.CLINICIAN_WRITE_ENABLED:
+        raise HTTPException(
+            status_code=409,
+            detail="HIS 写入尚未启用：需要医生 HIS 账号与签名透传，当前只能保存草稿",
+        )
+    db = _state(request).db
+    row = await db.fetchrow(
+        """
+        UPDATE clinician_drafts
+        SET status='signed', signed_by=$2, signed_at=now(), updated_at=now()
+        WHERE id=$1 AND status='draft'
+        RETURNING id, user_id, member_id, appointment_id, content, status,
+                  signed_by, signed_at, created_at, updated_at
+        """,
+        draft_id,
+        str(user.get("user") or user.get("sub")),
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="draft not found or already signed")
+    return {"draft": dict(row)}
