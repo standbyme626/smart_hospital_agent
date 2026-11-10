@@ -330,6 +330,29 @@ export async function createFollowup(input: {
   return data.followup;
 }
 
+export type NotificationItem = {
+  id: number;
+  kind: string;
+  title: string;
+  body?: string | null;
+  link?: string | null;
+  read_at?: string | null;
+  created_at: string;
+};
+
+export async function getNotifications(): Promise<{ items: NotificationItem[]; unread: number }> {
+  const data = await apiFetch<{ notifications: NotificationItem[]; unread: number }>("/api/v1/notifications");
+  return { items: data.notifications, unread: data.unread };
+}
+
+export async function markNotificationRead(id: number): Promise<void> {
+  await apiFetch(`/api/v1/notifications/${id}/read`, { method: "POST" });
+}
+
+export async function markAllNotificationsRead(): Promise<void> {
+  await apiFetch("/api/v1/notifications/read-all", { method: "POST" });
+}
+
 export async function getTimeline(memberId?: string): Promise<TimelineEvent[]> {
   const query = memberId ? `?member_id=${encodeURIComponent(memberId)}` : "";
   const data = await apiFetch<{ timeline: TimelineEvent[] }>(`/api/v1/health/timeline${query}`);
