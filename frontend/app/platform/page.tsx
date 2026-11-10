@@ -1,0 +1,198 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { ArrowLeft, Cpu, Database, SlidersHorizontal } from "lucide-react";
+import { OfflineBanner, SourceBadge, StateBlock } from "@/components/ui";
+import { getPlatformOverview, type PlatformOverview } from "@/lib/api";
+
+type Tab = "overview" | "config" | "capabilities";
+
+const COUNT_LABEL: Record<string, string> = {
+  users: "用户",
+  sessions: "会话",
+  reports: "报告",
+  followups: "随访",
+  notifications: "通知",
+  documents: "知识文档",
+  pending_reviews: "待审核",
+  open_findings: "对账差异",
+};
+
+export default function PlatformPage() {
+  const [tab, setTab] = useState<Tab>("overview");
+  const [data, setData] = useState<PlatformOverview | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const [denied, setDenied] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setFailed(false);
+    setDenied(false);
+    try {
+      setData(await getPlatformOverview());
+    } catch (error) {
+      const status = (error as { status?: number } | null)?.status;
+      if (status === 401 || status === 403) setDenied(true);
+      else setFailed(true);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  return (
+    <div className="min-h-dvh bg-canvas">
+      <header className="sticky top-0 z-20 border-b border-line bg-white/90 backdrop-blur">
+        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-soft text-primary">
+            <SlidersHorizontal size={17} />
+          </span>
+          <div className="min-w-0">
+            <p className="text-[15px] font-semibold text-ink">平台管理 · 只读</p>
+            <p className="text-[11px] text-muted">运行状态、开关、能力矩阵（配置变更与发布在后续切片）</p>
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            <SourceBadge live />
+            <Link href="/" className="inline-flex min-h-9 items-center gap-1 rounded-full bg-white px-3 text-[12px] text-muted ring-1 ring-line hover:text-primary">
+              <ArrowLeft size={13} /> 患者端
+            </Link>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-5xl space-y-4 px-4 py-5">
+        <OfflineBanner />
+
+        {denied ? (
+          <div className="card p-3">
+            <StateBlock kind="denied" title="当前账号无管理权限" description="平台管理只对 admin 角色开放" />
+            <div className="mt-2 text-center"><Link href="/login/" className="text-[12px] font-medium text-primary">去登录</Link></div>
+          </div>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-2">
+              {([
+                { key: "overview", label: "运行总览" },
+                { key: "config", label: "开关与配置" },
+                { key: "capabilities", label: "能力矩阵" },
+              ] as Array<{ key: Tab; label: string }>).map((item) => (
+                <button
+                  key={item.key}
+                  onClick={() => setTab(item.key)}
+                  className={tab === item.key ? "chip border-primary bg-primary text-white" : "chip hover:border-primary/40 hover:text-primary"}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+
+            {loading ? (
+              <div className="grid gap-3 sm:grid-cols-4">
+                {[0, 1, 2, 3].map((index) => <div key={index} className="h-24 animate-pulse rounded-2xl bg-white" />)}
+              </div>
+            ) : failed ? (
+              <div className="card p-3"><StateBlock kind="error" onRetry={load} /></div>
+            ) : data && tab === "overview" ? (
+              <>
+                <section className="card p-5">
+                  <h2 className="section-title">应用信息</h2>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-4">
+                    {[
+                      { label: "应用", value: data.app.name },
+                      { label: "版本", value: data.app.version },
+                      { label: "环境", value: data.app.env },
+                      { label: "Schema", value: data.app.schema_version },
+                    ].map((item) => (
+                      <div key={item.label} className="rounded-2xl bg-canvas p-3">
+                        <p className="text-[11px] text-muted">{item.label}</p>
+                        <p className="mt-1 break-all text-[13px] font-medium text-ink">{item.value || "—"}</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="card p-5">
+                  <h2 className="section-title">数据规模</h2>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-4">
+                    {Object.entries(data.counts).map(([key, value]) => (
+                      <div key={key} className="rounded-2xl bg-canvas p-3">
+                        <p className="text-[11px] text-muted">{COUNT_LABEL[key] || key}</p>
+                        <p className="mt-1 text-[22px] font-semibold text-ink">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </>
+            ) : data && tab === "config" ? (
+              <section className="card p-5">
+                <h2 className="section-title">开关与配置（只读）</h2>
+                <ul className="mt-3 space-y-2 text-[13px]">
+                  <li className="flex items-center justify-between rounded-2xl bg-canvas px-3 py-2">
+                    <span>鉴权开关 <span className="text-[11px] text-muted">AUTH_ENABLED</span></span>
+                    <span className={data.flags.auth_enabled ? "badge bg-emerald-50 text-emerald-700" : "badge bg-rose-50 text-rose-700"}>
+                      {data.flags.auth_enabled ? "开启" : "关闭"}
+                    </span>
+                  </li>
+                  <li className="flex items-center justify-between rounded-2xl bg-canvas px-3 py-2">
+                    <span>医生签名 <span className="text-[11px] text-muted">CLINICIAN_WRITE_ENABLED</span></span>
+                    <span className={data.flags.clinician_write_enabled ? "badge bg-emerald-50 text-emerald-700" : "badge bg-amber-50 text-amber-700"}>
+                      {data.flags.clinician_write_enabled ? "已启用" : "未启用（仅草稿）"}
+                    </span>
+                  </li>
+                  <li className="flex items-center justify-between rounded-2xl bg-canvas px-3 py-2">
+                    <span>每分钟限流</span><span className="text-ink">{data.flags.rate_limit_per_minute} 次</span>
+                  </li>
+                  <li className="flex items-center justify-between rounded-2xl bg-canvas px-3 py-2">
+                    <span>每日问诊配额</span><span className="text-ink">{data.flags.chat_daily_limit} 次</span>
+                  </li>
+                </ul>
+                <p className="mt-3 text-[11px] leading-5 text-muted">
+                  配置变更（Prompt、规则、索引发版）需要双人审批与快照回滚，属于后续切片；本页只读。
+                </p>
+              </section>
+            ) : data ? (
+              <section className="card overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3">
+                  <h2 className="section-title">能力矩阵</h2>
+                  <span className="text-[11px] text-muted">HIS 原生 / 平台自建 / 待确认</span>
+                </div>
+                <table className="w-full text-left text-[12px]">
+                  <thead className="bg-canvas text-muted">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">能力</th>
+                      <th className="px-3 py-2 font-medium">归属</th>
+                      <th className="px-3 py-2 font-medium">说明</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.capabilities.map((item) => (
+                      <tr key={item.name} className="border-t border-line">
+                        <td className="px-3 py-2 text-ink">{item.name}</td>
+                        <td className="px-3 py-2">
+                          <span className={item.owner === "HIS" ? "badge bg-primary-soft text-primary" : item.owner === "待确认" ? "badge bg-amber-50 text-amber-700" : "badge bg-violet-50 text-violet-700"}>
+                            {item.owner}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-muted">{item.note}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </section>
+            ) : null}
+          </>
+        )}
+
+        <div className="flex items-center gap-2 px-1 text-[11px] text-muted">
+          <Cpu size={13} /> 本页只读：配置变更、Prompt 发布、索引重建与灰度实验将在 S12 之后开放。
+          <Database size={13} className="ml-2" /> 数据来自 <code>/api/v1/admin/platform</code>
+        </div>
+      </main>
+    </div>
+  );
+}

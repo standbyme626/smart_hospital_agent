@@ -497,6 +497,23 @@ export async function claimOpsHandoff(id: string): Promise<void> {
   await apiFetch(`/api/v1/ops/handoff/${encodeURIComponent(id)}/claim`, { method: "POST" });
 }
 
+// --------------------------------------------------------------- platform
+export type PlatformOverview = {
+  app: { name: string; version: string; env: string; schema_version: string };
+  flags: {
+    auth_enabled: boolean;
+    clinician_write_enabled: boolean;
+    rate_limit_per_minute: number;
+    chat_daily_limit: number;
+  };
+  counts: Record<string, number>;
+  capabilities: Array<{ name: string; owner: string; note: string }>;
+};
+
+export async function getPlatformOverview(): Promise<PlatformOverview> {
+  return apiFetch<PlatformOverview>("/api/v1/admin/platform");
+}
+
 export async function getTimeline(memberId?: string): Promise<TimelineEvent[]> {
   const query = memberId ? `?member_id=${encodeURIComponent(memberId)}` : "";
   const data = await apiFetch<{ timeline: TimelineEvent[] }>(`/api/v1/health/timeline${query}`);
