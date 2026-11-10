@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel
 
-from .api.deps import create_token, get_current_user, require_admin, require_clinician
+from .api.deps import create_token, get_current_user, require_admin, require_clinician, require_ops
 from .conversation import append_message, load_history
 from .db import SCHEMA_VERSION
 from .policy import DEPARTMENT_NAMES, DRUG_CHECKER
@@ -2636,3 +2636,107 @@ async def sign_clinician_draft(
     if not row:
         raise HTTPException(status_code=404, detail="draft not found or already signed")
     return {"draft": dict(row)}
+
+
+# ---------------------------------------------------------------------- ops
+@router.get("/api/v1/ops/summary")
+async def ops_summary(
+    request: Request,
+    user: dict[str, Any] = Depends(require_ops),
+) -> dict[str, Any]:
+    db = _state(request).db
+    pending_reviews = await db.fetchval("SELECT count(*) FROM review_requests WHERE status='pending'")
+    open_findings = await db.fetchval("SELECT count(*) FROM reconciliation_finding WHERE status='open'")
+    handoff_waiting = await db.fetchval(
+        "SELECT count(*) FROM human_task WHERE kind='handoff' AND status IN ('requested','claimed')"
+    )
+    paid_today = await db.fetchval(
+        """
+        SELECT count(*) FROM appointment_projection
+        WHERE payment_status='paid'
+          AND created_at::date = (now() AT TIME ZONE 'Asia/Shanghai')::date
+        """
+    )
+    return {
+        "pending_reviews": int(pending_reviews or 0),
+        "open_findings": int(open_findings or 0),
+        "handoff_waiting": int(handoff_waiting or 0),
+        "paid_today": int(paid_today or 0),
+    }
+
+
+@router.get("/api/v1/ops/reconciliation")
+async def ops_reconciliation(
+    request: Request,
+    status: str | None = Query(None),
+    user: dict[str, Any] = Depends(require_ops),
+) -> dict[str, Any]:
+    db = _state(request).db
+    rows = await db.fetch(
+        """
+        SELECT id, kind, severity, local_ref, his_ref, detail, status, detected_at, resolved_at
+        FROM reconciliation_finding
+        WHERE ($1::text IS NULL OR status=$1)
+        ORDER BY detected_at DESC LIMIT 100
+        """,
+        status,
+    )
+    return {"items": [dict(row) for row in rows]}
+
+
+@router.post("/api/v1/ops/reconciliation/{finding_id}/resolve")
+async def resolve_reconciliation(
+    finding_id: str,
+    request: Request,
+    user: dict[str, Any] = Depends(require_ops),
+) -> dict[str, Any]:
+    db = _state(request).db
+    row = await db.fetchrow(
+        """
+        UPDATE reconciliation_finding SET status='resolved', resolved_at=now()
+        WHERE id=$1 AND status='open'
+        RETURNING id, kind, severity, status, resolved_at
+        """,
+        finding_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="finding not found or already resolved")
+    return {"finding": dict(row)}
+
+
+@router.get("/api/v1/ops/handoff")
+async def ops_handoff(
+    request: Request,
+    user: dict[str, Any] = Depends(require_ops),
+) -> dict[str, Any]:
+    db = _state(request).db
+    rows = await db.fetch(
+        """
+        SELECT id, kind, ref_id, user_id, member_id, status, payload, assignee, sla_due_at, created_at
+        FROM human_task
+        WHERE kind='handoff'
+        ORDER BY created_at DESC LIMIT 50
+        """
+    )
+    return {"items": [dict(row) for row in rows]}
+
+
+@router.post("/api/v1/ops/handoff/{task_id}/claim")
+async def claim_handoff(
+    task_id: str,
+    request: Request,
+    user: dict[str, Any] = Depends(require_ops),
+) -> dict[str, Any]:
+    db = _state(request).db
+    row = await db.fetchrow(
+        """
+        UPDATE human_task SET status='claimed', assignee=$2, updated_at=now()
+        WHERE id=$1 AND kind='handoff' AND status='requested'
+        RETURNING id, status, assignee, updated_at
+        """,
+        task_id,
+        str(user.get("user") or user.get("sub")),
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="handoff task not found or already claimed")
+    return {"task": dict(row)}
