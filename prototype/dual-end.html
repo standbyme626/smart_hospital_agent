@@ -49,6 +49,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .nav.active{background:var(--primary-soft);color:#0B6C62;font-weight:700}
 .nav .dot{width:6px;height:6px;border-radius:50%;background:#C3D2CC}
 .nav.active .dot{background:var(--primary)}
+.nav .cnt{margin-left:auto;font-size:10.5px;background:#FDF3E3;color:#8A5310;border-radius:999px;padding:1px 6px;font-weight:700}
 .main{padding:24px 26px 40px;min-width:0}
 .screen{display:none;animation:fade .18s ease}
 .screen.on{display:block}
@@ -314,24 +315,28 @@ body.dark .todo-row{border-top-color:#1e2a35}
     <div class="sider-group" data-sider="ops">
       <div class="sider-title">运营 / 质控</div>
       <button class="nav active" data-screen="o-review"><span class="dot"></span>支付与异常</button>
-      <button class="nav" data-screen="o-recon"><span class="dot"></span>对账看板</button>
+      <button class="nav" data-screen="o-recon"><span class="dot"></span>对账看板<span class="cnt">2</span></button>
       <button class="nav" data-screen="o-audit"><span class="dot"></span>审计复盘</button>
       <button class="nav" data-screen="o-analysis"><span class="dot"></span>运营分析</button>
       <button class="nav" data-screen="o-insurance"><span class="dot"></span>医保对账</button>
-      <button class="nav" data-screen="o-crisis"><span class="dot"></span>危机事件</button>
+      <button class="nav" data-screen="o-crisis"><span class="dot"></span>危机事件<span class="cnt">2</span></button>
       <button class="nav" data-screen="o-notify-log"><span class="dot"></span>通知记录</button>
+      <button class="nav" data-screen="o-handoff"><span class="dot"></span>接管队列<span class="cnt">3</span></button>
     </div>
     <div class="sider-group" data-sider="admin">
       <div class="sider-title">管理端（平台）</div>
       <div class="sider-title" style="margin-top:12px">概览</div>
       <button class="nav active" data-screen="a-overview"><span class="dot"></span>运行总览</button>
+      <button class="nav" data-screen="a-config-overview"><span class="dot"></span>配置总览</button>
       <div class="sider-title" style="margin-top:12px">接入</div>
       <button class="nav" data-screen="a-his"><span class="dot"></span>HIS 接入</button>
       <button class="nav" data-screen="a-flow"><span class="dot"></span>数据流</button>
       <button class="nav" data-screen="a-capability"><span class="dot"></span>能力矩阵</button>
       <div class="sider-title" style="margin-top:12px">建设</div>
       <button class="nav" data-screen="a-agent"><span class="dot"></span>Agent 配置</button>
+      <button class="nav" data-screen="a-prompt"><span class="dot"></span>Prompt 管理</button>
       <button class="nav" data-screen="a-kb"><span class="dot"></span>知识库策略</button>
+      <button class="nav" data-screen="a-unmatched"><span class="dot"></span>未命中问题<span class="cnt">30</span></button>
       <button class="nav" data-screen="a-rag"><span class="dot"></span>语料与索引</button>
       <button class="nav" data-screen="a-ragflow"><span class="dot"></span>RAG 全链路</button>
       <button class="nav" data-screen="a-model"><span class="dot"></span>模型网关</button>
@@ -2674,6 +2679,153 @@ body.dark .todo-row{border-top-color:#1e2a35}
           <div class="draft" style="margin-bottom:8px"><b>#A-0232</b><br>问题：这药能和酒一起吗<br>引用：说明书（0.77）<br>判定：<span class="badge amber">部分支持</span></div>
           <div class="draft"><b>#A-0233</b><br>问题：报告里 LDL 3.8 严重吗<br>引用：院内知识库（0.44）<br>判定：<span class="badge rose">证据不足</span></div>
           <div class="hint" style="margin-top:8px">证据不足样本会回流到语料建设清单。</div>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ============ 参考借鉴 · 配置总览 / 未命中问题 / 接管队列 / Prompt 管理 ============ -->
+    <section class="screen" id="a-config-overview">
+      <div class="page-head">
+        <div><h1>配置总览</h1><p>一屏巡检：开关 · 数量 · 生效范围</p></div>
+        <div class="right"><span class="badge teal">已开启 18</span><span class="badge">已关闭 4</span><button class="btn sm">导出配置快照</button></div>
+      </div>
+      <div class="card">
+        <table>
+          <thead><tr><th>分组</th><th>配置项</th><th>状态</th><th>数量 / 摘要</th><th></th></tr></thead>
+          <tbody>
+            <tr><td rowspan="5"><b>监听与应答</b></td><td>危机识别</td><td><span class="badge teal">开</span></td><td>12 概念 · 84 词 · v5</td><td><button class="btn sm">去设置</button></td></tr>
+            <tr><td>输出门禁</td><td><span class="badge teal">开</span></td><td>确诊 / 处方 / 剂量 3 类规则</td><td><button class="btn sm">去设置</button></td></tr>
+            <tr><td>引用门槛</td><td><span class="badge teal">开</span></td><td>患者 0.20 · 医生 0.35</td><td><button class="btn sm">去设置</button></td></tr>
+            <tr><td>上下文记忆</td><td><span class="badge teal">开</span></td><td>8 轮 + 摘要压缩</td><td><button class="btn sm">去设置</button></td></tr>
+            <tr><td>语音输入</td><td><span class="badge teal">开</span></td><td>浏览器语音 · 仅患者端</td><td><button class="btn sm">去设置</button></td></tr>
+
+            <tr><td rowspan="4"><b>主动外发</b></td><td>通知模板</td><td><span class="badge teal">开</span></td><td>18 个模板 · 4 渠道</td><td><button class="btn sm">去设置</button></td></tr>
+            <tr><td>随访提醒</td><td><span class="badge teal">开</span></td><td>每日 08:00 · 按计划</td><td><button class="btn sm">去设置</button></td></tr>
+            <tr><td>危机电话</td><td><span class="badge amber">受限</span></td><td>仅医生触发 · 需录音授权</td><td><button class="btn sm">去设置</button></td></tr>
+            <tr><td>定时任务</td><td><span class="badge">关</span></td><td>0 条</td><td><button class="btn sm">去设置</button></td></tr>
+
+            <tr><td rowspan="4"><b>知识</b></td><td>语料域</td><td><span class="badge teal">开</span></td><td>5 个域 · 1,842 篇</td><td><button class="btn sm">去设置</button></td></tr>
+            <tr><td>索引</td><td><span class="badge teal">开</span></td><td>#2026-11-10.3</td><td><button class="btn sm">去设置</button></td></tr>
+            <tr><td>未命中登记</td><td><span class="badge teal">开</span></td><td>最多 2,000 条 · 已存 46</td><td><button class="btn sm">去设置</button></td></tr>
+            <tr><td>自动补语料</td><td><span class="badge">关</span></td><td>关闭（需人工审核）</td><td><button class="btn sm">去设置</button></td></tr>
+
+            <tr><td rowspan="3"><b>安全与治理</b></td><td>双人审批</td><td><span class="badge teal">开</span></td><td>临床输出类变更</td><td><button class="btn sm">去设置</button></td></tr>
+            <tr><td>审计</td><td><span class="badge teal">开</span></td><td>全量 · 保留 ≥6 个月</td><td><button class="btn sm">去设置</button></td></tr>
+            <tr><td>备份加密</td><td><span class="badge teal">开</span></td><td>gpg · 每日 03:30</td><td><button class="btn sm">去设置</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="grid g3" style="margin-top:14px">
+        <div class="card pad"><div class="h2">生效范围</div><div class="tiny muted">按端生效：患者端 / 医生端 / 运营端 / 管理端，每个配置标明作用域。</div></div>
+        <div class="card pad"><div class="h2">变更方式</div><div class="tiny muted">临床类改动走双人审批 + 灰度；运行类（超时、限流）单人即可。</div></div>
+        <div class="card pad"><div class="h2">快照</div><div class="tiny muted">每次保存生成快照，可回放当时配置，也可一键导出给审计。</div></div>
+      </div>
+    </section>
+
+    <section class="screen" id="a-unmatched">
+      <div class="page-head">
+        <div><h1>未命中问题</h1><p>AI 答不上来的问题 → 补语料 → 回归评测</p></div>
+        <div class="right"><span class="badge amber">待处理 30</span><button class="btn sm">批量归类</button></div>
+      </div>
+      <div class="grid g4" style="margin-bottom:14px">
+        <div class="card pad kpi"><div class="n">46</div><div class="l">近 7 天未命中</div></div>
+        <div class="card pad kpi"><div class="n" style="color:#C77A15">30</div><div class="l">待处理</div></div>
+        <div class="card pad kpi"><div class="n" style="color:#0E9384">12</div><div class="l">已归类</div></div>
+        <div class="card pad kpi"><div class="n">4</div><div class="l">已补语料并回归</div></div>
+      </div>
+      <div class="grid" style="grid-template-columns:1fr 340px;align-items:start">
+        <div class="card">
+          <table>
+            <thead><tr><th>问题</th><th>次数</th><th>最近</th><th>建议归属</th><th>状态</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr><td>降压药漏吃一次要补吗</td><td>8</td><td>今天 14:20</td><td>drug</td><td><span class="badge amber">待处理</span></td><td><button class="btn sm primary">补语料</button></td></tr>
+              <tr><td>心梗放支架后多久能运动</td><td>5</td><td>今天 11:02</td><td>clinical-evidence</td><td><span class="badge amber">待处理</span></td><td><button class="btn sm primary">补语料</button></td></tr>
+              <tr><td>体检报告里“窦性心律”是什么意思</td><td>4</td><td>昨天 19:40</td><td>patient-edu</td><td><span class="badge sky">已归类</span></td><td><button class="btn sm">查看</button></td></tr>
+              <tr><td>医保报销比例怎么算</td><td>3</td><td>昨天 16:12</td><td>hospital-pathway</td><td><span class="badge teal">已补语料</span></td><td><button class="btn sm">回归结果</button></td></tr>
+              <tr><td>能不能开三个月的药</td><td>2</td><td>11-08</td><td>hospital-pathway</td><td><span class="badge">忽略</span></td><td><button class="btn sm">查看</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card pad">
+          <div class="h2">处理流程</div>
+          <div class="timeline">
+            <div class="tl on"><b>1 收集</b><div class="muted tiny">检索无结果/低于门槛时自动登记</div></div>
+            <div class="tl"><b>2 归类</b><div class="muted tiny">按语料域与科室打标</div></div>
+            <div class="tl"><b>3 补语料</b><div class="muted tiny">新建条目 → 准入（许可/证据等级）</div></div>
+            <div class="tl"><b>4 回归</b><div class="muted tiny">同一批问题重跑，引用准确率必须不降</div></div>
+          </div>
+          <div class="divider"></div>
+          <div class="kv"><dt>无答案率</dt><dd>4.2% → 目标 ≤3%</dd><dt>本周补语料</dt><dd>4 条</dd></div>
+          <div class="alert amber" style="margin-top:10px"><b>注意</b><span>补语料不能顺手把“患者问答”塞进知识库，必须过许可与证据等级。</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" id="o-handoff">
+      <div class="page-head">
+        <div><h1>接管队列</h1><p>AI 处理不了时，转人工接管</p></div>
+        <div class="right"><span class="badge rose">待接管 3</span><span class="badge">今日已接管 7</span></div>
+      </div>
+      <div class="grid" style="grid-template-columns:1fr 340px;align-items:start">
+        <div>
+          <div class="card" style="margin-bottom:14px">
+            <table>
+              <thead><tr><th>会话</th><th>患者</th><th>原因</th><th>等待</th><th>操作</th></tr></thead>
+              <tbody>
+                <tr><td>sess_9f2a</td><td>王建国 · 62 岁</td><td><span class="badge rose">危机触发</span></td><td>2 分钟</td><td><button class="btn sm primary">接管</button></td></tr>
+                <tr><td>sess_8c11</td><td>李秀兰 · 58 岁</td><td><span class="badge amber">连续 2 次低置信</span></td><td>6 分钟</td><td><button class="btn sm primary">接管</button></td></tr>
+                <tr><td>sess_77bd</td><td>赵敏 · 34 岁</td><td><span class="badge sky">用户要求人工</span></td><td>9 分钟</td><td><button class="btn sm primary">接管</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card pad">
+            <div class="h2">接管中的会话（sess_8b21）</div>
+            <div class="chat"><div class="bubble">我这两天胸口闷，要不要紧？</div></div>
+            <div class="chat"><div class="bubble me">AI：胸闷可能和多种因素有关，建议…（低置信）</div></div>
+            <div class="chat"><div class="bubble">我想找个人问</div></div>
+            <div class="alert teal" style="margin-top:8px"><b>已接管</b><span>客服 张敏 已接入 · 患者已收到“人工客服已加入”提示。</span></div>
+          </div>
+        </div>
+        <div class="card pad">
+          <div class="h2">接管规则</div>
+          <div class="list-card" style="border-top:0;padding:7px 0"><span class="badge teal">1</span><div class="grow">危机触发 → 立即进队列并置顶</div></div>
+          <div class="list-card" style="padding:7px 0"><span class="badge teal">2</span><div class="grow">连续 2 次低置信 / 用户主动要求 → 进队列</div></div>
+          <div class="list-card" style="padding:7px 0"><span class="badge teal">3</span><div class="grow">接管后 AI 只读不答，人工回复为准</div></div>
+          <div class="list-card" style="padding:7px 0"><span class="badge teal">4</span><div class="grow">接管全程留痕，复盘可回放</div></div>
+          <div class="divider"></div>
+          <div class="kv"><dt>SLA</dt><dd>危机 ≤5 分钟</dd><dt>普通</dt><dd>≤15 分钟</dd><dt>超时</dt><dd>升级到值班主管</dd></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" id="a-prompt">
+      <div class="page-head">
+        <div><h1>Prompt 管理</h1><p>版本 · 变量 · 灰度 · 对比</p></div>
+        <div class="right"><button class="btn sm">新建版本</button><button class="btn sm primary">提交发布</button></div>
+      </div>
+      <div class="grid" style="grid-template-columns:1fr 360px;align-items:start">
+        <div class="card">
+          <table>
+            <thead><tr><th>Prompt</th><th>版本</th><th>变量</th><th>灰度</th><th>最近变更</th><th>状态</th></tr></thead>
+            <tbody>
+              <tr><td>triage 分诊</td><td>v12</td><td>症状/病程/红旗/科室列表</td><td>100%</td><td>11-09 红旗即时升级</td><td><span class="badge teal">生效</span></td></tr>
+              <tr><td>doctor-summary 诊前摘要</td><td>v4</td><td>患者360/预问诊/证据</td><td>20%</td><td>今天 来源角标</td><td><span class="badge amber">灰度</span></td></tr>
+              <tr><td>report 报告解读</td><td>v7</td><td>指标表/参考范围/证据</td><td>100%</td><td>11-08 增加免责</td><td><span class="badge teal">生效</span></td></tr>
+              <tr><td>guard 输出门禁</td><td>v2</td><td>输出 JSON</td><td>100%</td><td>11-07 增加剂量规则</td><td><span class="badge teal">生效</span></td></tr>
+            </tbody>
+          </table>
+          <div class="pad" style="border-top:1px solid var(--line)">
+            <div class="alert amber"><b>发布规则</b><span>临床类 Prompt 必须双人审批 + 灰度 20% 观察 24h；异常立即回滚到上一版。</span></div>
+          </div>
+        </div>
+        <div class="card pad">
+          <div class="h2">v3 → v4 diff（doctor-summary）</div>
+          <div class="draft" style="margin-bottom:8px"><b>+ 新增</b><br>每条结论后追加来源角标：[HIS] / [预问诊] / [指南]</div>
+          <div class="draft" style="margin-bottom:8px"><b>- 删除</b><br>“建议优先考虑急性冠脉综合征”（表述过强，改为“需排除”）</div>
+          <div class="draft"><b>变量</b><br>{{patient_360}} {{previsit}} {{evidence}} {{department}}</div>
+          <div class="divider"></div>
+          <div class="hint">变量缺失时按“未记录”渲染，不允许模型自行补。</div>
         </div>
       </div>
     </section>
