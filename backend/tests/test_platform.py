@@ -48,3 +48,35 @@ def test_platform_overview_for_admin(client) -> None:
         assert key in payload["counts"]
     assert isinstance(payload["capabilities"], list)
     assert any(item["owner"] == "HIS" for item in payload["capabilities"])
+
+
+def test_s12_compliance_health_and_evaluation(client) -> None:
+    get_settings().AUTH_ENABLED = True
+    admin = _auth(_token(client, "admin", ADMIN_PASSWORD))
+
+    compliance = client.get("/api/v1/admin/compliance", headers=admin)
+    assert compliance.status_code == 200, compliance.text
+    body = compliance.json()
+    assert "retention" in body
+    assert isinstance(body["redaction"], list)
+    assert body["endpoints"]["export"]
+
+    health = client.get("/api/v1/admin/health-summary", headers=admin)
+    assert health.status_code == 200, health.text
+    checks = health.json()["checks"]
+    assert any(item["name"] == "数据库与 Schema" for item in checks)
+    assert all(item["status"] in {"ok", "warn", "fail", "info"} for item in checks)
+
+    evaluation = client.get("/api/v1/admin/evaluation", headers=admin)
+    assert evaluation.status_code == 200, evaluation.text
+    payload = evaluation.json()
+    assert isinstance(payload["runs"], list)
+    assert "latest" in payload
+
+
+def test_s12_endpoints_require_admin(client) -> None:
+    get_settings().AUTH_ENABLED = True
+    headers = _auth(_token(client, "patient", PATIENT_PASSWORD))
+    for path in ("/api/v1/admin/compliance", "/api/v1/admin/health-summary", "/api/v1/admin/evaluation"):
+        response = client.get(path, headers=headers)
+        assert response.status_code == 403, path

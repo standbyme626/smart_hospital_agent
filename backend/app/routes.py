@@ -2798,3 +2798,143 @@ async def admin_platform(
         "counts": counts,
         "capabilities": CAPABILITY_MATRIX,
     }
+
+
+@router.get("/api/v1/admin/compliance")
+async def admin_compliance(
+    request: Request,
+    user: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    db = _state(request).db
+    queries = {
+        "users": "SELECT count(*) FROM users",
+        "consents": "SELECT count(*) FROM consent_record",
+        "audit_events": "SELECT count(*) FROM audit_log",
+        "reports": "SELECT count(*) FROM reports",
+        "notifications": "SELECT count(*) FROM notifications",
+    }
+    counts: dict[str, int] = {}
+    for key, sql in queries.items():
+        try:
+            counts[key] = int(await db.fetchval(sql) or 0)
+        except Exception:
+            counts[key] = 0
+    return {
+        "retention": {
+            "sessions_days": 180,
+            "audit_days": 180,
+            "notifications_days": 90,
+            "reports": "按医疗记录保留规则，账号注销后脱敏保留",
+        },
+        "redaction": [
+            "审计详情脱敏：不落完整报告正文",
+            "管理端默认不展示患者明细，回放需额外授权",
+            "应用日志不记录模型原文、身份证与手机号",
+            "匿名化使用带盐 HMAC（不可反推用户名）",
+        ],
+        "endpoints": {
+            "export": "/api/v1/me/export",
+            "delete": "/api/v1/me",
+            "consent": "/api/v1/consent",
+            "audit": "/api/v1/admin/audit",
+        },
+        "counts": counts,
+    }
+
+
+@router.get("/api/v1/admin/health-summary")
+async def admin_health_summary(
+    request: Request,
+    user: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    state = _state(request)
+    db = state.db
+    settings = state.settings
+    checks: list[dict[str, Any]] = []
+
+    db_ok = False
+    schema_version: str | None = None
+    try:
+        schema_version = await db.fetchval("SELECT max(version) FROM schema_migrations")
+        db_ok = schema_version == SCHEMA_VERSION
+    except Exception:
+        db_ok = False
+    checks.append(
+        {
+            "name": "数据库与 Schema",
+            "status": "ok" if db_ok else "fail",
+            "detail": f"schema={schema_version or 'unknown'} / 期望={SCHEMA_VERSION}",
+        }
+    )
+
+    try:
+        open_findings = int(await db.fetchval("SELECT count(*) FROM reconciliation_finding WHERE status='open'") or 0)
+    except Exception:
+        open_findings = 0
+    checks.append(
+        {
+            "name": "对账差异",
+            "status": "ok" if open_findings == 0 else "warn",
+            "detail": f"{open_findings} 条未处理",
+        }
+    )
+
+    try:
+        pending_reviews = int(await db.fetchval("SELECT count(*) FROM review_requests WHERE status='pending'") or 0)
+    except Exception:
+        pending_reviews = 0
+    checks.append(
+        {
+            "name": "待审队列",
+            "status": "ok" if pending_reviews == 0 else "warn",
+            "detail": f"{pending_reviews} 条待处理",
+        }
+    )
+
+    try:
+        documents = int(await db.fetchval("SELECT count(*) FROM documents") or 0)
+    except Exception:
+        documents = 0
+    checks.append(
+        {
+            "name": "知识库",
+            "status": "ok" if documents > 0 else "warn",
+            "detail": f"{documents} 篇文档",
+        }
+    )
+
+    checks.append(
+        {
+            "name": "医生写入门禁",
+            "status": "info",
+            "detail": "已启用" if settings.CLINICIAN_WRITE_ENABLED else "未启用（仅草稿）",
+        }
+    )
+    checks.append(
+        {
+            "name": "鉴权",
+            "status": "ok" if settings.AUTH_ENABLED else "fail",
+            "detail": "已开启" if settings.AUTH_ENABLED else "已关闭（仅限开发）",
+        }
+    )
+    return {
+        "checks": checks,
+        "counts": {
+            "open_findings": open_findings,
+            "pending_reviews": pending_reviews,
+            "documents": documents,
+        },
+    }
+
+
+@router.get("/api/v1/admin/evaluation")
+async def admin_evaluation(
+    request: Request,
+    user: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    db = _state(request).db
+    rows = await db.fetch(
+        "SELECT id, name, metrics, created_at FROM eval_runs ORDER BY created_at DESC LIMIT 20"
+    )
+    runs = [dict(row) for row in rows]
+    return {"runs": runs, "latest": runs[0] if runs else None, "total": len(runs)}
