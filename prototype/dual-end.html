@@ -1467,35 +1467,35 @@ body.dark .todo-row{border-top-color:#1e2a35}
       </div>
     </section>
 
-    <section class="screen" id="a-his">
+        <section class="screen" id="a-his">
       <div class="page-head">
         <div><h1>HIS 接入</h1><p>OpenHIS V1.3 · 工具映射 · 同步与对账 · 凭证</p></div>
         <div class="right"><span class="badge teal">连接正常</span><span class="badge amber">1 个工具超时</span></div>
       </div>
       <div class="grid g4" style="margin-bottom:14px">
         <div class="card pad kpi"><div class="n">V1.3</div><div class="l">OpenHIS 版本</div></div>
-        <div class="card pad kpi"><div class="n">22</div><div class="l">MCP 工具（13 + 9 医生 / 3 运营）</div></div>
+        <div class="card pad kpi"><div class="n">22</div><div class="l">MCP 工具（13 患者 + 9 医生 + 3 运营）</div></div>
         <div class="card pad kpi"><div class="n">99.4%</div><div class="l">近 24h 成功率</div></div>
         <div class="card pad kpi"><div class="n">12s</div><div class="l">最近一次同步</div></div>
       </div>
-      <div class="grid" style="grid-template-columns:1fr 340px;align-items:start">
-        <div class="card">
-          <div class="pad"><div class="h2">工具 → OpenHIS 端点映射</div></div>
-          <table>
-            <thead><tr><th>MCP 工具</th><th>OpenHIS 端点</th><th>读/写</th><th>幂等</th><th>P95</th></tr></thead>
-            <tbody>
-              <tr><td>patient.resolve / create</td><td>/patient-manage/information/patient-information</td><td><span class="badge teal">读/写</span></td><td>身份证去重</td><td>210ms</td></tr>
-              <tr><td>schedule.list</td><td>/charge-manage/register/org-list · practitioner-metadata</td><td><span class="badge">读</span></td><td>—</td><td>180ms</td></tr>
-              <tr><td>appointment.create</td><td>/charge-manage/register/current-day-encounter</td><td><span class="badge teal">写</span></td><td>是</td><td>1.2s</td></tr>
-              <tr><td>payment.request / status</td><td>/payment/payment/reg-pre-pay · page</td><td><span class="badge teal">写/读</span></td><td>是</td><td>960ms</td></tr>
-              <tr><td>prescription.list</td><td>/doctor-station/main/prescription-page-info</td><td><span class="badge">读</span></td><td>—</td><td>240ms</td></tr>
-              <tr><td>appointment.cancel</td><td>/charge-manage/register/cancel · return</td><td><span class="badge teal">写</span></td><td>是</td><td>1.4s</td></tr>
-              <tr><td>his.reconcile</td><td>只读池 · fin_payment_reconciliation</td><td><span class="badge">读</span></td><td>—</td><td>1.9s</td></tr>
-              <tr><td>clinician.today（新增）</td><td>/outpatient-manage/treatment/encounter-list</td><td><span class="badge">读</span></td><td>—</td><td>—</td></tr>
-              <tr><td>advice.sign（新增）</td><td>/doctor-station/advice/sign-advice</td><td><span class="badge amber">写 · 需签名</span></td><td>是</td><td>—</td></tr>
-            </tbody>
-          </table>
-        </div>
+      <div class="card" style="margin-bottom:14px">
+        <div class="pad"><div class="h2">工具 → OpenHIS 端点映射</div></div>
+        <table>
+          <thead><tr><th>MCP 工具</th><th>OpenHIS 端点</th><th>读/写</th><th>幂等</th><th>P95</th></tr></thead>
+          <tbody>
+            <tr><td>patient.resolve / create</td><td>/patient-manage/information/patient-information</td><td><span class="badge teal">读/写</span></td><td>身份证去重</td><td>210ms</td></tr>
+            <tr><td>schedule.list</td><td>/charge-manage/register/org-list · practitioner-metadata</td><td><span class="badge">读</span></td><td>—</td><td>180ms</td></tr>
+            <tr><td>appointment.create</td><td>/charge-manage/register/current-day-encounter</td><td><span class="badge teal">写</span></td><td>是</td><td>1.2s</td></tr>
+            <tr><td>payment.request / status</td><td>/payment/payment/reg-pre-pay · /payment/payment/page</td><td><span class="badge teal">写/读</span></td><td>是</td><td>960ms</td></tr>
+            <tr><td>prescription.list</td><td>/doctor-station/main/prescription-page-info</td><td><span class="badge">读</span></td><td>—</td><td>240ms</td></tr>
+            <tr><td>appointment.cancel</td><td>/charge-manage/register/cancel · return</td><td><span class="badge teal">写</span></td><td>是</td><td>1.4s</td></tr>
+            <tr><td>his.reconcile</td><td>只读池 · fin_payment_reconciliation</td><td><span class="badge">读</span></td><td>—</td><td>1.9s</td></tr>
+            <tr><td>clinician.today（新增）</td><td>/outpatient-manage/treatment/encounter-list</td><td><span class="badge">读</span></td><td>—</td><td>—</td></tr>
+            <tr><td>advice.sign（新增）</td><td>/doctor-station/advice/sign-advice</td><td><span class="badge amber">写 · 需签名</span></td><td>是</td><td>—</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="grid g3">
         <div class="card pad">
           <div class="h2">连接信息</div>
           <div class="kv">
@@ -1505,15 +1505,20 @@ body.dark .todo-row{border-top-color:#1e2a35}
             <dt>只读池</dt><dd>OpenHIS 库 · 只读账号</dd>
             <dt>超时</dt><dd>8s · 重试 2 次 · 退避</dd>
           </div>
-          <div class="divider"></div>
+        </div>
+        <div class="card pad">
           <div class="h2">同步与对账</div>
           <div class="kv">
-            <dt>方式</dt><dd>游标增量 #184,203（30s）</dd>
+            <dt>同步</dt><dd>游标增量 #184,203 · 每 30s</dd>
             <dt>对账</dt><dd>状态 / 金额 / 处方 / 进度</dd>
             <dt>差异</dt><dd><span class="badge amber">2 条待处理</span></dd>
+            <dt>上次对账</dt><dd>12 秒前 · 128 条</dd>
           </div>
           <div class="divider"></div>
-          <div class="h2">最近错误</div>
+          <div class="tiny muted">对账读 HIS 只读库，不经过接口，避免“自己校对成功”。</div>
+        </div>
+        <div class="card pad">
+          <div class="h2">错误与凭证</div>
           <div class="rec"><span class="dot-s" style="background:#d9a441"></span>401 token 过期 · 已自动重登<span class="t">13:20</span></div>
           <div class="rec"><span class="dot-s" style="background:#BE3B4E"></span>登记接口超时 · 已重试成功<span class="t">11:08</span></div>
           <div class="alert amber" style="margin-top:10px"><b>凭证</b><span>密码不进我们的库；只保存短期 token；90 天轮换、不写日志。</span></div>
