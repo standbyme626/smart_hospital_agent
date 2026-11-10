@@ -87,7 +87,7 @@ test("report upload with fake vision and family member scoping", async ({ page }
   await page.getByRole("button", { name: "开始解读" }).click();
   await expect(page.getByText(`${REPORT_MARKER}检查报告解读`).first()).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText("异常指标")).toBeVisible();
-  await expect(page.getByText("白细胞计数")).toBeVisible();
+  await expect(page.getByText("白细胞计数").first()).toBeVisible();
   const reportImage = page.getByAltText("报告原图");
   await expect(reportImage).toBeVisible();
   await expect
@@ -103,7 +103,7 @@ test("report upload with fake vision and family member scoping", async ({ page }
 
   await switchMember(page, "本人", MEMBER_NAME);
   await open(page, "/reports/");
-  await expect(page.getByText("还没有报告记录，上传一份试试。")).toBeVisible();
+  await expect(page.getByText("还没有报告记录").first()).toBeVisible();
   await expect(page.getByText("0 条")).toBeVisible();
 
   await switchMember(page, MEMBER_NAME, "本人");
