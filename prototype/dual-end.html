@@ -39,7 +39,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .avatar{width:30px;height:30px;border-radius:50%;background:#DDEBE6;display:grid;place-items:center;
   font-weight:700;color:#14594F}
 .app{display:grid;grid-template-columns:208px 1fr 328px;min-height:calc(100vh - 64px)}
-.sider{border-right:1px solid var(--line);padding:18px 12px;background:#FBFDFC}
+.sider{border-right:1px solid var(--line);padding:18px 12px;background:#FBFDFC;overflow-y:auto;max-height:calc(100vh - 64px);position:sticky;top:64px}
 .sider-group{display:none}
 .sider-group.on{display:block}
 .sider-title{font-size:11px;letter-spacing:.12em;color:#8A9A94;margin:4px 10px 10px;font-weight:700}
@@ -286,6 +286,11 @@ body.dark .todo-row{border-top-color:#1e2a35}
       <button class="nav" data-screen="p-book"><span class="dot"></span>挂号服务</button>
       <button class="nav" data-screen="p-report"><span class="dot"></span>报告详情</button>
       <button class="nav" data-screen="p-meds"><span class="dot"></span>药管家</button>
+      <button class="nav" data-screen="p-notify"><span class="dot"></span>消息</button>
+      <button class="nav" data-screen="p-follow"><span class="dot"></span>随访</button>
+      <button class="nav" data-screen="p-pickup"><span class="dot"></span>取药进度</button>
+      <button class="nav" data-screen="p-insurance"><span class="dot"></span>医保结算</button>
+      <button class="nav" data-screen="p-mobile"><span class="dot"></span>移动端预览</button>
     </div>
     <div class="sider-group" data-sider="doctor">
       <div class="sider-title">医生端</div>
@@ -295,12 +300,16 @@ body.dark .todo-row{border-top-color:#1e2a35}
       <button class="nav" data-screen="d-rx"><span class="dot"></span>医嘱 / 处方</button>
       <button class="nav" data-screen="d-labs"><span class="dot"></span>检验 / 检查</button>
       <button class="nav" data-screen="d-follow"><span class="dot"></span>诊毕 / 随访</button>
+      <button class="nav" data-screen="d-schedule"><span class="dot"></span>我的排班</button>
+      <button class="nav" data-screen="d-review"><span class="dot"></span>药师审方</button>
     </div>
     <div class="sider-group" data-sider="ops">
       <div class="sider-title">运营 / 质控</div>
       <button class="nav active" data-screen="o-review"><span class="dot"></span>支付与异常</button>
       <button class="nav" data-screen="o-recon"><span class="dot"></span>对账看板</button>
       <button class="nav" data-screen="o-audit"><span class="dot"></span>审计复盘</button>
+      <button class="nav" data-screen="o-analysis"><span class="dot"></span>运营分析</button>
+      <button class="nav" data-screen="o-insurance"><span class="dot"></span>医保对账</button>
     </div>
     <div class="sider-group" data-sider="admin">
       <div class="sider-title">管理端（平台）</div>
@@ -309,6 +318,7 @@ body.dark .todo-row{border-top-color:#1e2a35}
       <div class="sider-title" style="margin-top:12px">接入</div>
       <button class="nav" data-screen="a-his"><span class="dot"></span>HIS 接入</button>
       <button class="nav" data-screen="a-flow"><span class="dot"></span>数据流</button>
+      <button class="nav" data-screen="a-capability"><span class="dot"></span>能力矩阵</button>
       <div class="sider-title" style="margin-top:12px">建设</div>
       <button class="nav" data-screen="a-agent"><span class="dot"></span>Agent 配置</button>
       <button class="nav" data-screen="a-kb"><span class="dot"></span>知识库策略</button>
@@ -316,6 +326,7 @@ body.dark .todo-row{border-top-color:#1e2a35}
       <button class="nav" data-screen="a-ragflow"><span class="dot"></span>RAG 全链路</button>
       <button class="nav" data-screen="a-model"><span class="dot"></span>模型网关</button>
       <button class="nav" data-screen="a-rules"><span class="dot"></span>规则库</button>
+      <button class="nav" data-screen="a-notify"><span class="dot"></span>通知模板</button>
       <div class="sider-title" style="margin-top:12px">运营</div>
       <button class="nav" data-screen="a-debug"><span class="dot"></span>检索调试</button>
       <button class="nav" data-screen="a-trace"><span class="dot"></span>会话回放</button>
@@ -323,6 +334,7 @@ body.dark .todo-row{border-top-color:#1e2a35}
       <div class="sider-title" style="margin-top:12px">治理</div>
       <button class="nav" data-screen="a-audit"><span class="dot"></span>配置审计</button>
       <button class="nav" data-screen="a-access"><span class="dot"></span>权限与账号</button>
+      <button class="nav" data-screen="a-tenant"><span class="dot"></span>多院区</button>
     </div>
   </aside>
 
@@ -1662,6 +1674,453 @@ body.dark .todo-row{border-top-color:#1e2a35}
           </table>
           <div class="divider"></div>
           <div class="hint">切到医生端策略后，同一 query 的门槛从 0.20 升到 0.35，引用数量会减少但更可靠。</div>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ============ 患者端 · 消息 / 随访 / 取药 / 医保 / 移动端 ============ -->
+    <section class="screen" id="p-notify">
+      <div class="page-head">
+        <div><h1>消息</h1><p>就诊、报告、用药、随访统一入口</p></div>
+        <div class="right"><span class="badge teal">3 条未读</span><button class="btn sm">全部已读</button></div>
+      </div>
+      <div class="row" style="margin-bottom:12px">
+        <span class="chip sel">全部</span><span class="chip">就诊</span><span class="chip">报告</span><span class="chip">用药</span><span class="chip">随访</span>
+      </div>
+      <div class="grid" style="grid-template-columns:1fr 320px;align-items:start">
+        <div class="card">
+          <div class="list-card"><span class="badge teal">就诊</span>
+            <div class="grow"><b>挂号成功</b><div class="tiny muted">今天 09:00 心血管内科 张明主任 · 请提前 15 分钟到院</div></div>
+            <span class="tiny muted">2 分钟前</span></div>
+          <div class="list-card"><span class="badge amber">缴费</span>
+            <div class="grow"><b>待缴费提醒</b><div class="tiny muted">挂号费 ¥50 · 15 分钟内未支付号源将释放</div></div>
+            <span class="tiny muted">5 分钟前</span></div>
+          <div class="list-card"><span class="badge sky">报告</span>
+            <div class="grow"><b>检查报告已出</b><div class="tiny muted">血脂四项 · 1 项偏高，点击查看解读</div></div>
+            <span class="tiny muted">昨天</span></div>
+          <div class="list-card"><span class="badge violet">随访</span>
+            <div class="grow"><b>今日随访待办</b><div class="tiny muted">复测血压（早/晚）· 完成后自动记录</div></div>
+            <span class="tiny muted">今天 08:00</span></div>
+        </div>
+        <div class="card pad">
+          <div class="h2">通知渠道</div>
+          <div class="list-card" style="border-top:0;padding:8px 0"><span class="badge teal">站内</span><div class="grow">就诊与报告</div><span class="tiny muted">开</span></div>
+          <div class="list-card" style="padding:8px 0"><span class="badge sky">短信</span><div class="grow">缴费与取药</div><span class="tiny muted">开</span></div>
+          <div class="list-card" style="padding:8px 0"><span class="badge amber">微信</span><div class="grow">服务号模板消息</div><span class="tiny muted">未绑定</span></div>
+          <div class="divider"></div>
+          <div class="kv"><dt>免打扰</dt><dd>22:00 – 07:00</dd><dt>危机通知</dt><dd>不受免打扰限制</dd></div>
+          <div class="hint" style="margin-top:8px">通知由平台通知中心统一发送，模板版本可追溯。</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" id="p-follow">
+      <div class="page-head">
+        <div><h1>随访</h1><p>心内科 · 出院后 2 周 · 共 4 次</p></div>
+        <div class="right"><span class="badge amber">今日待完成 2 项</span></div>
+      </div>
+      <div class="grid" style="grid-template-columns:1fr 340px;align-items:start">
+        <div>
+          <div class="card pad" style="margin-bottom:14px">
+            <div class="between"><div class="h2" style="margin:0">今日任务</div><span class="badge">第 3 / 4 次</span></div>
+            <div class="grid g2" style="margin-top:10px">
+              <div class="task"><div class="ic" style="background:var(--primary-soft);color:#0B6C62">压</div>
+                <div><h3>量血压（早 / 晚）</h3><p>静坐 5 分钟后测量，自动记录</p></div></div>
+              <div class="task"><div class="ic" style="background:var(--amber-soft);color:#8A5310">问</div>
+                <div><h3>症状量表（3 题）</h3><p>胸痛、气短、乏力，约 1 分钟</p></div></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="pad"><div class="h2">血压记录</div></div>
+            <table>
+              <thead><tr><th>日期</th><th>收缩压</th><th>舒张压</th><th>心率</th><th>状态</th></tr></thead>
+              <tbody>
+                <tr><td>11-10 早</td><td>142</td><td>88</td><td>76</td><td><span class="badge amber">偏高</span></td></tr>
+                <tr><td>11-09 晚</td><td>138</td><td>86</td><td>74</td><td><span class="badge teal">达标</span></td></tr>
+                <tr><td>11-09 早</td><td>136</td><td>84</td><td>72</td><td><span class="badge teal">达标</span></td></tr>
+              </tbody>
+            </table>
+            <div class="pad" style="border-top:1px solid var(--line)">
+              <div class="alert amber"><b>提示</b><span>连续 2 天晨起收缩压 ≥140，建议随访时告知医生。</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="card pad">
+          <div class="h2">随访计划</div>
+          <div class="timeline">
+            <div class="tl on"><b>第 3 次 · 今天</b><div class="muted tiny">血压 + 症状量表</div></div>
+            <div class="tl"><b>第 4 次 · 11-17</b><div class="muted tiny">复诊提醒 + 用药依从</div></div>
+            <div class="tl"><b>第 2 次 · 11-03</b><div class="muted tiny">已完成 · 无症状加重</div></div>
+          </div>
+          <div class="divider"></div>
+          <div class="kv"><dt>负责医生</dt><dd>张明 · 心血管内科</dd><dt>异常回访</dt><dd>触发后 24h 内电话</dd></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" id="p-pickup">
+      <div class="page-head">
+        <div><h1>取药进度</h1><p>处方已缴费 · 药房配药中</p></div>
+        <div class="right"><span class="badge sky">预计 15 分钟</span></div>
+      </div>
+      <div class="card pad" style="margin-bottom:14px">
+        <div class="row" style="gap:18px;flex-wrap:wrap">
+          <div class="step done"><span class="n">1</span>已缴费</div>
+          <div class="step on"><span class="n">2</span>药房配药</div>
+          <div class="step"><span class="n">3</span>可取药</div>
+          <div class="step"><span class="n">4</span>已取药</div>
+        </div>
+      </div>
+      <div class="grid" style="grid-template-columns:1fr 340px;align-items:start">
+        <div class="card">
+          <div class="pad"><div class="h2">处方药品（3 种）</div></div>
+          <table>
+            <thead><tr><th>药品</th><th>规格</th><th>数量</th><th>医保</th></tr></thead>
+            <tbody>
+              <tr><td>氨氯地平片</td><td>5mg × 28 片</td><td>1 盒</td><td><span class="badge teal">甲类</span></td></tr>
+              <tr><td>阿托伐他汀钙片</td><td>20mg × 14 片</td><td>2 盒</td><td><span class="badge teal">乙类</span></td></tr>
+              <tr><td>复方丹参滴丸</td><td>27mg × 180 丸</td><td>1 瓶</td><td><span class="badge amber">自费</span></td></tr>
+            </tbody>
+          </table>
+          <div class="pad" style="border-top:1px solid var(--line)">
+            <div class="alert teal"><b>取药窗口</b><span>门诊药房 3 号窗口 · 出示就诊卡或电子凭证。药房进度由 HIS 实时同步。</span></div>
+          </div>
+        </div>
+        <div class="card pad">
+          <div class="h2">费用</div>
+          <div class="kv">
+            <dt>处方金额</dt><dd>¥186.40</dd>
+            <dt>医保统筹</dt><dd>- ¥120.00</dd>
+            <dt>个人账户</dt><dd>- ¥40.00</dd>
+            <dt>个人自付</dt><dd>¥26.40</dd>
+          </div>
+          <div class="divider"></div>
+          <div class="h2">药师审方</div>
+          <div class="rec"><span class="dot-s" style="background:#0E9384"></span>审方通过 · 无相互作用<span class="t">14:06</span></div>
+          <div class="hint" style="margin-top:6px">审方记录来自 HIS 药师审方流程，不由我们生成。</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" id="p-insurance">
+      <div class="page-head">
+        <div><h1>医保结算</h1><p>挂号费 · 医保电子凭证</p></div>
+        <div class="right"><span class="badge teal">已开通医保</span></div>
+      </div>
+      <div class="grid" style="grid-template-columns:1fr 340px;align-items:start">
+        <div class="card pad">
+          <div class="h2">本次费用</div>
+          <div class="kv">
+            <dt>挂号费</dt><dd>¥50.00</dd>
+            <dt>医保统筹</dt><dd>- ¥35.00</dd>
+            <dt>个人账户</dt><dd>- ¥10.00</dd>
+            <dt>个人自付</dt><dd><b>¥5.00</b></dd>
+          </div>
+          <div class="divider"></div>
+          <div class="h2">支付方式</div>
+          <div class="list-card" style="border-top:0;padding:8px 0"><span class="badge teal">✓</span><div class="grow">医保电子凭证（已授权）</div></div>
+          <div class="list-card" style="padding:8px 0"><span class="badge">○</span><div class="grow">微信支付（自付部分）</div></div>
+          <div class="alert teal" style="margin-top:10px"><b>说明</b><span>医保结算由 HIS 与医保平台完成，平台只展示结果与上传凭证。</span></div>
+        </div>
+        <div class="card pad">
+          <div class="h2">结算状态</div>
+          <div class="timeline">
+            <div class="tl on"><b>14:02 提交结算</b><div class="muted tiny">HIS → 医保平台</div></div>
+            <div class="tl"><b>14:02 结算成功</b><div class="muted tiny">统筹 35 / 个账 10 / 自付 5</div></div>
+            <div class="tl"><b>14:03 电子凭证归档</b><div class="muted tiny">可在就诊记录查看</div></div>
+          </div>
+          <div class="divider"></div>
+          <div class="tiny muted">如结算失败：保留订单，提示到窗口办理，不重复扣费。</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" id="p-mobile">
+      <div class="page-head">
+        <div><h1>移动端预览</h1><p>患者端移动优先 · 同一套接口</p></div>
+        <div class="right"><span class="badge teal">PWA · 375px</span></div>
+      </div>
+      <div class="grid" style="grid-template-columns:390px 1fr;align-items:start">
+        <div style="background:#0F1A17;border-radius:36px;padding:14px;box-shadow:var(--shadow)">
+          <div style="background:var(--canvas);border-radius:26px;overflow:hidden">
+            <div style="padding:14px 16px 8px;display:flex;justify-content:space-between;align-items:center">
+              <div><div style="font-size:16px;font-weight:800">下午好，王建国</div>
+                <div class="tiny muted">高血压 8 年 · 家庭成员 3 人</div></div>
+              <div class="avatar" style="width:28px;height:28px;font-size:12px">王</div>
+            </div>
+            <div style="padding:8px 14px">
+              <div class="card pad" style="margin-bottom:8px;padding:12px">
+                <div class="between"><b style="font-size:13px">继续上次</b><span class="badge teal">胸痛问诊</span></div>
+                <div class="tiny muted" style="margin-top:4px">今天 09:12 · 可继续追问</div>
+              </div>
+              <div class="grid g2" style="gap:8px">
+                <div class="card pad" style="padding:10px"><span class="badge">随访</span><div class="tiny" style="margin-top:6px">复测血压</div></div>
+                <div class="card pad" style="padding:10px"><span class="badge sky">用药</span><div class="tiny" style="margin-top:6px">氨氯地平 · 晚</div></div>
+              </div>
+              <div class="grid g2" style="gap:8px;margin-top:8px">
+                <div class="card pad" style="padding:10px"><b style="font-size:12px">AI 诊室</b><div class="tiny muted">描述症状</div></div>
+                <div class="card pad" style="padding:10px"><b style="font-size:12px">报告解读</b><div class="tiny muted">看懂指标</div></div>
+                <div class="card pad" style="padding:10px"><b style="font-size:12px">挂号</b><div class="tiny muted">选科室医生</div></div>
+                <div class="card pad" style="padding:10px"><b style="font-size:12px">药管家</b><div class="tiny muted">用药清单</div></div>
+              </div>
+              <div class="card pad" style="margin-top:8px;padding:12px">
+                <div class="between"><b style="font-size:13px">最近记录</b><span class="tiny muted">全部</span></div>
+                <div class="tiny muted" style="margin-top:6px">11-07 心内科复诊 · 处方 1 张</div>
+                <div class="tiny muted" style="margin-top:3px">11-05 血脂四项 · 1 项偏高</div>
+              </div>
+            </div>
+            <div style="border-top:1px solid var(--line);display:flex;justify-content:space-around;padding:10px 0;background:#fff">
+              <span class="tiny" style="color:#0E9384;font-weight:700">首页</span><span class="tiny muted">问诊</span>
+              <span class="tiny muted">服务</span><span class="tiny muted">我的</span>
+            </div>
+          </div>
+        </div>
+        <div class="card pad">
+          <div class="h2">移动端规则</div>
+          <div class="list-card" style="border-top:0;padding:8px 0"><span class="badge teal">1</span><div class="grow">底部 4 个 Tab，首页承载任务与最近记录</div></div>
+          <div class="list-card" style="padding:8px 0"><span class="badge teal">2</span><div class="grow">一屏只做一件事；表单分步，不滚动长页</div></div>
+          <div class="list-card" style="padding:8px 0"><span class="badge teal">3</span><div class="grow">字号 16 / 18 两档，触控 ≥ 44px，支持减少动效</div></div>
+          <div class="list-card" style="padding:8px 0"><span class="badge teal">4</span><div class="grow">医生端不照搬移动：只做「诊前摘要 + 待办」两屏</div></div>
+          <div class="divider"></div>
+          <div class="hint">同一套 API 与权限，移动端只是布局不同。</div>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ============ 医生端 · 排班 / 审方 ============ -->
+    <section class="screen" id="d-schedule">
+      <div class="page-head">
+        <div><h1>我的排班</h1><p>张明 · 心血管内科 · 本周</p></div>
+        <div class="right"><span class="badge amber">HIS 未提供排班接口</span></div>
+      </div>
+      <div class="grid" style="grid-template-columns:1fr 340px;align-items:start">
+        <div class="card">
+          <div class="pad"><div class="h2">本周门诊</div></div>
+          <table>
+            <thead><tr><th>日期</th><th>上午</th><th>下午</th><th>号源</th></tr></thead>
+            <tbody>
+              <tr><td>周一 11-10</td><td><span class="badge teal">出诊</span></td><td><span class="badge">停诊</span></td><td>上午 18 / 已约 15</td></tr>
+              <tr><td>周二 11-11</td><td><span class="badge teal">出诊</span></td><td><span class="badge teal">出诊</span></td><td>36 / 已约 22</td></tr>
+              <tr><td>周三 11-12</td><td><span class="badge">停诊</span></td><td><span class="badge teal">出诊</span></td><td>18 / 已约 9</td></tr>
+              <tr><td>周四 11-13</td><td><span class="badge teal">出诊</span></td><td><span class="badge teal">出诊</span></td><td>36 / 已约 31</td></tr>
+              <tr><td>周五 11-14</td><td><span class="badge teal">出诊</span></td><td><span class="badge amber">加号</span></td><td>18 + 5 / 已约 20</td></tr>
+            </tbody>
+          </table>
+          <div class="pad" style="border-top:1px solid var(--line)">
+            <div class="alert amber"><b>边界说明</b><span>OpenHIS 当前只提供「当日号源」接口，没有排班/停诊表。这里的排班是<b>待确认的影子数据</b>，上线前必须由院方确认排班归属，避免与真实号源冲突。</span></div>
+          </div>
+        </div>
+        <div class="card pad">
+          <div class="h2">操作</div>
+          <button class="btn" style="width:100%;margin-bottom:8px">申请停诊（需医务科审批）</button>
+          <button class="btn" style="width:100%;margin-bottom:8px">申请加号（限 5 个）</button>
+          <button class="btn" style="width:100%">改约患者（HIS 取消 + 重挂）</button>
+          <div class="divider"></div>
+          <div class="kv"><dt>改约口径</dt><dd>cancel + 重新挂号，不做原地改</dd><dt>停诊影响</dt><dd>已挂号患者走退款/改约通知</dd></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" id="d-review">
+      <div class="page-head">
+        <div><h1>药师审方</h1><p>处方 #RX20261110-0032 · 王建国</p></div>
+        <div class="right"><span class="badge amber">审方中</span></div>
+      </div>
+      <div class="grid" style="grid-template-columns:1fr 340px;align-items:start">
+        <div class="card">
+          <div class="pad"><div class="h2">处方内容</div></div>
+          <table>
+            <thead><tr><th>药品</th><th>剂量</th><th>用法</th><th>医保</th></tr></thead>
+            <tbody>
+              <tr><td>氨氯地平片</td><td>5mg</td><td>口服 qd</td><td><span class="badge teal">甲类</span></td></tr>
+              <tr><td>阿托伐他汀钙片</td><td>20mg</td><td>口服 qn</td><td><span class="badge teal">乙类</span></td></tr>
+            </tbody>
+          </table>
+          <div class="pad" style="border-top:1px solid var(--line)">
+            <div class="h2">审方流转</div>
+            <div class="timeline">
+              <div class="tl on"><b>14:12 医生签名</b><div class="muted tiny">写入 HIS · 处方进入审方队列</div></div>
+              <div class="tl"><b>14:13 药师接单</b><div class="muted tiny">门诊药房 · 李药师</div></div>
+              <div class="tl"><b>待审方结果</b><div class="muted tiny">通过 / 驳回（附意见）</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="card pad">
+          <div class="h2">审方规则（只读）</div>
+          <div class="list-card" style="border-top:0;padding:7px 0"><span class="badge teal">✓</span><div class="grow">相互作用：无冲突</div></div>
+          <div class="list-card" style="padding:7px 0"><span class="badge teal">✓</span><div class="grow">剂量：在说明书范围</div></div>
+          <div class="list-card" style="padding:7px 0"><span class="badge teal">✓</span><div class="grow">过敏史：无青霉素类</div></div>
+          <div class="list-card" style="padding:7px 0"><span class="badge amber">!</span><div class="grow">医保：乙类需自付比例确认</div></div>
+          <div class="divider"></div>
+          <div class="tiny muted">审方由 HIS 药师流程完成（nd_review_prescription_records），平台只读状态，不替代药师。</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 运营端 · 运营分析 / 医保对账 ============ -->
+    <section class="screen" id="o-analysis">
+      <div class="page-head">
+        <div><h1>运营分析</h1><p>漏斗 · 留存 · 成本 · 质量</p></div>
+        <div class="right"><span class="badge">近 7 天</span></div>
+      </div>
+      <div class="grid g4" style="margin-bottom:14px">
+        <div class="card pad kpi"><div class="n">312</div><div class="l">今日问诊</div></div>
+        <div class="card pad kpi"><div class="n">18%</div><div class="l">问诊 → 挂号转化</div></div>
+        <div class="card pad kpi"><div class="n">34%</div><div class="l">7 日留存</div></div>
+        <div class="card pad kpi"><div class="n">¥0.012</div><div class="l">单次问诊模型成本</div></div>
+      </div>
+      <div class="grid" style="grid-template-columns:1.4fr 1fr;align-items:start;margin-bottom:14px">
+        <div class="card pad">
+          <div class="h2">转化漏斗（今日）</div>
+          <div class="dist"><span class="nm">浏览首页</span><div class="tr"><i style="width:100%;background:#3fb950"></i></div><b>1,284</b></div>
+          <div class="dist"><span class="nm">发起问诊</span><div class="tr"><i style="width:24%;background:#4c9aff"></i></div><b>312</b></div>
+          <div class="dist"><span class="nm">完成问诊</span><div class="tr"><i style="width:20%;background:#a97bf0"></i></div><b>256</b></div>
+          <div class="dist"><span class="nm">查看报告</span><div class="tr"><i style="width:16%;background:#2C7FB8"></i></div><b>210</b></div>
+          <div class="dist"><span class="nm">挂号下单</span><div class="tr"><i style="width:5%;background:#d9a441"></i></div><b>56</b></div>
+          <div class="dist"><span class="nm">支付完成</span><div class="tr"><i style="width:4%;background:#0E9384"></i></div><b>51</b></div>
+        </div>
+        <div class="card pad">
+          <div class="h2">质量</div>
+          <div class="kv">
+            <dt>引用准确率</dt><dd>0.86（抽检 100）</dd>
+            <dt>危机召回</dt><dd>0.97（金标 500）</dd>
+            <dt>工具成功率</dt><dd>99.4%</dd>
+            <dt>无答案率</dt><dd>4.2%</dd>
+          </div>
+          <div class="divider"></div>
+          <div class="h2">渠道来源</div>
+          <div class="dist"><span class="nm">自然搜索</span><div class="tr"><i style="width:42%;background:#0E9384"></i></div><b>42%</b></div>
+          <div class="dist"><span class="nm">医生推荐</span><div class="tr"><i style="width:31%;background:#2C7FB8"></i></div><b>31%</b></div>
+          <div class="dist"><span class="nm">家属分享</span><div class="tr"><i style="width:17%;background:#C77A15"></i></div><b>17%</b></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="pad"><div class="h2">7 日留存</div></div>
+        <div class="pad" style="padding-top:0">
+          <div class="row" style="align-items:flex-end;gap:14px;height:110px">
+            <div style="flex:1;text-align:center"><div style="height:78px;background:#CFEAE4;border-radius:8px 8px 0 0"></div><div class="tiny muted">D1 62%</div></div>
+            <div style="flex:1;text-align:center"><div style="height:56px;background:#A8DED4;border-radius:8px 8px 0 0"></div><div class="tiny muted">D2 48%</div></div>
+            <div style="flex:1;text-align:center"><div style="height:44px;background:#8FD3C6;border-radius:8px 8px 0 0"></div><div class="tiny muted">D3 41%</div></div>
+            <div style="flex:1;text-align:center"><div style="height:36px;background:#76C8B9;border-radius:8px 8px 0 0"></div><div class="tiny muted">D5 36%</div></div>
+            <div style="flex:1;text-align:center"><div style="height:32px;background:#5DBDAC;border-radius:8px 8px 0 0"></div><div class="tiny muted">D7 34%</div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" id="o-insurance">
+      <div class="page-head">
+        <div><h1>医保对账</h1><p>HIS 结算 vs 医保平台 · 每日对账</p></div>
+        <div class="right"><span class="badge amber">1 条差异</span></div>
+      </div>
+      <div class="grid g4" style="margin-bottom:14px">
+        <div class="card pad kpi"><div class="n">96</div><div class="l">今日结算笔数</div></div>
+        <div class="card pad kpi"><div class="n">¥4,120</div><div class="l">医保统筹支付</div></div>
+        <div class="card pad kpi"><div class="n">¥860</div><div class="l">个人自付</div></div>
+        <div class="card pad kpi"><div class="n" style="color:#BE3B4E">1</div><div class="l">差异待处理</div></div>
+      </div>
+      <div class="card" style="margin-bottom:14px">
+        <table>
+          <thead><tr><th>结算号</th><th>患者</th><th>总额</th><th>统筹</th><th>个账</th><th>自付</th><th>状态</th></tr></thead>
+          <tbody>
+            <tr><td>YB20261110-0096</td><td>王建国</td><td>¥50</td><td>¥35</td><td>¥10</td><td>¥5</td><td><span class="badge teal">一致</span></td></tr>
+            <tr><td>YB20261110-0095</td><td>李秀兰</td><td>¥50</td><td>¥30</td><td>¥15</td><td>¥5</td><td><span class="badge teal">一致</span></td></tr>
+            <tr><td>YB20261110-0094</td><td>陈志强</td><td>¥50</td><td>¥35</td><td>¥10</td><td>¥5</td><td><span class="badge rose">差异 ¥5</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="grid g3">
+        <div class="card pad"><div class="h2">差异原因</div><div class="tiny muted">医保平台统筹 ¥35，HIS 记录 ¥30，差 ¥5。已生成待处理任务，次日自动重对。</div></div>
+        <div class="card pad"><div class="h2">月结</div><div class="tiny muted">11 月未月结 · 上次月结 10-31 · 差异已清零</div></div>
+        <div class="card pad"><div class="h2">数据来源</div><div class="tiny muted">HIS 财务表 + 医保接口回执；平台只做比对，不修改任何一方。</div></div>
+      </div>
+    </section>
+
+    <!-- ============ 管理端 · 能力矩阵 / 通知模板 / 多院区 ============ -->
+    <section class="screen" id="a-capability">
+      <div class="page-head">
+        <div><h1>能力矩阵</h1><p>HIS 原生 / 我们自建 / 待确认</p></div>
+        <div class="right"><span class="badge teal">HIS 原生 6</span><span class="badge sky">自建 5</span><span class="badge amber">待确认 1</span></div>
+      </div>
+      <div class="card">
+        <table>
+          <thead><tr><th>能力</th><th>归属</th><th>依据</th><th>我们要做什么</th></tr></thead>
+          <tbody>
+            <tr><td>医保结算 / 电子处方</td><td><span class="badge teal">HIS 原生</span></td><td>yb_* 30+ 表、medical-insurance、yb-request</td><td>读状态、展示、对账</td></tr>
+            <tr><td>发药 / 取药</td><td><span class="badge teal">HIS 原生</span></td><td>pharmacy-dispensary/*、med_medication_dispense</td><td>同步进度到患者端</td></tr>
+            <tr><td>多租户 / 多院区</td><td><span class="badge teal">HIS 原生</span></td><td>sys_tenant、/system/tenant/*</td><td>路由与隔离</td></tr>
+            <tr><td>患者主索引 / 就诊 / 处方</td><td><span class="badge teal">HIS 原生</span></td><td>adm_patient、adm_encounter、med_medication_request</td><td>只读投影</td></tr>
+            <tr><td>三方支付回调</td><td><span class="badge teal">HIS 原生</span></td><td>fin_three_part_pay_call_back</td><td>接回调状态</td></tr>
+            <tr><td>药师审方</td><td><span class="badge teal">HIS 原生</span></td><td>nd_review_prescription_records</td><td>只读展示</td></tr>
+            <tr><td>通知（短信/微信/站内）</td><td><span class="badge sky">我们自建</span></td><td>HIS 只有 sys_notice 公告</td><td>通知中心</td></tr>
+            <tr><td>随访与依从</td><td><span class="badge sky">我们自建</span></td><td>HIS 无随访表</td><td>随访引擎</td></tr>
+            <tr><td>移动端 / 无障碍</td><td><span class="badge sky">我们自建</span></td><td>HIS 前端不对外</td><td>PWA + 医生端响应式</td></tr>
+            <tr><td>运营分析</td><td><span class="badge sky">我们自建</span></td><td>HIS 只有财务/物资导出</td><td>漏斗 / 留存 / 成本</td></tr>
+            <tr><td>商保直付</td><td><span class="badge sky">我们自建</span></td><td>HIS 无商保模块</td><td>接保司接口（P2）</td></tr>
+            <tr><td>医生排班 / 停诊</td><td><span class="badge amber">待确认</span></td><td>HIS 只有当日号源，无排班表</td><td>先向院方确认，不单方面造</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="screen" id="a-notify">
+      <div class="page-head">
+        <div><h1>通知模板</h1><p>渠道 · 模板 · 重试 · 免打扰</p></div>
+        <div class="right"><span class="badge teal">4 个渠道</span><button class="btn sm primary">新建模板</button></div>
+      </div>
+      <div class="grid g4" style="margin-bottom:14px">
+        <div class="card pad kpi"><div class="n">4</div><div class="l">渠道（站内/短信/微信/电话）</div></div>
+        <div class="card pad kpi"><div class="n">18</div><div class="l">模板</div></div>
+        <div class="card pad kpi"><div class="n">99.1%</div><div class="l">送达率</div></div>
+        <div class="card pad kpi"><div class="n">0.8%</div><div class="l">退订率</div></div>
+      </div>
+      <div class="card" style="margin-bottom:14px">
+        <table>
+          <thead><tr><th>场景</th><th>渠道</th><th>模板</th><th>版本</th><th>状态</th></tr></thead>
+          <tbody>
+            <tr><td>挂号成功</td><td>站内 + 短信</td><td>reg_success_v3</td><td>v3</td><td><span class="badge teal">启用</span></td></tr>
+            <tr><td>待缴费提醒</td><td>微信服务号</td><td>pay_reminder_v2</td><td>v2</td><td><span class="badge">未绑定微信</span></td></tr>
+            <tr><td>报告已出</td><td>站内</td><td>report_ready_v1</td><td>v1</td><td><span class="badge teal">启用</span></td></tr>
+            <tr><td>随访提醒</td><td>短信 + 站内</td><td>follow_reminder_v2</td><td>v2</td><td><span class="badge teal">启用</span></td></tr>
+            <tr><td>危机升级</td><td>电话 + 短信</td><td>crisis_call_v1</td><td>v1</td><td><span class="badge amber">仅医生触发</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="grid g3">
+        <div class="card pad"><div class="h2">发送策略</div><div class="tiny muted">失败重试 3 次（1/5/15 分钟）；同一模板 24h 内最多 3 条；免打扰 22:00–07:00。</div></div>
+        <div class="card pad"><div class="h2">合规</div><div class="tiny muted">短信含退订；微信需用户绑定；危机电话需录音与授权。</div></div>
+        <div class="card pad"><div class="h2">审计</div><div class="tiny muted">每条记录：模板版本、渠道、送达结果、退订、操作人。</div></div>
+      </div>
+    </section>
+
+    <section class="screen" id="a-tenant">
+      <div class="page-head">
+        <div><h1>多院区 / 租户</h1><p>HIS 原生多租户 · 平台只做路由与隔离</p></div>
+        <div class="right"><span class="badge teal">2 个院区</span></div>
+      </div>
+      <div class="card" style="margin-bottom:14px">
+        <table>
+          <thead><tr><th>院区</th><th>租户 ID</th><th>HIS 端点</th><th>医生</th><th>状态</th></tr></thead>
+          <tbody>
+            <tr><td>总院 · 心血管</td><td>1</td><td>http://127.0.0.1:18080/openhis</td><td>24</td><td><span class="badge teal">正常</span></td></tr>
+            <tr><td>分院 · 综合门诊</td><td>2</td><td>http://127.0.0.1:18081/openhis</td><td>11</td><td><span class="badge">未启用</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="grid g2">
+        <div class="card pad">
+          <div class="h2">隔离规则</div>
+          <div class="list-card" style="border-top:0;padding:7px 0"><span class="badge teal">1</span><div class="grow">数据按 tenant_id 过滤，跨院区一律 404</div></div>
+          <div class="list-card" style="padding:7px 0"><span class="badge teal">2</span><div class="grow">医生只能看本院区患者；运营按授权院区</div></div>
+          <div class="list-card" style="padding:7px 0"><span class="badge teal">3</span><div class="grow">每个院区独立 HIS 凭证与只读池</div></div>
+        </div>
+        <div class="card pad">
+          <div class="h2">切换成本</div>
+          <div class="tiny muted">新增院区 = 一条租户记录 + 一套 HIS 凭证 + 一次连通性验收，不改代码。</div>
+          <div class="divider"></div>
+          <div class="alert amber"><b>注意</b><span>多院区不等于多租户 SaaS：对外租给别的医院属于另一套合规与合同问题。</span></div>
         </div>
       </div>
     </section>
