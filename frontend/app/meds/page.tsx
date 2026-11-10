@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import clsx from "clsx";
 import { AppShell } from "@/components/AppShell";
+import { OfflineBanner, SourceBadge, StateBlock } from "@/components/ui";
 import { useApp } from "@/lib/app-context";
 import {
   checkMedications,
@@ -127,9 +128,10 @@ export default function MedsPage() {
   const inactiveMeds = meds.filter((item) => !item.active);
 
   return (
-    <AppShell title="药管家" subtitle="用药清单、相互作用与妊娠禁忌检查">
+    <AppShell title="药管家" subtitle="用药清单、相互作用与妊娠禁忌检查" actions={<SourceBadge live />}>
       <div className="mx-auto max-w-4xl space-y-4">
         <h1 className="text-xl font-semibold text-ink lg:hidden">药管家</h1>
+        <OfflineBanner />
         <section className="card p-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-primary"><Pill size={18} /><h2 className="text-[17px] font-semibold">正在服用</h2></div>
@@ -137,14 +139,9 @@ export default function MedsPage() {
           </div>
           <div className="mt-4 space-y-2">
             {loading ? <div className="h-16 animate-pulse rounded-2xl bg-canvas" /> : null}
-            {!loading && loadError ? (
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-[13px] text-rose-700">
-                <span>加载失败，请重试</span>
-                <button onClick={load} className="min-h-11 rounded-full bg-white px-4 text-[12px] font-medium text-rose-700">重试</button>
-              </div>
-            ) : null}
+            {!loading && loadError ? <StateBlock kind="error" onRetry={load} /> : null}
             {!loading && !loadError && activeMeds.length === 0 ? (
-              <p className="rounded-2xl bg-canvas p-4 text-[13px] text-muted">还没有用药记录。添加后可以检查相互作用。</p>
+              <StateBlock kind="empty" title="还没有用药记录" description="添加药品后，可以自动带上清单做相互作用检查" />
             ) : null}
             {activeMeds.map((item) => (
               <div key={item.id} className="flex items-center gap-3 rounded-2xl bg-canvas p-3">
