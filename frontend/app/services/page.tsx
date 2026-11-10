@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import clsx from "clsx";
 import { AppShell } from "@/components/AppShell";
+import { OfflineBanner, SourceBadge } from "@/components/ui";
 import { useApp } from "@/lib/app-context";
 import {
   ApiError,
@@ -557,8 +558,10 @@ export default function ServicesPage() {
     <AppShell
       title="挂号服务"
       subtitle="HIS 报价 + 医院收费；支付以医院收费窗口为准"
+      actions={<SourceBadge live />}
     >
       <div className="mx-auto max-w-4xl space-y-4">
+        <OfflineBanner />
         <div className="flex flex-wrap items-center gap-2">
           {STEPS.map((label, index) => (
             <div key={label} className="flex items-center gap-2">
