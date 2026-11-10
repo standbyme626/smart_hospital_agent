@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import clsx from "clsx";
 import { AppShell } from "@/components/AppShell";
+import { OfflineBanner, SourceBadge, StateBlock } from "@/components/ui";
 import { useApp } from "@/lib/app-context";
 import { deleteReport, getReport, getReportImage, getReports, interpretReport, track } from "@/lib/api";
 import { abnormalStatusMeta, formatDate, POLICY_VERSION } from "@/lib/format";
@@ -176,9 +177,14 @@ export default function ReportsPage() {
   }
 
   return (
-    <AppShell title="报告解读" subtitle="上传检查报告或皮肤照片，用普通人能懂的话解释">
+    <AppShell
+      title="报告解读"
+      subtitle="上传检查报告或皮肤照片，用普通人能懂的话解释"
+      actions={<SourceBadge live />}
+    >
       <div className="mx-auto max-w-4xl space-y-4">
         <h1 className="text-xl font-semibold text-ink lg:hidden">报告解读</h1>
+        <OfflineBanner />
         <div className="flex gap-2">
           <button onClick={() => { setMode("report"); setSelected(null); }} aria-pressed={mode === "report"} className={clsx("chip min-h-11 px-4", mode === "report" ? "chip-active" : "")}>检查报告</button>
           <button onClick={() => { setMode("skin"); setSelected(null); }} aria-pressed={mode === "skin"} className={clsx("chip min-h-11 px-4", mode === "skin" ? "chip-active" : "")}>皮肤照片</button>
@@ -314,24 +320,48 @@ export default function ReportsPage() {
                 )}
               </div>
             ) : null}
+            {String(selected.urgency || "").toLowerCase() === "critical" || selected.critical_flags?.length ? (
+              <div className="mt-3 rounded-2xl bg-rose-50 px-3 py-2 text-[13px] leading-6 text-rose-700">
+                报告提示危急值，请立即联系医生或前往急诊，不要等待在线解读。
+              </div>
+            ) : null}
             <p className="mt-3 whitespace-pre-wrap text-[14px] leading-7 text-ink">{selected.summary}</p>
 
             {selected.abnormal_values?.length ? (
-              <div className="mt-4 space-y-2">
+              <div className="mt-4">
                 <p className="text-[12px] font-medium text-muted">异常指标</p>
-                {selected.abnormal_values.map((item, index) => {
-                  const status = abnormalStatusMeta(item.status);
-                  return (
-                    <div key={index} className="rounded-2xl border border-line bg-canvas p-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-[13px] font-medium text-ink">{item.name}</span>
-                        <span className={clsx("badge", status.className)}>{status.label}</span>
-                        <span className="text-[12px] text-muted">{item.value} · 参考 {item.reference}</span>
-                      </div>
-                      <p className="mt-1 text-[12px] leading-5 text-muted">{item.explanation}</p>
-                    </div>
-                  );
-                })}
+                <div className="mt-2 overflow-hidden rounded-2xl border border-line">
+                  <table className="w-full text-left text-[12px]">
+                    <thead className="bg-canvas text-muted">
+                      <tr>
+                        <th className="px-3 py-2 font-medium">指标</th>
+                        <th className="px-3 py-2 font-medium">结果</th>
+                        <th className="px-3 py-2 font-medium">参考</th>
+                        <th className="px-3 py-2 font-medium">状态</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selected.abnormal_values.map((item, index) => {
+                        const status = abnormalStatusMeta(item.status);
+                        return (
+                          <tr key={index} className="border-t border-line">
+                            <td className="px-3 py-2 text-ink">{item.name}</td>
+                            <td className="px-3 py-2 text-ink">{item.value}</td>
+                            <td className="px-3 py-2 text-muted">{item.reference}</td>
+                            <td className="px-3 py-2"><span className={clsx("badge", status.className)}>{status.label}</span></td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {selected.abnormal_values.some((item) => item.explanation) ? (
+                  <ul className="mt-2 space-y-1">
+                    {selected.abnormal_values.filter((item) => item.explanation).map((item, index) => (
+                      <li key={index} className="text-[12px] leading-5 text-muted">· {item.name}：{item.explanation}</li>
+                    ))}
+                  </ul>
+                ) : null}
               </div>
             ) : null}
 
@@ -362,14 +392,9 @@ export default function ReportsPage() {
           </div>
           <div className="mt-3 space-y-2">
             {loadingReports ? <div className="h-16 animate-pulse rounded-2xl bg-canvas" /> : null}
-            {!loadingReports && loadError ? (
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-[13px] text-rose-700">
-                <span>加载失败，请重试</span>
-                <button onClick={load} className="min-h-11 rounded-full bg-white px-4 text-[12px] font-medium text-rose-700">重试</button>
-              </div>
-            ) : null}
+            {!loadingReports && loadError ? <StateBlock kind="error" onRetry={load} /> : null}
             {!loadingReports && !loadError && reports.length === 0 ? (
-              <p className="rounded-2xl bg-canvas p-4 text-[13px] text-muted">还没有报告记录，上传一份试试。</p>
+              <StateBlock kind="empty" title="还没有报告记录" description="上传一份化验或检查报告，解读会出现在这里" />
             ) : null}
             {!loadError ? (
               reports.map((item) => {
