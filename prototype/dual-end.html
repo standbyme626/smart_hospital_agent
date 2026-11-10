@@ -210,6 +210,7 @@ tr:hover td{background:#FAFCFB}
 th{white-space:nowrap}
 .btn{white-space:nowrap}
 td{word-break:break-word}
+#o-review td:nth-child(3),#o-review td:nth-child(5){white-space:nowrap}
 #a-his td:nth-child(1){white-space:nowrap;font-size:12px}
 #a-his td:nth-child(4),#a-his td:nth-child(5){white-space:nowrap}
 #a-his td:nth-child(2){font-family:ui-monospace,Menlo,monospace;font-size:11.5px;word-break:break-all}
@@ -297,7 +298,7 @@ body.dark .todo-row{border-top-color:#1e2a35}
     </div>
     <div class="sider-group" data-sider="ops">
       <div class="sider-title">运营 / 质控</div>
-      <button class="nav active" data-screen="o-review"><span class="dot"></span>审核队列</button>
+      <button class="nav active" data-screen="o-review"><span class="dot"></span>支付与异常</button>
       <button class="nav" data-screen="o-recon"><span class="dot"></span>对账看板</button>
       <button class="nav" data-screen="o-audit"><span class="dot"></span>审计复盘</button>
     </div>
@@ -749,28 +750,65 @@ body.dark .todo-row{border-top-color:#1e2a35}
     </section>
 
     <!-- ============ 运营端 ============ -->
-    <section class="screen" id="o-review">
+            <section class="screen" id="o-review">
       <div class="page-head">
-        <div><h1>审核队列</h1><p>支付审批与临床复核同表不同类 · 双人复核</p></div>
-        <div class="right"><span class="badge rose">待处理 3</span><span class="badge amber">超时 1</span></div>
+        <div><h1>支付与异常</h1><p>正常支付自动放行 · 人工只处理异常、退款与对账差异</p></div>
+        <div class="right"><span class="badge teal">自动放行 126 / 128</span><span class="badge amber">待人工 2</span></div>
       </div>
-      <div class="row" style="margin-bottom:12px">
-        <span class="chip sel">支付审核（2）</span><span class="chip">临床复核（1）</span><span class="chip">已处理</span>
+      <div class="grid g4" style="margin-bottom:14px">
+        <div class="card pad kpi"><div class="n">128</div><div class="l">今日支付笔数</div></div>
+        <div class="card pad kpi"><div class="n" style="color:#0E9384">126</div><div class="l">自动放行（98.4%）</div></div>
+        <div class="card pad kpi"><div class="n" style="color:#C77A15">2</div><div class="l">待人工处理</div></div>
+        <div class="card pad kpi"><div class="n">¥6,400</div><div class="l">今日金额（医院直收）</div></div>
       </div>
-      <div class="card">
+
+      <div class="card" style="margin-bottom:14px">
+        <div class="pad"><div class="h2">待人工处理</div></div>
         <table>
-          <thead><tr><th>类型</th><th>对象</th><th>金额 / 内容</th><th>申请人</th><th>等待</th><th>操作</th></tr></thead>
+          <thead><tr><th>类型</th><th>对象</th><th>金额</th><th>触发原因</th><th>等待</th><th>操作</th></tr></thead>
           <tbody>
-            <tr><td><span class="badge sky">支付</span></td><td>王建国 · 心血管内科 · 09:00</td><td>¥50.00</td><td>患者</td><td>4 分钟</td>
-              <td><button class="btn sm primary">批准</button> <button class="btn sm">拒绝</button></td></tr>
-            <tr><td><span class="badge sky">支付</span></td><td>李秀兰 · 心血管内科 · 09:30</td><td>¥50.00</td><td>患者</td><td>9 分钟</td>
-              <td><button class="btn sm primary">批准</button> <button class="btn sm">拒绝</button></td></tr>
-            <tr><td><span class="badge rose">临床复核</span></td><td>报告解读 · 赵敏 · 血脂四项</td><td>AI 输出含「建议他汀治疗」</td><td>系统</td><td>18 分钟</td>
-              <td><button class="btn sm primary">通过</button> <button class="btn sm">退回</button></td></tr>
+            <tr><td><span class="badge amber">退款</span></td>
+              <td>王建国 · 心血管内科 · 09:00</td><td>¥50.00</td>
+              <td>患者申请退款 · 未就诊 · 距开诊 40 分钟</td><td>6 分钟</td>
+              <td><button class="btn sm primary">批准退款</button> <button class="btn sm">拒绝</button></td></tr>
+            <tr><td><span class="badge rose">金额异常</span></td>
+              <td>李秀兰 · 心血管内科 · 09:30</td><td>¥50.00</td>
+              <td>HIS 目录价 ¥30，实收 ¥50，差 ¥20</td><td>2 分钟</td>
+              <td><button class="btn sm primary">按目录价修正</button> <button class="btn sm">核对</button></td></tr>
           </tbody>
         </table>
+        <div class="pad" style="border-top:1px solid var(--line)">
+          <div class="alert teal"><b>说明</b><span>正常支付<b>不进入本队列</b>：金额等于目录价、渠道回调验签通过、同一号源未重复支付时，系统自动放行并写审计。</span></div>
+        </div>
       </div>
-      <div class="alert amber" style="margin-top:12px"><b>双人复核</b><span>单笔 ≥ ¥500 或涉及临床结论的条目需第二人确认后生效。</span></div>
+
+      <div class="grid g3">
+        <div class="card pad">
+          <div class="h2">自动放行规则（全部满足）</div>
+          <div class="list-card" style="border-top:0;padding:7px 0"><span class="badge teal">1</span><div class="grow">金额 = HIS 目录价</div></div>
+          <div class="list-card" style="padding:7px 0"><span class="badge teal">2</span><div class="grow">渠道回调验签通过</div></div>
+          <div class="list-card" style="padding:7px 0"><span class="badge teal">3</span><div class="grow">同一号源无重复支付</div></div>
+          <div class="list-card" style="padding:7px 0"><span class="badge teal">4</span><div class="grow">24h 内 ≤ 3 笔、无风控命中</div></div>
+        </div>
+        <div class="card pad">
+          <div class="h2">必须人工（任一命中）</div>
+          <div class="list-card" style="border-top:0;padding:7px 0"><span class="badge amber">!</span><div class="grow">退款 / 改价 / 取消已支付</div></div>
+          <div class="list-card" style="padding:7px 0"><span class="badge amber">!</span><div class="grow">金额与目录价不一致</div></div>
+          <div class="list-card" style="padding:7px 0"><span class="badge amber">!</span><div class="grow">单笔 &gt; ¥500 或日累计超限</div></div>
+          <div class="list-card" style="padding:7px 0"><span class="badge amber">!</span><div class="grow">对账发现差异</div></div>
+        </div>
+        <div class="card pad">
+          <div class="h2">资金与审计</div>
+          <div class="kv">
+            <dt>收款方</dt><dd>医院（HIS / 收银台 / 聚合支付）</dd>
+            <dt>平台</dt><dd>不经手资金，只下单与查状态</dd>
+            <dt>放行触发</dt><dd>渠道回调 + 规则引擎</dd>
+            <dt>审计</dt><dd>命中规则、规则版本、回调签名摘要</dd>
+          </div>
+          <div class="divider"></div>
+          <div class="hint">双人复核只用于退款、改价、超阈值；正常支付单人自动。</div>
+        </div>
+      </div>
     </section>
 
     <section class="screen" id="o-recon">
