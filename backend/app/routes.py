@@ -278,6 +278,28 @@ async def _add_event(db: Any, user_id: str, member_id: str | None, kind: str, ti
     )
 
 
+async def _notify(
+    db: Any,
+    user_id: str,
+    kind: str,
+    title: str,
+    body: str | None = None,
+    link: str | None = None,
+) -> None:
+    """站内通知。短信/微信通道接入后，由通知中心在此处扇出。"""
+    await db.execute(
+        """
+        INSERT INTO notifications (user_id, kind, title, body, link)
+        VALUES ($1, $2, $3, $4, $5)
+        """,
+        user_id,
+        kind,
+        title,
+        body,
+        link,
+    )
+
+
 def _parse_json_text(content: str) -> dict[str, Any] | None:
     text = (content or "").strip()
     text = re.sub(r"^```(?:json)?\s*", "", text)
@@ -1803,6 +1825,14 @@ async def interpret_report(
                     "urgency": "critical" if critical_flags else "normal",
                 },
             )
+            await _notify(
+                conn,
+                user_id,
+                "report",
+                "检查报告已解读" + (" · 危急值" if critical_flags else ""),
+                report_title,
+                "/reports/",
+            )
         committed = True
     finally:
         if not committed:
@@ -2121,6 +2151,7 @@ async def create_followup(
         payload.notes,
     )
     await _add_event(db, user_id, member["id"], "followup", f"随访 · {payload.title}", {"followup_id": followup_id})
+    await _notify(db, user_id, "followup", "随访已安排", payload.title, "/followups/")
     return {"followup": dict(row) if row else None}
 
 
@@ -2138,6 +2169,60 @@ async def complete_followup(
     if not row:
         raise HTTPException(status_code=404, detail="followup not found")
     return {"followup": dict(row)}
+
+
+# -------------------------------------------------------------- notification
+@router.get("/api/v1/notifications")
+async def list_notifications(
+    request: Request,
+    limit: int = Query(50, ge=1, le=100),
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    db = _state(request).db
+    user_id = str(user["sub"])
+    rows = await db.fetch(
+        """
+        SELECT id, kind, title, body, link, read_at, created_at
+        FROM notifications
+        WHERE user_id=$1
+        ORDER BY created_at DESC
+        LIMIT $2
+        """,
+        user_id,
+        limit,
+    )
+    unread = await db.fetchval(
+        "SELECT count(*) FROM notifications WHERE user_id=$1 AND read_at IS NULL",
+        user_id,
+    )
+    return {"notifications": [dict(row) for row in rows], "unread": int(unread or 0)}
+
+
+@router.post("/api/v1/notifications/{notification_id}/read")
+async def read_notification(
+    notification_id: int,
+    request: Request,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    db = _state(request).db
+    await db.execute(
+        "UPDATE notifications SET read_at=now() WHERE id=$1 AND user_id=$2 AND read_at IS NULL",
+        notification_id,
+        str(user["sub"]),
+    )
+    return {"ok": True}
+
+
+@router.post("/api/v1/notifications/read-all")
+async def read_all_notifications(
+    request: Request,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    await _state(request).db.execute(
+        "UPDATE notifications SET read_at=now() WHERE user_id=$1 AND read_at IS NULL",
+        str(user["sub"]),
+    )
+    return {"ok": True}
 
 
 # ------------------------------------------------------------------- health
