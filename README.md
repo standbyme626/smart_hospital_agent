@@ -10,7 +10,7 @@
 
 > **脱敏说明**：本仓库不包含真实部署域名、服务器地址、账号口令、内网路径与第三方凭据。文中以 `<DOMAIN>`、`<API_HOST>`、`<HIS_HOST>` 等占位；实际部署信息见内部运维文档。
 >
-> **当前状态（2026-11-10）**：v3.3 滚动上线中。患者端主链路、医生端工作台、运营台、通知中心、随访已上线；**193 个后端测试 + 7 条 Playwright E2E 全绿**，ruff 干净，前端类型检查与构建通过。
+> **当前状态（2026-11-10）**：v3.3 滚动上线中。患者端主链路、医生端工作台、运营台、通知中心、随访已上线；**195 个后端测试 + 7 条 Playwright E2E 全绿**，ruff 干净，前端类型检查与构建通过。
 
 ---
 
@@ -260,7 +260,7 @@ cd frontend && npm run typecheck && npm run test:unit && NEXT_PUBLIC_API_BASE=""
 | 通知 | `GET /api/v1/notifications`、`POST .../read`、`.../read-all` | 站内通知 |
 | 医生端 | `GET /api/v1/clinician/queue`、`/patients/{id}`、`/drafts` | 只读 + 草稿 |
 | 运营 | `GET /api/v1/ops/summary`、`/ops/reconciliation`、`/ops/handoff` | 对账差异与人工接管 |
-| 管理 | `/api/v1/admin/*`、`/api/v1/admin/platform`、`/api/v1/eval`、`/api/ready`、`/metrics` | 审核、平台总览、评测、健康 |
+| 管理 | `/api/v1/admin/*`、`/api/v1/admin/platform`、`/api/v1/admin/compliance`、`/api/v1/admin/health-summary`、`/api/v1/admin/evaluation`、`/api/v1/eval`、`/api/ready`、`/metrics` | 审核、平台总览、合规、告警、评测、健康 |
 
 示例（占位符）：
 
@@ -294,7 +294,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 
 | 项 | 现状 |
 |---|---|
-| 后端测试 | **193 passed**（含契约、集成、P0 安全、临床安全、HIS 适配器、通知、医生端、运营端、平台） |
+| 后端测试 | **195 passed**（含契约、集成、P0 安全、临床安全、HIS 适配器、通知、医生端、运营端、平台与合规） |
 | 静态检查 | `ruff` 全绿 |
 | 前端 | `tsc --noEmit` 通过；单测 20 个通过；`next build` 通过（18 个静态页面） |
 | E2E | Playwright **7 passed**（见下） |
@@ -341,7 +341,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 | S9 | 医生端写入（草稿 + 签名门禁） | ✅ 草稿；签名待 HIS 透传 |
 | S10 | 运营端（概览 / 对账差异 / 人工接管） | ✅ |
 | S11 | 管理端只读（`/platform`） | ✅ |
-| S12 | 合规/告警/实验/评测 | 待做 |
+| S12 | 合规与数据 / 告警与 SLO / 质量评测 | ✅（实验与灰度留待后续） |
 
 详细计划与完成定义见 [`docs/V3.3-ROLLOUT-PLAN.md`](docs/V3.3-ROLLOUT-PLAN.md)。
 
