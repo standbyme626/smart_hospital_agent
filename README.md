@@ -84,6 +84,13 @@
 - 病历草稿：本地保存、可编辑；**签名默认关闭**，需医生 HIS 账号透传后才允许写入；
 - 所有写操作预留二次确认与审计位，当前不自动签名。
 
+**运营 / 质控侧（`/ops`）**
+
+- 概览：待审核、对账差异、待接管、今日已支付；
+- 对账差异：列表、严重度、一键标记已处理（写回 `reconciliation_finding`）；
+- 人工接管：接管队列与认领（`human_task`），全程留痕；
+- 角色门禁：仅 `ops` / `admin` 可访问，患者调用返回 403。
+
 **平台侧**
 
 - 通知中心：通知表 + 已读状态，随访/报告触发自动写入；
@@ -251,6 +258,7 @@ cd frontend && npm run typecheck && npm run test:unit && NEXT_PUBLIC_API_BASE=""
 | 随访 | `GET/POST /api/v1/followups`、`PATCH .../complete` | 随访计划 |
 | 通知 | `GET /api/v1/notifications`、`POST .../read`、`.../read-all` | 站内通知 |
 | 医生端 | `GET /api/v1/clinician/queue`、`/patients/{id}`、`/drafts` | 只读 + 草稿 |
+| 运营 | `GET /api/v1/ops/summary`、`/ops/reconciliation`、`/ops/handoff` | 对账差异与人工接管 |
 | 管理 | `/api/v1/admin/*`、`/api/v1/eval`、`/api/ready`、`/metrics` | 审核、评测、健康 |
 
 示例（占位符）：
@@ -288,7 +296,19 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 | 后端测试 | **191 passed**（含契约、集成、P0 安全、临床安全、HIS 适配器、通知、医生端、运营端） |
 | 静态检查 | `ruff` 全绿 |
 | 前端 | `tsc --noEmit` 通过；单测 20 个通过；`next build` 通过（18 个静态页面） |
-| E2E | Playwright **6 passed**：问诊向导与会话恢复、报告上传与家庭隔离、挂号支付与就诊指引、成员年龄联动、随访→消息联动、医生/运营台权限 |
+| E2E | Playwright **6 passed**（见下） |
+
+**E2E 覆盖（`frontend/e2e/`，使用独立测试库与 fake 模型，不触达真实医院）**
+
+1. 问诊向导 → 分诊结果 → 会话恢复 → 追问；
+2. 报告上传（fake vision）→ 指标表 → 家庭成员隔离；
+3. 挂号报价 → 收银台支付 → 就诊指引；
+4. 成员年龄随生日联动；
+5. 随访创建 → 消息中心收到通知（后端通知表联动）；
+6. 医生台 / 运营台权限：管理员可进、患者被拒（403/无权限页）。
+
+> E2E 在独立端口（如 8030/3030）运行，避免与本地生产 API 冲突；命令示例：
+> `E2E_BACKEND_PORT=8030 E2E_FRONTEND_PORT=3030 npm run test:e2e`
 | 覆盖重点 | 危机识别、DDI、权限越界、幂等、挂号状态机、通知已读 |
 
 ---
