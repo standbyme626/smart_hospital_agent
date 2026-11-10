@@ -395,6 +395,56 @@ export async function getClinicianPatient(memberId: string): Promise<ClinicianPa
   return apiFetch<ClinicianPatient>(`/api/v1/clinician/patients/${encodeURIComponent(memberId)}`);
 }
 
+export type ClinicianDraft = {
+  id: string;
+  member_id: string;
+  appointment_id?: string | null;
+  content: string;
+  status: string;
+  signed_by?: string | null;
+  signed_at?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export async function getClinicianConfig(): Promise<{ write_enabled: boolean; note: string }> {
+  return apiFetch<{ write_enabled: boolean; note: string }>("/api/v1/clinician/config");
+}
+
+export async function getClinicianDrafts(memberId: string): Promise<ClinicianDraft[]> {
+  const data = await apiFetch<{ drafts: ClinicianDraft[] }>(
+    `/api/v1/clinician/drafts?member_id=${encodeURIComponent(memberId)}`,
+  );
+  return data.drafts;
+}
+
+export async function createClinicianDraft(input: {
+  member_id: string;
+  content: string;
+  appointment_id?: string | null;
+}): Promise<ClinicianDraft> {
+  const data = await apiFetch<{ draft: ClinicianDraft }>("/api/v1/clinician/drafts", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return data.draft;
+}
+
+export async function updateClinicianDraft(id: string, content: string): Promise<ClinicianDraft> {
+  const data = await apiFetch<{ draft: ClinicianDraft }>(`/api/v1/clinician/drafts/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ content }),
+  });
+  return data.draft;
+}
+
+export async function signClinicianDraft(id: string): Promise<ClinicianDraft> {
+  const data = await apiFetch<{ draft: ClinicianDraft }>(`/api/v1/clinician/drafts/${id}/sign`, {
+    method: "POST",
+  });
+  return data.draft;
+}
+
 export async function getTimeline(memberId?: string): Promise<TimelineEvent[]> {
   const query = memberId ? `?member_id=${encodeURIComponent(memberId)}` : "";
   const data = await apiFetch<{ timeline: TimelineEvent[] }>(`/api/v1/health/timeline${query}`);

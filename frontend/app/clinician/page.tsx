@@ -2,11 +2,16 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Activity, ArrowLeft, CalendarCheck2, FileText, Pill, ShieldAlert, Stethoscope } from "lucide-react";
+import { Activity, ArrowLeft, CalendarCheck2, FileText, PenLine, Pill, ShieldAlert, Stethoscope } from "lucide-react";
 import { OfflineBanner, SourceBadge, StateBlock } from "@/components/ui";
 import {
+  createClinicianDraft,
+  getClinicianConfig,
+  getClinicianDrafts,
   getClinicianPatient,
   getClinicianQueue,
+  signClinicianDraft,
+  type ClinicianDraft,
   type ClinicianPatient,
   type ClinicianQueueItem,
 } from "@/lib/api";
@@ -28,6 +33,12 @@ export default function ClinicianPage() {
   const [detail, setDetail] = useState<ClinicianPatient | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState(false);
+  const [writeEnabled, setWriteEnabled] = useState(false);
+  const [drafts, setDrafts] = useState<ClinicianDraft[]>([]);
+  const [draftText, setDraftText] = useState("");
+  const [draftSaving, setDraftSaving] = useState(false);
+  const [signingId, setSigningId] = useState<string | null>(null);
+  const [draftError, setDraftError] = useState<string | null>(null);
 
   const loadQueue = useCallback(async () => {
     setLoading(true);
@@ -49,17 +60,59 @@ export default function ClinicianPage() {
     loadQueue();
   }, [loadQueue]);
 
+  useEffect(() => {
+    getClinicianConfig()
+      .then((config) => setWriteEnabled(config.write_enabled))
+      .catch(() => setWriteEnabled(false));
+  }, []);
+
   async function openPatient(memberId: string) {
     setSelected(memberId);
     setDetail(null);
     setDetailError(false);
     setDetailLoading(true);
+    setDrafts([]);
+    setDraftText("");
+    setDraftError(null);
     try {
-      setDetail(await getClinicianPatient(memberId));
+      const [patient, draftList] = await Promise.all([
+        getClinicianPatient(memberId),
+        getClinicianDrafts(memberId).catch(() => [] as ClinicianDraft[]),
+      ]);
+      setDetail(patient);
+      setDrafts(draftList);
     } catch {
       setDetailError(true);
     } finally {
       setDetailLoading(false);
+    }
+  }
+
+  async function saveDraft() {
+    if (!selected || !draftText.trim()) return;
+    setDraftSaving(true);
+    setDraftError(null);
+    try {
+      const draft = await createClinicianDraft({ member_id: selected, content: draftText.trim() });
+      setDrafts((prev) => [draft, ...prev]);
+      setDraftText("");
+    } catch {
+      setDraftError("保存草稿失败，请稍后再试");
+    } finally {
+      setDraftSaving(false);
+    }
+  }
+
+  async function signDraft(draft: ClinicianDraft) {
+    setSigningId(draft.id);
+    setDraftError(null);
+    try {
+      const signed = await signClinicianDraft(draft.id);
+      setDrafts((prev) => prev.map((item) => (item.id === signed.id ? signed : item)));
+    } catch (error) {
+      setDraftError(error instanceof Error ? error.message : "签名失败，请稍后再试");
+    } finally {
+      setSigningId(null);
     }
   }
 
@@ -212,6 +265,55 @@ export default function ClinicianPage() {
                           <span className="text-[11px] text-muted">{item.status === "done" ? "已完成" : item.due_date ? formatDate(item.due_date) : "待安排"}</span>
                         </div>
                       ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="flex items-center gap-1.5 text-[13px] font-medium text-ink"><PenLine size={14} /> 病历草稿（{drafts.length}）</h3>
+                    <textarea
+                      className="input mt-2 min-h-[96px]"
+                      value={draftText}
+                      onChange={(event) => setDraftText(event.target.value)}
+                      placeholder="主诉 / 现病史 / 查体 / 初步诊断（草稿，不写入 HIS）"
+                    />
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <button onClick={saveDraft} disabled={draftSaving || !draftText.trim()} className="btn-primary min-h-9 px-4 text-[12px] disabled:opacity-50">
+                        {draftSaving ? "保存中…" : "保存草稿"}
+                      </button>
+                      <span className="text-[11px] text-muted">
+                        {writeEnabled ? "签名将写入 HIS" : "签名未启用：需要医生 HIS 账号与签名透传"}
+                      </span>
+                    </div>
+                    {draftError ? <p className="mt-2 text-[12px] text-rose-600">{draftError}</p> : null}
+                    <div className="mt-3 space-y-2">
+                      {drafts.length === 0 ? (
+                        <p className="rounded-2xl bg-canvas p-3 text-[12px] text-muted">还没有草稿</p>
+                      ) : (
+                        drafts.map((item) => (
+                          <div key={item.id} className="rounded-2xl border border-line p-3">
+                            <p className="whitespace-pre-wrap text-[12.5px] leading-6 text-ink">{item.content}</p>
+                            <div className="mt-2 flex items-center gap-2">
+                              <span className={item.status === "signed" ? "badge bg-emerald-50 text-emerald-700" : "badge"}>
+                                {item.status === "signed" ? "已签名" : "草稿"}
+                              </span>
+                              {item.status === "draft" ? (
+                                <button
+                                  onClick={() => signDraft(item)}
+                                  disabled={!writeEnabled || signingId === item.id}
+                                  title={writeEnabled ? "" : "HIS 写入未启用"}
+                                  className="ml-auto text-[12px] font-medium text-primary disabled:text-muted"
+                                >
+                                  {signingId === item.id ? "签名中…" : "签名"}
+                                </button>
+                              ) : (
+                                <span className="ml-auto text-[11px] text-muted">
+                                  {item.signed_by || "医生"} · {item.signed_at ? relativeTime(item.signed_at) : ""}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
 
