@@ -1,0 +1,810 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>双端医疗 Agent · 界面原型</title>
+<style>
+:root{
+  --canvas:#F5F8F6; --card:#FFFFFF; --ink:#16241F; --muted:#6B7C76;
+  --line:#E2EAE6; --primary:#0E9384; --primary-soft:#E6F5F2;
+  --amber:#C77A15; --amber-soft:#FDF3E3; --rose:#BE3B4E; --rose-soft:#FCEDEF;
+  --violet:#6A5ACD; --violet-soft:#EFEDFB; --sky:#2C7FB8; --sky-soft:#EAF4FA;
+  --shadow:0 1px 2px rgba(16,40,34,.04),0 8px 24px rgba(16,40,34,.06);
+  --radius:16px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  font-family:"Noto Sans CJK SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  background:var(--canvas); color:var(--ink); font-size:14px; line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+button{font:inherit;color:inherit;cursor:pointer}
+.topbar{
+  height:64px; display:flex; align-items:center; gap:20px; padding:0 22px;
+  background:rgba(255,255,255,.86); backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--line); position:sticky; top:0; z-index:30;
+}
+.brand{display:flex; align-items:center; gap:10px; font-weight:700; letter-spacing:.2px}
+.logo{width:28px;height:28px;border-radius:9px;background:linear-gradient(135deg,#0E9384,#12B3A0);
+  display:grid;place-items:center;color:#fff;font-size:13px;font-weight:800}
+.brand small{display:block;font-weight:500;color:var(--muted);font-size:11px;letter-spacing:.4px}
+.ends{display:flex; gap:6px; margin-left:8px; background:#EDF3F0; padding:4px; border-radius:12px}
+.ends button{border:0;background:transparent;padding:7px 16px;border-radius:9px;color:#4C5F59;font-weight:600}
+.ends button.active{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.who{margin-left:auto;display:flex;align-items:center;gap:10px;color:var(--muted)}
+.scope{font-size:11px;background:var(--primary-soft);color:#0B6C62;padding:4px 9px;border-radius:999px;
+  font-family:ui-monospace,Menlo,monospace}
+.avatar{width:30px;height:30px;border-radius:50%;background:#DDEBE6;display:grid;place-items:center;
+  font-weight:700;color:#14594F}
+.app{display:grid;grid-template-columns:208px 1fr 328px;min-height:calc(100vh - 64px)}
+.sider{border-right:1px solid var(--line);padding:18px 12px;background:#FBFDFC}
+.sider-group{display:none}
+.sider-group.on{display:block}
+.sider-title{font-size:11px;letter-spacing:.12em;color:#8A9A94;margin:4px 10px 10px;font-weight:700}
+.nav{display:flex;align-items:center;gap:9px;width:100%;border:0;background:transparent;text-align:left;
+  padding:9px 11px;border-radius:10px;color:#41544E;margin-bottom:2px;font-weight:500}
+.nav:hover{background:#EFF5F2}
+.nav.active{background:var(--primary-soft);color:#0B6C62;font-weight:700}
+.nav .dot{width:6px;height:6px;border-radius:50%;background:#C3D2CC}
+.nav.active .dot{background:var(--primary)}
+.main{padding:24px 26px 40px;min-width:0}
+.screen{display:none;animation:fade .18s ease}
+.screen.on{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.page-head{display:flex;align-items:flex-end;gap:14px;margin-bottom:18px}
+.page-head h1{font-size:21px;margin:0;letter-spacing:.2px}
+.page-head p{margin:0;color:var(--muted);font-size:12.5px}
+.page-head .right{margin-left:auto;display:flex;gap:8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+.pad{padding:18px}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:1fr 1fr}
+.g3{grid-template-columns:repeat(3,1fr)}
+.g4{grid-template-columns:repeat(4,1fr)}
+.row{display:flex;align-items:center;gap:10px}
+.between{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.muted{color:var(--muted)}
+.tiny{font-size:12px}
+.h2{font-size:13px;font-weight:700;letter-spacing:.02em;margin:0 0 12px}
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;
+  padding:3px 9px;border-radius:999px;background:#EEF3F1;color:#4B5D57}
+.badge.teal{background:var(--primary-soft);color:#0B6C62}
+.badge.amber{background:var(--amber-soft);color:#8A5310}
+.badge.rose{background:var(--rose-soft);color:#8E2A39}
+.badge.sky{background:var(--sky-soft);color:#1F5E8A}
+.badge.violet{background:var(--violet-soft);color:#443AA0}
+.btn{border:1px solid var(--line);background:#fff;padding:8px 14px;border-radius:10px;font-weight:600}
+.btn:hover{background:#F7FAF9}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn.primary:hover{background:#0B8074}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--muted)}
+.btn.sm{padding:5px 10px;border-radius:8px;font-size:12.5px}
+.kpi{display:flex;flex-direction:column;gap:6px}
+.kpi .n{font-size:26px;font-weight:800;letter-spacing:-.02em}
+.kpi .l{font-size:12px;color:var(--muted)}
+.task{display:flex;gap:12px;align-items:flex-start;padding:14px;border-radius:14px;border:1px solid var(--line);
+  background:#fff;box-shadow:var(--shadow)}
+.task .ic{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-weight:800;font-size:13px}
+.task h3{margin:0 0 2px;font-size:14px}
+.task p{margin:0;font-size:12.5px;color:var(--muted)}
+.list-card{display:flex;align-items:center;gap:12px;padding:13px 16px;border-top:1px solid var(--line)}
+.list-card:first-child{border-top:0}
+.avatar-sq{width:38px;height:38px;border-radius:11px;background:#EAF2EF;display:grid;place-items:center;
+  font-weight:700;color:#24564D;font-size:13px}
+table{width:100%;border-collapse:collapse}
+th{font-size:11.5px;color:#7F8F89;font-weight:700;text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);
+  letter-spacing:.04em}
+td{padding:11px 12px;border-bottom:1px solid #EEF3F1;vertical-align:middle}
+tr:last-child td{border-bottom:0}
+tr:hover td{background:#FAFCFB}
+.pill{font-size:11px;padding:2px 8px;border-radius:999px;background:#EEF3F1;color:#4B5D57;font-weight:600}
+.step{display:flex;align-items:center;gap:8px}
+.step .n{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700;
+  background:#EDF3F0;color:#7D8D87}
+.step.on .n{background:var(--primary);color:#fff}
+.step.done .n{background:var(--primary-soft);color:#0B6C62}
+.chat{display:flex;gap:10px;margin-bottom:14px}
+.bubble{background:#fff;border:1px solid var(--line);border-radius:14px;padding:11px 14px;max-width:78%;box-shadow:var(--shadow)}
+.bubble.me{margin-left:auto;background:var(--primary-soft);border-color:#CDE9E3}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 12px;font-size:12.5px}
+.chip.sel{background:var(--primary);border-color:var(--primary);color:#fff}
+.alert{display:flex;gap:10px;align-items:flex-start;padding:11px 14px;border-radius:12px;font-size:12.5px}
+.alert.rose{background:var(--rose-soft);color:#7E2433;border:1px solid #F3D4D8}
+.alert.amber{background:var(--amber-soft);color:#7A4A0D;border:1px solid #F2DFC2}
+.alert.teal{background:var(--primary-soft);color:#0B6C62;border:1px solid #CFEAE4}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:12px;color:#6B7C76;margin-bottom:6px;font-weight:600}
+.input{border:1px solid var(--line);border-radius:10px;padding:9px 12px;background:#fff;min-height:38px;
+  display:flex;align-items:center;color:#2A3B35;font-size:13px}
+.input.area{min-height:74px;align-items:flex-start;padding-top:10px;color:#8A9A94}
+.input .cursor{width:1px;height:16px;background:var(--primary);margin-left:2px;animation:blink 1.2s infinite}
+@keyframes blink{0%,49%{opacity:1}50%,100%{opacity:0}}
+.tag-src{font-size:10px;padding:1px 6px;border-radius:6px;background:#EDF3F0;color:#5B6E67;margin-left:6px;
+  font-weight:700;vertical-align:1px}
+.evidence{border:1px solid var(--line);border-radius:13px;padding:12px 14px;background:#fff;margin-bottom:10px}
+.evidence h4{margin:0 0 4px;font-size:13px}
+.evidence p{margin:6px 0 0;font-size:12px;color:#5F716B;line-height:1.6}
+.score{font-size:11px;color:#0B6C62;background:var(--primary-soft);border-radius:999px;padding:2px 8px;font-weight:700}
+.timeline{position:relative;padding-left:18px}
+.timeline:before{content:"";position:absolute;left:5px;top:4px;bottom:4px;width:1px;background:#DCE7E2}
+.tl{position:relative;padding:0 0 16px 6px}
+.tl:before{content:"";position:absolute;left:-17px;top:5px;width:7px;height:7px;border-radius:50%;background:#BFD2CB}
+.tl.on:before{background:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+.agent{border-left:1px solid var(--line);background:#FBFDFC;display:flex;flex-direction:column;padding:16px 14px}
+.agent-panel{display:none;flex-direction:column;height:100%}
+.agent-panel.on{display:flex}
+.agent-head{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.dot-live{width:7px;height:7px;border-radius:50%;background:#12B76A;box-shadow:0 0 0 3px rgba(18,183,106,.15)}
+.agent-title{font-weight:800;font-size:13px}
+.agent-sub{font-size:11px;color:var(--muted);margin-left:auto}
+.agent-sec{margin-bottom:14px}
+.agent-sec .h{font-size:11px;letter-spacing:.08em;color:#8A9A94;font-weight:700;margin-bottom:7px}
+.toolchips{display:flex;flex-wrap:wrap;gap:6px}
+.toolchips span{font-size:11px;font-family:ui-monospace,Menlo,monospace;background:#fff;border:1px solid var(--line);
+  padding:3px 7px;border-radius:7px;color:#456059}
+.callog{background:#fff;border:1px solid var(--line);border-radius:11px;padding:9px 11px;margin-bottom:7px}
+.callog .t{display:flex;align-items:center;gap:7px;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:#2F4A42}
+.callog .m{font-size:11px;color:#8A9A94;margin-top:3px}
+.ok{color:#0E9F6E;font-weight:700}
+.agent-compose{margin-top:auto;border-top:1px solid var(--line);padding-top:12px}
+.agent-compose .box{border:1px solid var(--line);border-radius:12px;background:#fff;padding:10px 12px;
+  color:#93A29C;font-size:12.5px;display:flex;align-items:center;justify-content:space-between}
+.sec-title{display:flex;align-items:center;gap:8px;margin:22px 0 10px;font-size:13px;font-weight:800}
+.sec-title .line{flex:1;height:1px;background:var(--line)}
+.note{font-size:12px;color:#7A8A84}
+.kv{display:grid;grid-template-columns:76px 1fr;gap:8px 10px;font-size:12.5px}
+.kv dt{color:#8A9A94}
+.kv dd{margin:0;color:#2A3B35;font-weight:500}
+.divider{height:1px;background:var(--line);margin:14px 0}
+.draft{background:#FAFBFA;border:1px dashed #CBD9D3;border-radius:12px;padding:12px 14px;font-size:12.5px;color:#4B5D57}
+.draft b{color:#33473F}
+.signbar{display:flex;align-items:center;gap:12px;padding:14px 16px;border-top:1px solid var(--line);
+  background:#FBFDFC;border-radius:0 0 var(--radius) var(--radius)}
+.hint{font-size:11.5px;color:#8A9A94}
+.grow{flex:1}
+.footer-note{margin-top:26px;font-size:11.5px;color:#9AA8A3;text-align:center}
+.alert b{white-space:nowrap;margin-right:6px}
+#d-360 .grid{grid-template-columns:280px 1fr !important}
+#d-360 .grid > .card:nth-child(3){grid-column:1 / -1}
+#d-360 .card.pad{padding:16px}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="logo">医</div>
+    <div>Smart Hospital Agent<small>双端 + 真 HIS · 界面原型 v0.1</small></div>
+  </div>
+  <nav class="ends" id="ends">
+    <button data-end="patient" class="active">患者端</button>
+    <button data-end="doctor">医生端</button>
+    <button data-end="ops">运营 / 质控</button>
+  </nav>
+  <div class="who">
+    <span class="scope" id="scopeLabel">scope: patient_write</span>
+    <span class="avatar" id="whoAvatar">王</span>
+  </div>
+</header>
+
+<div class="app">
+  <aside class="sider">
+    <div class="sider-group on" data-sider="patient">
+      <div class="sider-title">患者端</div>
+      <button class="nav active" data-screen="p-home"><span class="dot"></span>首页 / 任务</button>
+      <button class="nav" data-screen="p-consult"><span class="dot"></span>AI 诊室</button>
+      <button class="nav" data-screen="p-result"><span class="dot"></span>结果与证据</button>
+      <button class="nav" data-screen="p-prep"><span class="dot"></span>就诊准备</button>
+      <button class="nav" data-screen="p-book"><span class="dot"></span>挂号服务</button>
+    </div>
+    <div class="sider-group" data-sider="doctor">
+      <div class="sider-title">医生端</div>
+      <button class="nav active" data-screen="d-queue"><span class="dot"></span>今日患者</button>
+      <button class="nav" data-screen="d-360"><span class="dot"></span>患者 360</button>
+      <button class="nav" data-screen="d-note"><span class="dot"></span>接诊 / 病历</button>
+      <button class="nav" data-screen="d-rx"><span class="dot"></span>医嘱 / 处方</button>
+      <button class="nav" data-screen="d-follow"><span class="dot"></span>诊毕 / 随访</button>
+    </div>
+    <div class="sider-group" data-sider="ops">
+      <div class="sider-title">运营 / 质控</div>
+      <button class="nav active" data-screen="o-review"><span class="dot"></span>审核队列</button>
+      <button class="nav" data-screen="o-recon"><span class="dot"></span>对账看板</button>
+      <button class="nav" data-screen="o-audit"><span class="dot"></span>审计复盘</button>
+    </div>
+  </aside>
+
+  <main class="main">
+
+    <!-- ============ 患者端 ============ -->
+    <section class="screen on" id="p-home">
+      <div class="page-head">
+        <div><h1>下午好，王建国</h1><p>62 岁 · 高血压 8 年 · 家庭成员 3 人</p></div>
+        <div class="right"><span class="badge teal">今日用药 2 项</span><span class="badge amber">随访待办 1</span></div>
+      </div>
+
+      <div class="grid g2">
+        <div class="card pad">
+          <div class="between" style="margin-bottom:10px">
+            <div><div class="h2">继续上次</div><div class="muted tiny">今天 09:12 · 胸痛问诊</div></div>
+            <button class="btn sm">继续追问</button>
+          </div>
+          <div class="alert amber"><b>随访提醒</b><span>3 天前的心内科就诊，按计划今天应复测血压并记录。</span></div>
+        </div>
+        <div class="card pad">
+          <div class="h2">今日待办</div>
+          <div class="list-card" style="border-top:0;padding:8px 0">
+            <span class="badge rose">随访</span><div class="grow">复测血压（早 / 晚）</div><span class="tiny muted">今天</span>
+          </div>
+          <div class="list-card" style="padding:8px 0">
+            <span class="badge sky">用药</span><div class="grow">氨氯地平 5mg · 晚</div><span class="tiny muted">20:00</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="sec-title">我能做什么<span class="line"></span></div>
+      <div class="grid g4">
+        <div class="task"><div class="ic" style="background:var(--primary-soft);color:#0B6C62">诊</div>
+          <div><h3>AI 诊室</h3><p>描述症状，得到分诊与就医方向</p></div></div>
+        <div class="task"><div class="ic" style="background:var(--amber-soft);color:#8A5310">报</div>
+          <div><h3>报告解读</h3><p>上传化验，看懂异常指标</p></div></div>
+        <div class="task"><div class="ic" style="background:var(--violet-soft);color:#443AA0">药</div>
+          <div><h3>药管家</h3><p>用药清单与相互作用检查</p></div></div>
+        <div class="task"><div class="ic" style="background:var(--sky-soft);color:#1F5E8A">挂</div>
+          <div><h3>挂号服务</h3><p>选科室、医生与号源</p></div></div>
+      </div>
+
+      <div class="sec-title">最近健康时间线<span class="line"></span></div>
+      <div class="card pad">
+        <div class="timeline">
+          <div class="tl on"><b>心内科 · 复诊</b> <span class="badge teal">已登记</span>
+            <div class="muted tiny">11-07 · 张医生 · 处方 1 张</div></div>
+          <div class="tl"><b>检查报告 · 血脂四项</b> <span class="badge amber">1 项偏高</span>
+            <div class="muted tiny">11-05 · 已解读</div></div>
+          <div class="tl"><b>问诊 · 胸部不适</b> <span class="badge">已结束</span>
+            <div class="muted tiny">11-02 · 建议心内科</div></div>
+        </div>
+      </div>
+      <div class="footer-note">原型演示 · 患者端只做解释与事务代办，不提供诊断结论</div>
+    </section>
+
+    <section class="screen" id="p-consult">
+      <div class="page-head">
+        <div><h1>AI 诊室</h1><p>一屏一问 · 每一步都可回退</p></div>
+        <div class="right"><span class="badge teal">第 2 / 3 步</span></div>
+      </div>
+      <div class="card pad" style="margin-bottom:14px">
+        <div class="row" style="gap:26px">
+          <div class="step done"><span class="n">1</span>就诊人</div>
+          <div class="step on"><span class="n">2</span>症状</div>
+          <div class="step"><span class="n">3</span>病史</div>
+        </div>
+      </div>
+
+      <div class="grid" style="grid-template-columns:1fr 300px;align-items:start">
+        <div class="card pad">
+          <div class="chat"><div class="bubble">胸口像压着东西一样疼，持续多久了？</div></div>
+          <div class="chat"><div class="bubble me">大概半小时了，刚才爬楼后开始的</div></div>
+          <div class="chips">
+            <span class="chip">10 分钟以内</span><span class="chip sel">30 分钟左右</span>
+            <span class="chip">1 小时以上</span><span class="chip">说不清</span>
+          </div>
+          <div class="alert rose" style="margin-top:16px">
+            <b>红旗筛查</b><span>如果同时出现<b>冷汗、气短、左臂放射痛</b>，请立即拨打 120，不要等待。</span>
+          </div>
+          <div class="divider"></div>
+          <div class="muted tiny">下一步会问：是否有高血压 / 糖尿病 / 吸烟史（可跳过）</div>
+        </div>
+
+        <div class="card pad">
+          <div class="h2">本次问诊的结构化结果</div>
+          <div class="kv">
+            <dt>主诉</dt><dd>胸骨后压榨性疼痛</dd>
+            <dt>诱因</dt><dd>爬楼后出现</dd>
+            <dt>时长</dt><dd>约 30 分钟</dd>
+            <dt>伴随</dt><dd>暂无冷汗 / 气短</dd>
+            <dt>红旗</dt><dd><span class="badge rose">需排除 ACS</span></dd>
+          </div>
+          <div class="divider"></div>
+          <div class="tiny muted">这些字段会在接诊时直接进入医生端「诊前摘要」，不需要患者重复描述。</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" id="p-result">
+      <div class="page-head">
+        <div><h1>分诊结果</h1><p>基于症状 + 指南证据 · 生成于 14:02</p></div>
+        <div class="right"><button class="btn sm">导出</button><button class="btn sm primary">按此挂号</button></div>
+      </div>
+
+      <div class="grid" style="grid-template-columns:1fr 360px;align-items:start">
+        <div>
+          <div class="card pad" style="margin-bottom:14px">
+            <div class="between">
+              <div>
+                <div class="muted tiny">建议就诊</div>
+                <div style="font-size:24px;font-weight:800;letter-spacing:.02em">心血管内科</div>
+                <div class="muted tiny" style="margin-top:4px">备选：急诊内科（如出现冷汗 / 气短）</div>
+              </div>
+              <span class="badge amber" style="font-size:13px;padding:7px 14px">紧急度 · 紧急</span>
+            </div>
+            <div class="divider"></div>
+            <div class="h2">为什么是这个科室</div>
+            <ul style="margin:0;padding-left:18px;color:#40534C;font-size:13px;line-height:1.9">
+              <li>胸骨后压榨性疼痛 + 活动诱发，符合心绞痛典型表现</li>
+              <li>62 岁男性 + 高血压 8 年，属于冠心病高危人群</li>
+              <li>症状持续 30 分钟未见缓解，建议今日就诊</li>
+            </ul>
+            <div class="alert teal" style="margin-top:14px">
+              <b>就诊前</b><span>带好既往心电图与降压药清单；如疼痛加重或出现冷汗，直接 120。</span>
+            </div>
+          </div>
+
+          <div class="card pad">
+            <div class="between" style="margin-bottom:10px"><div class="h2" style="margin:0">证据（3 条）</div>
+              <span class="badge">相关度门槛 0.2 · 低于阈值不展示</span></div>
+            <div class="evidence">
+              <div class="between"><h4>稳定性冠心病诊断与治疗指南（2023）</h4><span class="score">0.82</span></div>
+              <div class="muted tiny">中华医学会心血管病学分会 · 指南 · 证据等级 A</div>
+              <p>“典型心绞痛表现为胸骨后压榨性疼痛，常由体力活动诱发，休息或含服硝酸甘油后缓解。”</p>
+            </div>
+            <div class="evidence">
+              <div class="between"><h4>胸痛中心急诊分诊共识</h4><span class="score">0.71</span></div>
+              <div class="muted tiny">中国胸痛中心 · 共识 · 证据等级 B</div>
+              <p>“持续 20 分钟以上不缓解的胸痛应按高危处理，建议急诊评估。”</p>
+            </div>
+            <div class="evidence">
+              <div class="between"><h4>高血压患者心血管风险评估（科室知识库）</h4><span class="score">0.44</span></div>
+              <div class="muted tiny">院内知识库 · 来源：心血管内科</div>
+              <p>“高血压病程超过 5 年者，出现活动后胸痛应优先排查冠心病。”</p>
+            </div>
+            <div class="alert amber" style="margin-top:6px">
+              <b>说明</b><span>以上为参考资料，不是诊断；最终判断由接诊医生完成。</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card pad">
+          <div class="h2">下一步</div>
+          <div class="list-card" style="border-top:0;padding:10px 0">
+            <span class="badge sky">1</span><div class="grow">选择医生与号源</div><span class="tiny muted">今天</span></div>
+          <div class="list-card" style="padding:10px 0">
+            <span class="badge sky">2</span><div class="grow">填写就诊准备（预问诊）</div><span class="tiny muted">2 分钟</span></div>
+          <div class="list-card" style="padding:10px 0">
+            <span class="badge sky">3</span><div class="grow">到院后医生直接看摘要</div><span class="tiny muted">省 3 分钟</span></div>
+          <div class="divider"></div>
+          <div class="tiny muted">同一份结构化信息会同时进入医生端，患者不需要再讲一遍。</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" id="p-prep">
+      <div class="page-head">
+        <div><h1>就诊准备</h1><p>提交后自动进入医生端「诊前摘要」· 可随时修改</p></div>
+        <div class="right"><span class="badge teal">已自动带入 4 项</span></div>
+      </div>
+      <div class="grid" style="grid-template-columns:1fr 320px;align-items:start">
+        <div class="card pad">
+          <div class="grid g2">
+            <div class="field"><label>主诉（必填）</label><div class="input">胸骨后压榨性疼痛，活动后诱发</div></div>
+            <div class="field"><label>持续时间</label><div class="input">约 30 分钟，未完全缓解</div></div>
+            <div class="field"><label>伴随症状</label><div class="input">无冷汗、无气短、无放射痛</div></div>
+            <div class="field"><label>既往史</label><div class="input">高血压 8 年，规律服药</div></div>
+            <div class="field"><label>在用药物（来自药管家）</label><div class="input">氨氯地平 5mg qd</div></div>
+            <div class="field"><label>过敏史</label><div class="input">青霉素过敏（皮疹）</div></div>
+          </div>
+          <div class="field"><label>想特别问医生的问题（选填）</label>
+            <div class="input area">需不需要做冠脉 CT？平时运动要注意什么？<span class="cursor"></span></div></div>
+          <div class="alert teal"><b>提交后</b><span>医生接诊时会在左侧直接看到这份摘要，并与 HIS 里的既往就诊、检验结果合并展示。</span></div>
+        </div>
+        <div class="card pad">
+          <div class="h2">这份准备会变成什么</div>
+          <div class="draft">
+            <b>医生端 · 诊前摘要（示例）</b><br>
+            · 主诉：胸骨后压榨性疼痛 30 分钟，活动诱发 <span class="tag-src">预问诊</span><br>
+            · 高危因素：62 岁男性、高血压 8 年 <span class="tag-src">HIS</span><br>
+            · 用药：氨氯地平 5mg qd，无相互作用 <span class="tag-src">药管家</span><br>
+            · 过敏：青霉素 <span class="tag-src">HIS</span><br>
+            · 建议关注：需排除 ACS <span class="tag-src">规则</span>
+          </div>
+          <div class="divider"></div>
+          <div class="tiny muted">每一条都带来源角标，医生可以点开看原始记录。</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" id="p-book">
+      <div class="page-head">
+        <div><h1>挂号服务</h1><p>心血管内科 · 今日可挂号源 6 个</p></div>
+        <div class="right"><span class="badge teal">HIS 实时号源</span></div>
+      </div>
+      <div class="grid" style="grid-template-columns:1fr 340px;align-items:start">
+        <div class="card">
+          <div class="pad"><div class="h2">选择医生</div>
+            <div class="grid g3">
+              <div class="task"><div class="avatar-sq">张</div><div><h3>张明 · 主任医师</h3><p>心血管内科 · 上午</p></div></div>
+              <div class="task"><div class="avatar-sq">李</div><div><h3>李红 · 副主任医师</h3><p>心血管内科 · 下午</p></div></div>
+              <div class="task"><div class="avatar-sq">陈</div><div><h3>陈涛 · 主治医师</h3><p>心血管内科 · 下午</p></div></div>
+            </div>
+          </div>
+          <div class="pad" style="border-top:1px solid var(--line)">
+            <div class="h2">号源</div>
+            <div class="chips">
+              <span class="chip">08:30 已满</span><span class="chip sel">09:00 剩 2</span>
+              <span class="chip">09:30 剩 3</span><span class="chip">10:00 剩 1</span>
+            </div>
+            <div class="alert amber" style="margin-top:14px"><b>锁号规则</b><span>选定号源后 15 分钟内有效；同一号源并发只允许 1 人成功。</span></div>
+          </div>
+        </div>
+        <div class="card pad">
+          <div class="h2">订单</div>
+          <div class="kv">
+            <dt>就诊人</dt><dd>王建国（本人）</dd>
+            <dt>科室</dt><dd>心血管内科</dd>
+            <dt>医生</dt><dd>张明 · 主任医师</dd>
+            <dt>时间</dt><dd>今天 09:00</dd>
+            <dt>费用</dt><dd>¥50.00（挂号费）</dd>
+            <dt>状态</dt><dd><span class="badge amber">待缴费</span></dd>
+          </div>
+          <div class="divider"></div>
+          <button class="btn primary" style="width:100%">去缴费</button>
+          <div class="hint" style="margin-top:8px">支付成功后 HIS 生成就诊记录，患者端显示就诊指引。</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 医生端 ============ -->
+    <section class="screen" id="d-queue">
+      <div class="page-head">
+        <div><h1>今日患者</h1><p>心血管内科 · 张明 · 2026-11-10</p></div>
+        <div class="right"><span class="badge teal">待诊 9</span><span class="badge sky">在诊 2</span><span class="badge">诊毕 7</span></div>
+      </div>
+      <div class="grid g4" style="margin-bottom:14px">
+        <div class="card pad kpi"><div class="n">18</div><div class="l">今日总号源</div></div>
+        <div class="card pad kpi"><div class="n" style="color:#C77A15">3</div><div class="l">有预问诊记录</div></div>
+        <div class="card pad kpi"><div class="n" style="color:#BE3B4E">2</div><div class="l">高风险标记</div></div>
+        <div class="card pad kpi"><div class="n">7</div><div class="l">已诊毕</div></div>
+      </div>
+      <div class="card">
+        <table>
+          <thead><tr><th>号</th><th>患者</th><th>主诉</th><th>预问诊</th><th>风险</th><th>状态</th><th></th></tr></thead>
+          <tbody>
+            <tr><td>09:00</td><td><b>王建国</b> · 62 岁</td><td>胸骨后压榨性疼痛 30 分钟</td>
+              <td><span class="badge teal">已填 · 6 字段</span></td><td><span class="badge rose">ACS 待排</span></td>
+              <td><span class="pill">待诊</span></td><td><button class="btn sm primary">开始接诊</button></td></tr>
+            <tr><td>09:30</td><td>李秀兰 · 58 岁</td><td>反复心悸 2 周</td>
+              <td><span class="badge">未填</span></td><td><span class="badge amber">需关注</span></td>
+              <td><span class="pill">待诊</span></td><td><button class="btn sm">开始接诊</button></td></tr>
+            <tr><td>10:00</td><td>陈志强 · 45 岁</td><td>血压控制不佳</td>
+              <td><span class="badge teal">已填 · 5 字段</span></td><td><span class="badge">低</span></td>
+              <td><span class="pill">待诊</span></td><td><button class="btn sm">开始接诊</button></td></tr>
+            <tr><td>10:30</td><td>赵敏 · 34 岁</td><td>体检报告解读：血脂偏高</td>
+              <td><span class="badge">未填</span></td><td><span class="badge">低</span></td>
+              <td><span class="pill" style="background:var(--sky-soft);color:#1F5E8A">在诊</span></td><td><button class="btn sm">继续</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="hint" style="margin-top:10px">列表条数与 HIS「当日就诊」一致；刷新间隔 30 秒，可手动同步。</div>
+    </section>
+
+    <section class="screen" id="d-360">
+      <div class="page-head">
+        <div><h1>王建国 · 62 岁 · 男</h1><p>今日 09:00 · 心血管内科 · 初诊</p></div>
+        <div class="right"><button class="btn sm">打印摘要</button><button class="btn sm primary">开始接诊</button></div>
+      </div>
+      <div class="grid" style="grid-template-columns:300px 1fr 320px;align-items:start">
+
+        <div class="card pad">
+          <div class="h2">患者信息<span class="tag-src">HIS</span></div>
+          <div class="kv">
+            <dt>过敏</dt><dd><span class="badge rose">青霉素</span></dd>
+            <dt>既往</dt><dd>高血压 8 年、脂肪肝</dd>
+            <dt>在用</dt><dd>氨氯地平 5mg qd</dd>
+            <dt>上次</dt><dd>11-07 心内科复诊</dd>
+            <dt>检验</dt><dd>LDL-C 3.8 ↑</dd>
+          </div>
+          <div class="divider"></div>
+          <div class="h2">时间线</div>
+          <div class="timeline">
+            <div class="tl on"><b>今日 · 就诊</b><div class="muted tiny">09:00 · 预问诊已提交</div></div>
+            <div class="tl"><b>11-07 · 复诊</b><div class="muted tiny">处方：氨氯地平</div></div>
+            <div class="tl"><b>11-05 · 检验</b><div class="muted tiny">血脂四项 · LDL-C 偏高</div></div>
+          </div>
+        </div>
+
+        <div class="card pad">
+          <div class="between" style="margin-bottom:10px">
+            <div class="h2" style="margin:0">诊前摘要 <span class="tag-src">AI · 未确认</span></div>
+            <span class="badge">生成 7 秒 · 可追溯</span>
+          </div>
+          <div class="alert rose"><b>优先关注</b><span>62 岁男性，活动后胸骨后压榨性疼痛 30 分钟，高血压 8 年 —— 建议优先排除急性冠脉综合征。</span></div>
+
+          <div class="sec-title" style="margin-top:16px">需要特别问 <span class="line"></span></div>
+          <ol style="margin:0;padding-left:20px;font-size:13px;line-height:2;color:#33473F">
+            <li>疼痛是否向左臂 / 下颌放射？有无冷汗？<span class="tag-src">预问诊缺失</span></li>
+            <li>含服硝酸甘油是否缓解？<span class="tag-src">病史</span></li>
+            <li>近 3 个月是否有活动后气短加重？<span class="tag-src">HIS</span></li>
+          </ol>
+
+          <div class="sec-title" style="margin-top:16px">结构与证据 <span class="line"></span></div>
+          <div class="grid g2">
+            <div class="draft"><b>主诉</b><br>胸骨后压榨性疼痛 30 分钟，活动诱发 <span class="tag-src">预问诊</span></div>
+            <div class="draft"><b>相关因素</b><br>高血压 8 年；LDL-C 3.8 <span class="tag-src">HIS</span></div>
+          </div>
+          <div class="alert teal" style="margin-top:12px"><b>免责</b><span>摘要是草稿，未签名前不进入病历；所有结论均可点开原始记录。</span></div>
+        </div>
+
+        <div class="card pad">
+          <div class="h2">风险与证据</div>
+          <div class="evidence" style="margin-bottom:8px">
+            <div class="between"><h4>药物相互作用</h4><span class="badge amber">1 条</span></div>
+            <p style="color:#5F716B">氨氯地平 + 辛伐他汀：建议限制辛伐他汀剂量 ≤20mg。</p>
+          </div>
+          <div class="evidence" style="margin-bottom:8px">
+            <div class="between"><h4>指南</h4><span class="badge teal">2 条</span></div>
+            <p style="color:#5F716B">稳定性冠心病指南（2023）· 胸痛中心分诊共识</p>
+          </div>
+          <div class="evidence">
+            <div class="between"><h4>危急值</h4><span class="badge">0</span></div>
+            <p style="color:#5F716B">近 30 天无危急值记录。</p>
+          </div>
+          <div class="divider"></div>
+          <div class="tiny muted">缺失项会显示「未记录」，而不是留空——避免把"没查到"误当成"正常"。</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" id="d-note">
+      <div class="page-head">
+        <div><h1>接诊 · 王建国</h1><p>病历草稿 · 未签名 · 自动保存于 14:03</p></div>
+        <div class="right"><span class="badge amber">AI 草稿待确认</span><button class="btn sm">保存草稿</button><button class="btn sm primary">签名并提交</button></div>
+      </div>
+      <div class="grid" style="grid-template-columns:1fr 340px;align-items:start">
+        <div class="card pad">
+          <div class="field"><label>主诉</label><div class="input">胸骨后压榨性疼痛 30 分钟</div></div>
+          <div class="field"><label>现病史</label>
+            <div class="input area">患者 30 分钟前爬楼后出现胸骨后压榨性疼痛，休息后未完全缓解，无放射痛，无冷汗、气短。既往高血压 8 年，规律服用氨氯地平。<span class="cursor"></span></div></div>
+          <div class="field"><label>查体</label><div class="input">BP 152/94 mmHg，HR 88 次/分，心肺听诊未见明显异常</div></div>
+          <div class="field"><label>初步诊断</label>
+            <div class="row"><div class="input grow">冠状动脉粥样硬化性心脏病（待查）</div><button class="btn sm">ICD 搜索</button></div></div>
+          <div class="divider"></div>
+          <div class="between"><span class="hint">AI 建议：补充「疼痛是否向肩背放射」与「含服硝酸甘油反应」</span>
+            <button class="btn sm">插入到现病史</button></div>
+        </div>
+        <div class="card pad">
+          <div class="h2">AI 草稿 diff</div>
+          <div class="draft" style="margin-bottom:10px"><b>草稿</b><br>患者 30 分钟前爬楼后出现胸骨后压榨性疼痛，休息后未完全缓解……</div>
+          <div class="draft"><b>医生已修改</b><br>补充了「无放射痛、无冷汗」，删除了 AI 推测的「需排除心梗」表述。</div>
+          <div class="divider"></div>
+          <div class="tiny muted">草稿只存在于本地；签名后才会写入 HIS 病历。</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" id="d-rx">
+      <div class="page-head">
+        <div><h1>医嘱 / 处方</h1><p>王建国 · 心血管内科 · 3 条医嘱</p></div>
+        <div class="right"><span class="badge teal">相互作用检查通过</span><button class="btn sm primary">签名并写入 HIS</button></div>
+      </div>
+      <div class="grid" style="grid-template-columns:1fr 340px;align-items:start">
+        <div class="card">
+          <table>
+            <thead><tr><th>类型</th><th>内容</th><th>用法</th><th>校验</th></tr></thead>
+            <tbody>
+              <tr><td>药品</td><td>氨氯地平片 5mg × 28 片</td><td>口服 qd</td><td><span class="badge teal">无冲突</span></td></tr>
+              <tr><td>检查</td><td>心电图（十二导联）</td><td>今日</td><td><span class="badge">待签名</span></td></tr>
+              <tr><td>检查</td><td>心肌损伤标志物</td><td>今日</td><td><span class="badge amber">需 2 小时内</span></td></tr>
+            </tbody>
+          </table>
+          <div class="pad" style="border-top:1px solid var(--line)">
+            <div class="alert amber"><b>签名提示</b><span>签名即写入 HIS，患者端立即可见；如需修改需走 HIS 作废流程。</span></div>
+          </div>
+        </div>
+        <div class="card pad">
+          <div class="h2">规则校验</div>
+          <div class="list-card" style="border-top:0;padding:8px 0"><span class="badge teal">✓</span><div class="grow">与在用药物无相互作用</div></div>
+          <div class="list-card" style="padding:8px 0"><span class="badge teal">✓</span><div class="grow">无妊娠相关禁忌</div></div>
+          <div class="list-card" style="padding:8px 0"><span class="badge amber">!</span><div class="grow">患者青霉素过敏，已排除相关用药</div></div>
+          <div class="divider"></div>
+          <div class="h2">证据</div>
+          <div class="evidence"><div class="between"><h4>稳定性冠心病指南</h4><span class="score">0.86</span></div>
+            <p>建议对可疑 ACS 患者在 10 分钟内完成心电图检查。</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" id="d-follow">
+      <div class="page-head">
+        <div><h1>诊毕 / 随访</h1><p>本次接诊 12 分钟 · 3 条医嘱已签名</p></div>
+        <div class="right"><button class="btn sm primary">诊毕</button></div>
+      </div>
+      <div class="grid g2">
+        <div class="card pad">
+          <div class="h2">随访计划</div>
+          <div class="field"><label>复诊</label><div class="input">2 周后 · 心血管内科</div></div>
+          <div class="field"><label>需要患者做的事</label><div class="input area">每日早晚测血压并记录；如出现胸痛加重、冷汗，立即就诊。</div></div>
+          <div class="alert teal"><b>患者端</b><span>提交后自动生成随访待办与用药提醒，患者可直接在首页看到。</span></div>
+        </div>
+        <div class="card pad">
+          <div class="h2">本次接诊回顾</div>
+          <div class="timeline">
+            <div class="tl on"><b>14:02 接诊</b><div class="muted tiny">HIS 状态 → 在诊</div></div>
+            <div class="tl"><b>14:05 摘要查看 38s</b><div class="muted tiny">AI 摘要 · 点开 2 条来源</div></div>
+            <div class="tl"><b>14:08 病历草稿采纳</b><div class="muted tiny">修改 2 处 · 删除 1 处</div></div>
+            <div class="tl"><b>14:12 签名</b><div class="muted tiny">3 条医嘱 · 医生工号 ZM1024</div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 运营端 ============ -->
+    <section class="screen" id="o-review">
+      <div class="page-head">
+        <div><h1>审核队列</h1><p>支付审批与临床复核同表不同类 · 双人复核</p></div>
+        <div class="right"><span class="badge rose">待处理 3</span><span class="badge amber">超时 1</span></div>
+      </div>
+      <div class="row" style="margin-bottom:12px">
+        <span class="chip sel">支付审核（2）</span><span class="chip">临床复核（1）</span><span class="chip">已处理</span>
+      </div>
+      <div class="card">
+        <table>
+          <thead><tr><th>类型</th><th>对象</th><th>金额 / 内容</th><th>申请人</th><th>等待</th><th>操作</th></tr></thead>
+          <tbody>
+            <tr><td><span class="badge sky">支付</span></td><td>王建国 · 心血管内科 · 09:00</td><td>¥50.00</td><td>患者</td><td>4 分钟</td>
+              <td><button class="btn sm primary">批准</button> <button class="btn sm">拒绝</button></td></tr>
+            <tr><td><span class="badge sky">支付</span></td><td>李秀兰 · 心血管内科 · 09:30</td><td>¥50.00</td><td>患者</td><td>9 分钟</td>
+              <td><button class="btn sm primary">批准</button> <button class="btn sm">拒绝</button></td></tr>
+            <tr><td><span class="badge rose">临床复核</span></td><td>报告解读 · 赵敏 · 血脂四项</td><td>AI 输出含「建议他汀治疗」</td><td>系统</td><td>18 分钟</td>
+              <td><button class="btn sm primary">通过</button> <button class="btn sm">退回</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="alert amber" style="margin-top:12px"><b>双人复核</b><span>单笔 ≥ ¥500 或涉及临床结论的条目需第二人确认后生效。</span></div>
+    </section>
+
+    <section class="screen" id="o-recon">
+      <div class="page-head">
+        <div><h1>对账看板</h1><p>本地投影 vs OpenHIS · 每 30 秒增量同步</p></div>
+        <div class="right"><button class="btn sm">立即对账</button><span class="badge teal">最近同步 12 秒前</span></div>
+      </div>
+      <div class="grid g4" style="margin-bottom:14px">
+        <div class="card pad kpi"><div class="n">128</div><div class="l">本轮检查</div></div>
+        <div class="card pad kpi"><div class="n" style="color:#BE3B4E">2</div><div class="l">发现差异</div></div>
+        <div class="card pad kpi"><div class="n" style="color:#C77A15">1</div><div class="l">待处理</div></div>
+        <div class="card pad kpi"><div class="n">0</div><div class="l">漏同步</div></div>
+      </div>
+      <div class="card">
+        <table>
+          <thead><tr><th>类型</th><th>本地</th><th>HIS</th><th>严重度</th><th>发现时间</th><th></th></tr></thead>
+          <tbody>
+            <tr><td>支付状态不一致</td><td>registered / paid ¥50</td><td>registered / paid ¥50 <b>（时间差 3s）</b></td>
+              <td><span class="badge amber">中</span></td><td>14:02:11</td><td><button class="btn sm">详情</button></td></tr>
+            <tr><td>处方行缺失</td><td>1 条</td><td>2 条</td><td><span class="badge rose">高</span></td><td>13:58:40</td>
+              <td><button class="btn sm primary">重新同步</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="grid g3" style="margin-top:14px">
+        <div class="card pad"><div class="h2">状态</div><div class="tiny muted">124 / 128 一致</div></div>
+        <div class="card pad"><div class="h2">金额</div><div class="tiny muted">128 / 128 一致</div></div>
+        <div class="card pad"><div class="h2">处方</div><div class="tiny muted">126 / 128 一致</div></div>
+      </div>
+    </section>
+
+    <section class="screen" id="o-audit">
+      <div class="page-head">
+        <div><h1>审计复盘</h1><p>王建国 · 今日 09:00 接诊</p></div>
+        <div class="right"><button class="btn sm">导出</button></div>
+      </div>
+      <div class="grid" style="grid-template-columns:1fr 340px;align-items:start">
+        <div class="card pad">
+          <div class="timeline">
+            <div class="tl on"><b>14:12 · 医嘱签名</b><div class="muted tiny">医生 ZM1024 · 3 条医嘱 · 已写入 HIS</div></div>
+            <div class="tl"><b>14:08 · 病历草稿采纳</b><div class="muted tiny">AI 生成 → 医生修改 2 处 → 删除 1 处</div></div>
+            <div class="tl"><b>14:05 · 诊前摘要查看 38s</b><div class="muted tiny">点开 2 条来源 · 未采纳「需排除心梗」表述</div></div>
+            <div class="tl"><b>14:03 · 检索 5 篇</b><div class="muted tiny">指南 2 · 共识 1 · 院内知识库 2 · 低相关度已过滤 3</div></div>
+            <div class="tl"><b>14:02 · 接诊</b><div class="muted tiny">HIS encounter 状态 → 在诊</div></div>
+          </div>
+        </div>
+        <div class="card pad">
+          <div class="h2">审计详情</div>
+          <div class="kv">
+            <dt>谁</dt><dd>张明 · ZM1024</dd>
+            <dt>做了什么</dt><dd>签名 3 条医嘱</dd>
+            <dt>依据</dt><dd>2 条指南 + 1 条院内知识库</dd>
+            <dt>AI 参与度</dt><dd>草稿采纳 3/4</dd>
+            <dt>患者可见</dt><dd>是（签名后）</dd>
+          </div>
+          <div class="divider"></div>
+          <div class="alert teal"><b>要点</b><span>每一次 AI 建议都留下「谁看到、是否采纳、谁签字」——这是医疗 Agent 能过审计的最小条件。</span></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <aside class="agent">
+
+    <div class="agent-panel on" data-agent="patient">
+      <div class="agent-head"><span class="dot-live"></span><span class="agent-title">患者端 Agent</span><span class="agent-sub">待命 · 患者域</span></div>
+      <div class="agent-sec"><div class="h">可用能力</div>
+        <div class="toolchips"><span>policy.crisis</span><span>knowledge.search</span><span>schedule.list</span><span>payment.request</span></div></div>
+      <div class="agent-sec"><div class="h">最近调用</div>
+        <div class="callog"><div class="t"><span class="ok">✓</span> policy.crisis_scan <span style="margin-left:auto">12ms</span></div><div class="m">命中「胸痛 + 活动诱发」→ 升级为紧急</div></div>
+        <div class="callog"><div class="t"><span class="ok">✓</span> knowledge.search <span style="margin-left:auto">340ms</span></div><div class="m">召回 5 篇 · 过滤 2 篇低相关度 · 引用 3 条</div></div>
+        <div class="callog"><div class="t"><span class="ok">✓</span> schedule.list <span style="margin-left:auto">88ms</span></div><div class="m">心血管内科 · 今日 6 个号源</div></div>
+      </div>
+      <div class="agent-sec"><div class="h">边界</div>
+        <div class="tiny muted">只解释与代办，不给诊断结论、不能写临床数据。</div></div>
+      <div class="agent-compose"><div class="box"><span>问我：这个结果要紧吗？</span><span class="badge">发送</span></div></div>
+    </div>
+
+    <div class="agent-panel" data-agent="doctor">
+      <div class="agent-head"><span class="dot-live"></span><span class="agent-title">医生端 Agent</span><span class="agent-sub">随行 · 医生域</span></div>
+      <div class="agent-sec"><div class="h">可用能力</div>
+        <div class="toolchips"><span>clinician.today</span><span>patient.360</span><span>knowledge.search</span><span>ddi.check</span><span>advice.save</span></div></div>
+      <div class="agent-sec"><div class="h">最近调用</div>
+        <div class="callog"><div class="t"><span class="ok">✓</span> patient.360 <span style="margin-left:auto">96ms</span></div><div class="m">HIS 事实 18 项 · 预问诊 6 字段</div></div>
+        <div class="callog"><div class="t"><span class="ok">✓</span> ddi.check <span style="margin-left:auto">7ms</span></div><div class="m">氨氯地平 + 辛伐他汀 → 建议限量</div></div>
+        <div class="callog"><div class="t"><span class="ok">✓</span> knowledge.search <span style="margin-left:auto">410ms</span></div><div class="m">指南 2 篇 · 相关度 0.86 / 0.71</div></div>
+      </div>
+      <div class="agent-sec"><div class="h">当前约束</div>
+        <div class="tiny muted">所有临床写入为草稿，需医生签名；不能跨患者查询。</div></div>
+      <div class="agent-compose"><div class="box"><span>问我：这个病人要警惕什么？</span><span class="badge">发送</span></div></div>
+    </div>
+
+    <div class="agent-panel" data-agent="ops">
+      <div class="agent-head"><span class="dot-live"></span><span class="agent-title">运营 Agent</span><span class="agent-sub">监控 · 质控域</span></div>
+      <div class="agent-sec"><div class="h">可用能力</div>
+        <div class="toolchips"><span>ops.reconcile</span><span>ops.review</span><span>ops.audit</span></div></div>
+      <div class="agent-sec"><div class="h">最近调用</div>
+        <div class="callog"><div class="t"><span class="ok">✓</span> ops.reconcile <span style="margin-left:auto">1.9s</span></div><div class="m">检查 128 · 差异 2 · 漏同步 0</div></div>
+        <div class="callog"><div class="t"><span class="ok">✓</span> ops.audit <span style="margin-left:auto">120ms</span></div><div class="m">今日签名 7 次 · 异常 0</div></div>
+      </div>
+      <div class="agent-sec"><div class="h">边界</div>
+        <div class="tiny muted">只读与处理；任何改变临床数据的操作都要回到医生端。</div></div>
+      <div class="agent-compose"><div class="box"><span>问我：今天有哪些差异没处理？</span><span class="badge">发送</span></div></div>
+    </div>
+
+  </aside>
+</div>
+
+<script>
+var currentEnd = 'patient';
+var scopeMap = { patient: 'scope: patient_write', doctor: 'scope: clinician_write', ops: 'scope: ops_write' };
+
+function showScreen(name) {
+  var screens = document.querySelectorAll('.screen');
+  for (var i = 0; i < screens.length; i++) { screens[i].classList.toggle('on', screens[i].id === name); }
+  var navs = document.querySelectorAll('.nav');
+  for (var j = 0; j < navs.length; j++) { navs[j].classList.toggle('active', navs[j].getAttribute('data-screen') === name); }
+  var panels = document.querySelectorAll('.agent-panel');
+  for (var k = 0; k < panels.length; k++) { panels[k].classList.toggle('on', panels[k].getAttribute('data-agent') === currentEnd); }
+}
+
+function switchEnd(end) {
+  currentEnd = end;
+  var ends = document.querySelectorAll('#ends button');
+  for (var i = 0; i < ends.length; i++) { ends[i].classList.toggle('active', ends[i].getAttribute('data-end') === end); }
+  var groups = document.querySelectorAll('.sider-group');
+  for (var j = 0; j < groups.length; j++) { groups[j].classList.toggle('on', groups[j].getAttribute('data-sider') === end); }
+  document.getElementById('scopeLabel').textContent = scopeMap[end];
+  document.getElementById('whoAvatar').textContent = end === 'patient' ? '王' : (end === 'doctor' ? '张' : '质');
+  var first = document.querySelector('.sider-group[data-sider="' + end + '"] .nav');
+  if (first) { showScreen(first.getAttribute('data-screen')); }
+}
+
+document.getElementById('ends').addEventListener('click', function (e) {
+  var btn = e.target.closest('button[data-end]');
+  if (btn) { switchEnd(btn.getAttribute('data-end')); }
+});
+
+document.querySelector('.sider').addEventListener('click', function (e) {
+  var btn = e.target.closest('.nav');
+  if (btn) { showScreen(btn.getAttribute('data-screen')); }
+});
+</script>
+</body>
+</html>
