@@ -167,6 +167,33 @@ tr:hover td{background:#FAFCFB}
 .grow{flex:1}
 .footer-note{margin-top:26px;font-size:11.5px;color:#9AA8A3;text-align:center}
 .alert b{white-space:nowrap;margin-right:6px}
+.entry-chip{font-size:12px;color:#0B6C62;background:var(--primary-soft);border:1px solid #CFEAE4;
+  padding:5px 10px;border-radius:8px;font-family:ui-monospace,Menlo,monospace}
+.overlay{position:fixed;inset:0;background:rgba(245,248,246,.92);backdrop-filter:blur(6px);
+  z-index:80;display:none;align-items:center;justify-content:center;padding:32px}
+.overlay.on{display:flex}
+.entry-wrap{width:min(1060px,100%)}
+.entry-head{text-align:center;margin-bottom:26px}
+.entry-head h1{font-size:26px;margin:0 0 8px;letter-spacing:.02em}
+.entry-head p{margin:0;color:var(--muted);font-size:13px}
+.entry-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.entry-card{border:1px solid var(--line);background:#fff;border-radius:18px;padding:22px;text-align:left;
+  box-shadow:var(--shadow);transition:transform .15s ease,box-shadow .15s ease}
+.entry-card:hover{transform:translateY(-2px);box-shadow:0 12px 30px rgba(16,40,34,.10)}
+.entry-card .ic{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;font-weight:800;
+  font-size:15px;margin-bottom:14px}
+.entry-card h3{margin:0 0 4px;font-size:16px}
+.entry-card .dom{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:#7C8C86;margin-bottom:10px}
+.entry-card p{margin:0 0 14px;font-size:12.5px;color:var(--muted);line-height:1.6}
+.entry-card .go{font-size:12.5px;font-weight:700;color:#0B6C62}
+.entry-foot{margin-top:22px;text-align:center;font-size:12px;color:#8A9A94}
+.login-card{width:min(420px,100%);background:#fff;border:1px solid var(--line);border-radius:18px;
+  padding:28px;box-shadow:var(--shadow)}
+.login-card .dom{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:#7C8C86}
+.login-card h2{margin:10px 0 6px;font-size:20px}
+.login-card p.sub{margin:0 0 20px;color:var(--muted);font-size:12.5px}
+.login-note{margin-top:14px;font-size:11.5px;color:#8A9A94;line-height:1.6}
+.login-back{margin-top:14px;font-size:12px;color:#0B6C62;background:none;border:0;padding:0;font-weight:700}
 #d-360 .grid{grid-template-columns:280px 1fr !important}
 #d-360 .grid > .card:nth-child(3){grid-column:1 / -1}
 #d-360 .card.pad{padding:16px}
@@ -179,14 +206,11 @@ tr:hover td{background:#FAFCFB}
     <div class="logo">医</div>
     <div>Smart Hospital Agent<small>双端 + 真 HIS · 界面原型 v0.1</small></div>
   </div>
-  <nav class="ends" id="ends">
-    <button data-end="patient" class="active">患者端</button>
-    <button data-end="doctor">医生端</button>
-    <button data-end="ops">运营 / 质控</button>
-  </nav>
+  <div class="entry-chip" id="entryChip">patient.hospital.kk.zhzepei.cn</div>
   <div class="who">
     <span class="scope" id="scopeLabel">scope: patient_write</span>
     <span class="avatar" id="whoAvatar">王</span>
+    <button class="btn ghost sm" id="logoutBtn">退出</button>
   </div>
 </header>
 
@@ -771,9 +795,71 @@ tr:hover td{background:#FAFCFB}
   </aside>
 </div>
 
+<div class="overlay on" id="entry">
+  <div class="entry-wrap">
+    <div class="entry-head">
+      <h1>三个入口，同一个医疗 Agent 内核</h1>
+      <p>独立域名 · 独立登录 · 独立会话与静态资源；共享事实层（HIS）、工具面（MCP）与检索服务</p>
+    </div>
+    <div class="entry-cards">
+      <button class="entry-card" data-entry="patient">
+        <div class="ic" style="background:var(--primary-soft);color:#0B6C62">患</div>
+        <h3>患者端</h3>
+        <div class="dom">patient.hospital.kk.zhzepei.cn</div>
+        <p>移动优先 · 解释与事务代办 · 手机号 + 验证码登录 · 只访问本人与家庭成员数据</p>
+        <div class="go">进入患者端 →</div>
+      </button>
+      <button class="entry-card" data-entry="doctor">
+        <div class="ic" style="background:var(--sky-soft);color:#1F5E8A">医</div>
+        <h3>医生端</h3>
+        <div class="dom">doctor.hospital.kk.zhzepei.cn</div>
+        <p>桌面三栏工作台 · 摘要 / 草稿 / 签名 · 医院 HIS 工号 SSO 登录 · 仅当班患者</p>
+        <div class="go">进入医生端 →</div>
+      </button>
+      <button class="entry-card" data-entry="ops">
+        <div class="ic" style="background:var(--violet-soft);color:#443AA0">运</div>
+        <h3>运营 / 质控端</h3>
+        <div class="dom">ops.hospital.kk.zhzepei.cn</div>
+        <p>对账 · 审核 · 审计 · 账号 + 动态口令 · 仅内网 / VPN 可达</p>
+        <div class="go">进入运营端 →</div>
+      </button>
+    </div>
+    <div class="entry-foot">三入口可以独立发布、独立下线；数据与 Agent 内核不分裂</div>
+  </div>
+</div>
+
+<div class="overlay" id="login">
+  <div class="login-card">
+    <div class="dom" id="loginDom">doctor.hospital.kk.zhzepei.cn</div>
+    <h2 id="loginTitle">医生端登录</h2>
+    <p class="sub" id="loginSub">使用医院 HIS 工号登录（SSO）</p>
+    <div class="field"><label id="loginAccountLabel">工号</label>
+      <div class="input" id="loginAccount">ZM1024</div></div>
+    <div class="field" id="loginPwdField"><label>凭证</label>
+      <div class="input" id="loginPwd">••••••••</div></div>
+    <div class="field" id="loginTotpField" style="display:none"><label>动态口令</label>
+      <div class="input">••••••</div></div>
+    <button class="btn primary" id="loginGo" style="width:100%">登录</button>
+    <div class="login-note" id="loginNote"></div>
+    <button class="login-back" id="loginBack">← 返回入口选择</button>
+  </div>
+</div>
+
 <script>
 var currentEnd = 'patient';
+var pendingEnd = 'patient';
 var scopeMap = { patient: 'scope: patient_write', doctor: 'scope: clinician_write', ops: 'scope: ops_write' };
+var entryMeta = {
+  patient: { domain: 'patient.hospital.kk.zhzepei.cn', title: '患者端登录', sub: '手机号 + 短信验证码',
+    aLabel: '手机号', aValue: '138 0000 8001', pLabel: '验证码', pValue: '• • • • • •',
+    note: '患者账号由平台签发，只可访问本人与家庭成员数据；敏感操作（改密、删除账号）需二次验证。' },
+  doctor: { domain: 'doctor.hospital.kk.zhzepei.cn', title: '医生端登录', sub: '使用医院 HIS 工号登录（SSO）',
+    aLabel: 'HIS 工号', aValue: 'ZM1024 · 心血管内科', pLabel: 'HIS 密码', pValue: '••••••••',
+    note: '医生身份以 HIS 为准；登录后获得 HIS 会话，签名在 HIS 侧可验证；退出 HIS 即失效。' },
+  ops: { domain: 'ops.hospital.kk.zhzepei.cn', title: '运营 / 质控端登录', sub: '账号 + 密码 + 动态口令（仅内网 / VPN）',
+    aLabel: '账号', aValue: 'ops_zhang', pLabel: '密码', pValue: '••••••••',
+    note: '所有操作留痕；审批、导出、改密等危险操作需二次验证。' }
+};
 
 function showScreen(name) {
   var screens = document.querySelectorAll('.screen');
@@ -786,20 +872,47 @@ function showScreen(name) {
 
 function switchEnd(end) {
   currentEnd = end;
-  var ends = document.querySelectorAll('#ends button');
-  for (var i = 0; i < ends.length; i++) { ends[i].classList.toggle('active', ends[i].getAttribute('data-end') === end); }
   var groups = document.querySelectorAll('.sider-group');
   for (var j = 0; j < groups.length; j++) { groups[j].classList.toggle('on', groups[j].getAttribute('data-sider') === end); }
   document.getElementById('scopeLabel').textContent = scopeMap[end];
   document.getElementById('whoAvatar').textContent = end === 'patient' ? '王' : (end === 'doctor' ? '张' : '质');
+  document.getElementById('entryChip').textContent = entryMeta[end].domain;
   var first = document.querySelector('.sider-group[data-sider="' + end + '"] .nav');
   if (first) { showScreen(first.getAttribute('data-screen')); }
 }
 
-document.getElementById('ends').addEventListener('click', function (e) {
-  var btn = e.target.closest('button[data-end]');
-  if (btn) { switchEnd(btn.getAttribute('data-end')); }
+function openEntry() {
+  document.getElementById('login').classList.remove('on');
+  document.getElementById('entry').classList.add('on');
+}
+
+function openLogin(end) {
+  pendingEnd = end;
+  var m = entryMeta[end];
+  document.getElementById('loginDom').textContent = m.domain;
+  document.getElementById('loginTitle').textContent = m.title;
+  document.getElementById('loginSub').textContent = m.sub;
+  document.getElementById('loginAccountLabel').textContent = m.aLabel;
+  document.getElementById('loginAccount').textContent = m.aValue;
+  document.getElementById('loginPwd').textContent = m.pValue;
+  document.getElementById('loginNote').textContent = m.note;
+  document.getElementById('loginTotpField').style.display = end === 'ops' ? 'block' : 'none';
+  document.getElementById('entry').classList.remove('on');
+  document.getElementById('login').classList.add('on');
+}
+
+function doLogin() {
+  document.getElementById('login').classList.remove('on');
+  switchEnd(pendingEnd);
+}
+
+document.getElementById('entry').addEventListener('click', function (e) {
+  var btn = e.target.closest('[data-entry]');
+  if (btn) { openLogin(btn.getAttribute('data-entry')); }
 });
+document.getElementById('loginGo').addEventListener('click', doLogin);
+document.getElementById('loginBack').addEventListener('click', openEntry);
+document.getElementById('logoutBtn').addEventListener('click', openEntry);
 
 document.querySelector('.sider').addEventListener('click', function (e) {
   var btn = e.target.closest('.nav');
