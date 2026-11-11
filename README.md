@@ -10,7 +10,7 @@
 
 > **脱敏说明**：本仓库不包含真实部署域名、服务器地址、账号口令、内网路径与第三方凭据。文中以 `<DOMAIN>`、`<API_HOST>`、`<HIS_HOST>` 等占位；实际部署信息见内部运维文档。
 >
-> **当前状态（2026-11-10）**：v3.3 滚动上线中。患者端主链路、医生端工作台、运营台、通知中心、随访已上线；**195 个后端测试 + 7 条 Playwright E2E 全绿**，ruff 干净，前端类型检查与构建通过。
+> **当前状态（2026-11-10）**：v3.3 滚动上线中。患者端主链路、医生端工作台、运营台、通知中心、随访已上线；**221 个后端测试（5 skipped）+ 8 条 Playwright E2E 全绿**，ruff 干净，前端类型检查与构建通过。
 
 ---
 
@@ -78,6 +78,7 @@
 - 挂号：HIS 实时号源（当日挂号）、锁号与订单、待缴费→已登记→就诊指引；
 - 消息中心：站内通知（随访、报告），支持单条/全部已读；
 - 随访：新增/完成随访、按状态筛选；
+- 就诊准备：结构化预问诊（主诉/病程/用药/过敏/既往/想问的问题），提交后直接进入医生端「患者 360」；
 - 家庭档案、健康时间线、数据导出与删除。
 
 **医生侧（只读 + 草稿）**
@@ -259,6 +260,8 @@ cd frontend && npm run typecheck && npm run test:unit && NEXT_PUBLIC_API_BASE=""
 | 挂号 | `GET /api/v1/booking/catalog`、`POST /api/v1/booking/appointments` | HIS 号源与订单 |
 | 家庭 | `GET/POST/PATCH/DELETE /api/v1/family` | 成员级隔离 |
 | 随访 | `GET/POST /api/v1/followups`、`PATCH .../complete` | 随访计划 |
+| 就诊准备 | `POST/GET /api/v1/previsit` | 结构化预问诊，医生端可见 |
+| 医生目录 | `GET /api/v1/doctors` | 平台维护的医生目录（12 位，HIS 只读时的回退） |
 | 通知 | `GET /api/v1/notifications`、`POST .../read`、`.../read-all` | 站内通知 |
 | 医生端 | `GET /api/v1/clinician/queue`、`/patients/{id}`、`/drafts` | 只读 + 草稿 |
 | 运营 | `GET /api/v1/ops/summary`、`/ops/reconciliation`、`/ops/handoff` | 对账差异与人工接管 |
@@ -287,6 +290,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 | HIS 投影 | `his_patient_map`、`his_encounter_map`、`his_prescription_map`、`his_sync_cursor` |
 | 同步与对账 | `sync_outbox`、`reconciliation_finding`、`human_task` |
 | 医生端 | `clinician_drafts` |
+| 就诊准备 / 医生目录 | `previsit_forms`、`doctor_directory` |
 | 通知 | `notifications` |
 | 其他 | `documents`、`model_calls`、`rules`、`schema_migrations` 等 |
 
@@ -309,7 +313,8 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 4. 成员年龄随生日联动；
 5. 随访创建 → 消息中心收到通知（后端通知表联动）；
 6. 医生台 / 运营台权限：管理员可进、患者被拒（403/无权限页）；
-7. 平台台 `/platform`：管理员可进（总览/开关/能力矩阵切换），患者被拒。
+7. 平台台 `/platform`：管理员可进（总览/开关/能力矩阵/合规/告警/评测切换），患者被拒；
+8. 就诊准备：患者提交结构化预问诊 → 成功提示与历史记录可见。
 
 > E2E 在独立端口（如 8030/3030）运行，避免与本地生产 API 冲突；命令示例：
 > `E2E_BACKEND_PORT=8030 E2E_FRONTEND_PORT=3030 npm run test:e2e`
