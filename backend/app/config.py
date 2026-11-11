@@ -49,6 +49,14 @@ class Settings(BaseSettings):
     PATIENT_PASSWORD: str = "patient123456"
     CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
     RATE_LIMIT_PER_MINUTE: int = 60
+    # 分档限流：0 表示回退到 RATE_LIMIT_PER_MINUTE（测试里用 0 保持宽松）
+    RATE_LIMIT_CHAT_PER_MINUTE: int = 30
+    RATE_LIMIT_ADMIN_PER_MINUTE: int = 180
+    # 管理端 IP 白名单（逗号分隔 IP 或 CIDR）；留空 = 不限制。
+    # 启用后非白名单来源访问 /api/v1/admin 一律 403。
+    ADMIN_IP_ALLOWLIST: str = ""
+    # 是否信任 X-Forwarded-For / X-Real-IP（前面有 nginx / 隧道时开启）
+    TRUST_PROXY_HEADERS: bool = True
     CHAT_DAILY_LIMIT: int = 60
     PSEUDONYM_KEY: str = ""
     ID_CARD_KEY: str = ""

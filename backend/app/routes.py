@@ -316,6 +316,28 @@ def _parse_json_text(content: str) -> dict[str, Any] | None:
         return None
 
 # --------------------------------------------------------------------- auth
+async def _audit_login(db: Any, request: Request, username: str, outcome: str, role: str | None) -> None:
+    """登录留痕：只记结果、角色与来源 IP，绝不记密码。"""
+    try:
+        from .security_hardening import client_ip as _client_ip
+
+        settings = _state(request).settings
+        ip = _client_ip(request, bool(getattr(settings, "TRUST_PROXY_HEADERS", True)))
+        await db.execute(
+            """
+            INSERT INTO audit_log (request_id, session_id, actor, action, detail)
+            VALUES ($1, $2, $3, $4, $5::jsonb)
+            """,
+            getattr(request.state, "request_id", None),
+            None,
+            username,
+            "auth.login",
+            json.dumps({"outcome": outcome, "role": role, "ip": ip}, ensure_ascii=False),
+        )
+    except Exception:
+        return
+
+
 @router.post("/api/v1/auth/login")
 async def login(payload: LoginRequest, request: Request) -> dict[str, Any]:
     state = _state(request)
@@ -337,12 +359,15 @@ async def login(payload: LoginRequest, request: Request) -> dict[str, Any]:
     encoded = row["password_hash"] if row else DUMMY_PASSWORD_HASH
     valid = await asyncio.to_thread(verify_password, payload.password, encoded)
     if not row or not valid:
+        await _audit_login(state.db, request, payload.username, "failed", None)
         if record_failure(key):
             raise HTTPException(status_code=423, detail="account locked, try again later")
         raise HTTPException(status_code=401, detail="invalid credentials")
     if not row["enabled"]:
+        await _audit_login(state.db, request, payload.username, "disabled", row["role"])
         raise HTTPException(status_code=403, detail="user disabled")
     clear_failures(key)
+    await _audit_login(state.db, request, payload.username, "success", row["role"])
     return {
         "access_token": create_token(
             state.settings, row["id"], row["role"], row["token_version"]

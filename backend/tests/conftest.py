@@ -34,6 +34,8 @@ TEST_DATABASE_URL = _test_database_url()
 os.environ["AUTH_ENABLED"] = "false"
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 os.environ["RATE_LIMIT_PER_MINUTE"] = "100000"
+os.environ.setdefault("RATE_LIMIT_CHAT_PER_MINUTE", "100000")
+os.environ.setdefault("RATE_LIMIT_ADMIN_PER_MINUTE", "100000")
 os.environ.setdefault("OLLAMA_ENABLED", "false")
 os.environ.setdefault("HOSPITAL_MCP_URL", "http://127.0.0.1:5999/mcp")
 os.environ.setdefault("OPENCODE_API_KEY", "test-key")

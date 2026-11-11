@@ -27,6 +27,14 @@ from .schema_admin import ensure_admin_schema
 from .schema_admin_ext import ensure_admin_ext_schema
 from .schema_clinician_ext import ensure_clinician_ext_schema
 from .security import bootstrap_users
+from .security_hardening import (
+    client_ip,
+    deny_all_networks,
+    ip_allowed,
+    parse_networks,
+    rate_tier,
+    tier_limit,
+)
 from .session_store import SessionStore
 from .tools import ToolRegistry
 
@@ -113,22 +121,60 @@ async def observability(request: Request, call_next):
     return response
 
 
+_allowlist_cache: dict[str, list] = {}
+
+
+@app.middleware("http")
+async def admin_ip_guard(request: Request, call_next):
+    """管理接口入口白名单：ADMIN_IP_ALLOWLIST 留空时不生效（保持现状）。"""
+    settings = request.app.state.settings
+    raw = (getattr(settings, "ADMIN_IP_ALLOWLIST", "") or "").strip()
+    if raw and request.url.path.startswith("/api/v1/admin"):
+        networks = _allowlist_cache.get(raw)
+        if networks is None:
+            try:
+                networks = parse_networks(raw)
+            except ValueError:
+                networks = deny_all_networks()  # 配置写错就全拒，避免"配错反而放开"
+            _allowlist_cache[raw] = networks
+        ip = client_ip(request, bool(getattr(settings, "TRUST_PROXY_HEADERS", True)))
+        if not ip_allowed(ip, networks):
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "detail": "管理接口来源不在白名单内",
+                    "request_id": getattr(request.state, "request_id", ""),
+                },
+            )
+    return await call_next(request)
+
+
 @app.middleware("http")
 async def rate_limit(request: Request, call_next):
     settings = request.app.state.settings
     if request.url.path in {"/health", "/api/health", "/metrics", "/docs", "/openapi.json"}:
         return await call_next(request)
-    forwarded = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
-    client = request.headers.get("x-real-ip") or forwarded or (request.client.host if request.client else "unknown")
+    client = client_ip(request, bool(getattr(settings, "TRUST_PROXY_HEADERS", True)))
+    tier, bucket_name = rate_tier(request.url.path)
+    limit = tier_limit(settings, tier)
+    key = bucket_name + ":" + client
     now = time.time()
     async with _rate_lock:
-        bucket = _rate_buckets[client]
+        bucket = _rate_buckets[key]
         while bucket and now - bucket[0] > 60:
             bucket.popleft()
-        if len(bucket) >= settings.RATE_LIMIT_PER_MINUTE:
-            return JSONResponse(status_code=429, content={"detail": "rate limit exceeded"})
+        if len(bucket) >= limit:
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "rate limit exceeded", "tier": tier, "limit_per_minute": limit},
+            )
         bucket.append(now)
     return await call_next(request)
+
+
+def reset_rate_buckets() -> None:
+    """测试用：清空限流桶。"""
+    _rate_buckets.clear()
 
 
 @app.exception_handler(Exception)

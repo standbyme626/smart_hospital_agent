@@ -527,7 +527,10 @@ def test_export_includes_only_own_audit_analytics_and_model_calls(client):
     archive = zipfile.ZipFile(io.BytesIO(response.content))
     data = json.loads(archive.read("data.json"))
 
-    assert [item["actor"] for item in data["audit"]] == ["p0_export_a"]
+    # 登录本身也会留痕（auth.login），所以导出里至少包含本次操作那一条；
+    # 这里断言"全部属于本人"且"注入的那条在"，而不是固定条数。
+    assert {item["actor"] for item in data["audit"]} == {"p0_export_a"}
+    assert any(item["action"] == "chat.completed" for item in data["audit"])
     assert [item["name"] for item in data["analytics"]] == ["evt_p0_export_a"]
     assert [item["provider"] for item in data["model_calls"]] == ["prov_p0_export_a"]
 
