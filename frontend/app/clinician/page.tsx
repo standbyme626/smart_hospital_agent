@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Activity, ArrowLeft, CalendarCheck2, FileText, PenLine, Pill, ShieldAlert, Stethoscope } from "lucide-react";
+import { Activity, ArrowLeft, CalendarCheck2, ClipboardList, FileText, PenLine, Pill, ShieldAlert, Stethoscope } from "lucide-react";
 import { OfflineBanner, SourceBadge, StateBlock } from "@/components/ui";
 import {
   createClinicianDraft,
@@ -228,6 +228,22 @@ export default function ClinicianPage() {
                       <p className="mt-1 text-[13px] text-ink">{detail.member.conditions || "未记录"}</p>
                     </div>
                   </div>
+
+                  {detail.previsit ? (
+                    <div className="rounded-2xl border border-primary/20 bg-primary-soft/40 p-3">
+                      <p className="flex items-center gap-1.5 text-[12px] font-medium text-primary">
+                        <ClipboardList size={13} /> 就诊准备（患者提交）
+                      </p>
+                      <p className="mt-1 text-[13px] font-medium text-ink">{detail.previsit.chief_complaint}</p>
+                      <div className="mt-1 space-y-0.5 text-[11px] leading-5 text-muted">
+                        {detail.previsit.duration ? <p>持续时间：{detail.previsit.duration}</p> : null}
+                        {detail.previsit.medications ? <p>在用药物：{detail.previsit.medications}</p> : null}
+                        {detail.previsit.allergies ? <p>过敏史：{detail.previsit.allergies}</p> : null}
+                        {detail.previsit.history ? <p>既往史：{detail.previsit.history}</p> : null}
+                        {detail.previsit.questions ? <p>想问：{detail.previsit.questions}</p> : null}
+                      </div>
+                    </div>
+                  ) : null}
 
                   <div>
                     <h3 className="flex items-center gap-1.5 text-[13px] font-medium text-ink"><FileText size={14} /> 报告（{detail.reports.length}）</h3>

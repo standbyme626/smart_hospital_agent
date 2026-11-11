@@ -45,6 +45,17 @@ test("follow-up creates a message and both pages render", async ({ page }) => {
   await expect(page.getByText("随访已安排").first()).toBeVisible({ timeout: 20_000 });
 });
 
+test("previsit submits and appears in history", async ({ page }) => {
+  await login(page, PATIENT_USER, PATIENT_PASSWORD);
+  await open(page, "/previsit/");
+
+  const complaint = "E2E 主诉 胸痛 " + Date.now();
+  await page.getByPlaceholder("例如：胸痛 30 分钟，活动后加重").fill(complaint);
+  await page.getByRole("button", { name: "提交就诊准备" }).click();
+  await expect(page.getByText("已提交，医生接诊时会看到这份摘要")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(complaint).first()).toBeVisible();
+});
+
 test("clinician and ops pages load for admin and are denied for patient", async ({ page }) => {
   await login(page, ADMIN_USER, ADMIN_PASSWORD);
 

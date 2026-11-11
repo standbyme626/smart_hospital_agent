@@ -383,6 +383,16 @@ export type ClinicianPatient = {
   medications: Array<{ id: string; name: string; dose?: string | null; frequency?: string | null; active: boolean }>;
   followups: Array<{ id: string; title: string; due_date?: string | null; status: string }>;
   appointments: Array<{ id: string; department?: string | null; doctor_name?: string | null; appointment_date?: string | null; status: string; payment_status: string }>;
+  previsit?: {
+    id: string;
+    chief_complaint: string;
+    duration?: string | null;
+    medications?: string | null;
+    allergies?: string | null;
+    history?: string | null;
+    questions?: string | null;
+    created_at: string;
+  } | null;
 };
 
 export async function getClinicianQueue(date?: string): Promise<ClinicianQueueItem[]> {
@@ -555,6 +565,56 @@ export async function getHealthSummary(): Promise<HealthSummary> {
 
 export async function getEvaluation(): Promise<EvaluationData> {
   return apiFetch<EvaluationData>("/api/v1/admin/evaluation");
+}
+
+// ---------------------------------------------------------------- previsit
+export type PrevisitForm = {
+  id: string;
+  member_id?: string;
+  chief_complaint: string;
+  duration?: string | null;
+  medications?: string | null;
+  allergies?: string | null;
+  history?: string | null;
+  questions?: string | null;
+  created_at: string;
+};
+
+export async function createPrevisit(input: {
+  chief_complaint: string;
+  duration?: string;
+  medications?: string;
+  allergies?: string;
+  history?: string;
+  questions?: string;
+  member_id?: string;
+}): Promise<PrevisitForm> {
+  const data = await apiFetch<{ previsit: PrevisitForm }>("/api/v1/previsit", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return data.previsit;
+}
+
+export async function getPrevisits(): Promise<PrevisitForm[]> {
+  const data = await apiFetch<{ items: PrevisitForm[] }>("/api/v1/previsit");
+  return data.items;
+}
+
+export type DirectoryDoctor = {
+  id: string;
+  name: string;
+  department: string;
+  title?: string | null;
+  intro?: string | null;
+  fee?: number | string | null;
+  schedule?: string | null;
+};
+
+export async function getDirectoryDoctors(department?: string): Promise<DirectoryDoctor[]> {
+  const query = department ? `?department=${encodeURIComponent(department)}` : "";
+  const data = await apiFetch<{ doctors: DirectoryDoctor[] }>(`/api/v1/doctors${query}`);
+  return data.doctors;
 }
 
 export async function getTimeline(memberId?: string): Promise<TimelineEvent[]> {
