@@ -69,7 +69,9 @@
 - **MCP 作为唯一接入面**：所有对 HIS 的读写都经过适配器（工具化、幂等、可对账）；
 - **AI 只读临床、写临床必须医生签名**：草稿与签名分离；
 - **确定性策略优先**：危机识别、挂号规则、支付放行、权限校验都先用规则，LLM 只做兜底；
-- **可验收**：每条链路对应验收剧本，全绿才允许发布。
+- **可验收**：每条链路对应验收剧本，全绿才允许发布；
+- **多院区就绪**：核心 21 张表带 `tenant_id`，表级行级安全（RLS）强制隔离；管理员可用 `X-Tenant` 跨院区运维，
+  跨院区访问一律 404；隔离演练脚本 `scripts/tenant_isolation_drill.py`。
 
 ### 1.3 四个入口
 
@@ -480,6 +482,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
   python3 scripts/v34_status.py --strict      # 61 屏三证齐全
   python3 scripts/v34_changelog.py --strict   # 本次提交已登记且 hash 可追溯
   python3 scripts/audit_spotcheck.py --days 1 # 关键动作留痕 + 敏感字段扫描
+  python3 scripts/tenant_isolation_drill.py --strict   # 多租户隔离演练（5 项）
   curl -s <API_HOST>/api/health               # 进程活着
   ```
 - **部署域名、服务器地址、凭据不在本仓库**。
@@ -525,6 +528,8 @@ V3.4 全量上线进度与 61 屏台账见 [`docs/V3.4-EXECUTION-LEDGER.md`](doc
 - 医生端签名默认关闭，需 HIS 账号透传后才启用（E2E 环境因 HIS 为本地 mock 才打开）；
 - 真实医院对接需院方接口、鉴权与数据合规评估；
 - 外部通道按"适配器 + 开关"处理，页面标注「待院方开通」：医保实时结算、短信/微信、HIS 药师审方记录、HIS encounter 写入；
+- 多租户当前是**平台侧隔离**（`tenant_id` + RLS）：`users` 表故意不开 RLS（登录先于租户解析）、HIS 侧仍是单实例假设，
+  真多院区需按 HIS 的 tenant 路由并单独立项验收；
 - 医保、互联网诊疗等资质不在本项目范围内；
 - 演示站数据为模拟，不得用于真实就诊。
 
