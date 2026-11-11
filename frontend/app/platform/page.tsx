@@ -156,7 +156,7 @@ export default function PlatformPage() {
               </>
             ) : data && tab === "config" ? (
               <section className="card p-5">
-                <h2 className="section-title">开关与配置（只读）</h2>
+                <h2 className="section-title">进程开关（只读）</h2>
                 <ul className="mt-3 space-y-2 text-[13px]">
                   <li className="flex items-center justify-between rounded-2xl bg-canvas px-3 py-2">
                     <span>鉴权开关 <span className="text-[11px] text-muted">AUTH_ENABLED</span></span>
@@ -178,7 +178,9 @@ export default function PlatformPage() {
                   </li>
                 </ul>
                 <p className="mt-3 text-[11px] leading-5 text-muted">
-                  配置变更（Prompt、规则、索引发版）需要双人审批与快照回滚，属于后续切片；本页只读。
+                  这里展示的是**进程级开关**（改环境变量后重启生效），所以本页只读。
+                  业务侧配置（规则 / 通知模板 / Prompt / Agent 参数）已支持在线草稿 → 发布 → 回滚，
+                  请到 <Link href="/platform/config/" className="text-primary">配置管理</Link> 操作，全程留审计。
                 </p>
               </section>
             ) : tab === "compliance" && compliance ? (
@@ -237,7 +239,10 @@ export default function PlatformPage() {
                     </li>
                   ))}
                 </ul>
-                <p className="mt-3 text-[11px] leading-5 text-muted">阈值与告警通知渠道（钉钉/企业微信/电话）在后续切片接入；当前为规则实时检查。</p>
+                <p className="mt-3 text-[11px] leading-5 text-muted">
+                  当前为规则实时检查（库连接、Schema、知识库、配置、审计、模型调用、评测批次、鉴权）。
+                  通知渠道（钉钉 / 企业微信 / 电话）需要院方账号，接入后在「通知记录」里显示发送结果。
+                </p>
               </section>
             ) : tab === "evaluation" && evaluation ? (
               <section className="card overflow-hidden">
@@ -305,9 +310,17 @@ export default function PlatformPage() {
           </>
         )}
 
-        <div className="flex items-center gap-2 px-1 text-[11px] text-muted">
-          <Cpu size={13} /> 本页只读：配置变更、Prompt 发布、索引重建与灰度实验将在 S12 之后开放。
-          <Database size={13} className="ml-2" /> 数据来自 <code>/api/v1/admin/platform</code>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-[11px] text-muted">
+          <Cpu size={13} />
+          本页是运行状态视图：规则 / 模板 / Prompt 到
+          <Link href="/platform/config/" className="text-primary">配置管理</Link>
+          发布，索引重建在
+          <Link href="/platform/knowledge/" className="text-primary">知识库</Link>
+          ，灰度实验在
+          <Link href="/platform/integrations/" className="text-primary">接入与实验</Link>。
+          <span className="ml-2 inline-flex items-center gap-1" title="接口：/api/v1/admin/platform">
+            <Database size={13} /> 数据来源：平台运行接口
+          </span>
         </div>
       </main>
     </div>

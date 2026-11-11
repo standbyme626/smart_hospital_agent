@@ -32,7 +32,7 @@ const ENTRIES = [
     href: "/platform/",
     icon: SlidersHorizontal,
     title: "平台管理",
-    desc: "运行总览、开关、能力矩阵、合规、告警、评测（只读）",
+    desc: "运行总览、配置管理（规则/模板/Prompt）、知识库与检索、可观测、接入与实验、规范与数据流",
     note: "admin 角色",
     tone: "bg-violet-50 text-violet-700",
   },
@@ -81,7 +81,8 @@ export default function EntriesPage() {
         </div>
 
         <p className="mt-6 text-center text-[11px] leading-5 text-muted">
-          医生签名与真实 HIS 写入默认关闭；运营与平台台当前为只读/处理类操作，配置发布在后续切片开放。
+          医生签名与真实 HIS 写入默认关闭（需 HIS 账号透传）；规则 / 模板 / Prompt 已支持在线草稿→发布→回滚，
+          灰度实验可配比例但分流执行未接；医保、短信 / 微信等外部通道待院方开通。
         </p>
       </div>
     </main>

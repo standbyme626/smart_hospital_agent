@@ -162,7 +162,7 @@ export default function AdminPage() {
       return;
     }
     const confirmed = window.confirm(
-      `模拟支付仅用于演示（mock 模式），会直接标记该挂号已支付。\n挂号单：${appointmentId}\n\n确认继续？`,
+      `当前为本地 mock 收费模式（未接真实收费窗口），确认后会把该挂号标记为已支付。\n挂号单：${appointmentId}\n\n确认继续？`,
     );
     if (!confirmed) return;
     setTaskBusy(task.id || appointmentId);

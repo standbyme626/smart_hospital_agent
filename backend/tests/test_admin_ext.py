@@ -97,7 +97,7 @@ def cleanup_admin_ext_rows():
     否则会污染检索类用例（tests/test_v31_retrieval.py 依赖 documents 的科室集合）。"""
     yield
     statements = (
-        "DELETE FROM documents WHERE doc_key LIKE 'doc_ext_%' OR source='admin-faq'",
+        "DELETE FROM documents WHERE doc_key LIKE 'doc_ext_%' OR doc_key LIKE 'doc_reindex_%' OR source='admin-faq'",
         "DELETE FROM unmatched_resolutions WHERE answer LIKE '%儿童多动症%'",
         "DELETE FROM unmatched_questions WHERE question LIKE '%儿童多动症%'",
         "DELETE FROM model_calls WHERE provider='test'",
@@ -176,6 +176,32 @@ def test_rag_documents_list_and_filter(client: TestClient, admin: dict[str, str]
     filtered = client.get("/api/v1/admin/rag/documents?department=心内科", headers=admin)
     assert filtered.status_code == 200
     assert all(item["department"] == "心内科" for item in filtered.json()["items"])
+
+
+# ------------------------------------------------------------------ 索引重建
+def test_rag_reindex_rebuilds_tsv(client: TestClient, admin: dict[str, str]) -> None:
+    _sql(
+        "INSERT INTO documents (doc_key, title, content, department, source) "
+        "VALUES ($1, $2, $3, $4, $5) ON CONFLICT (doc_key) DO NOTHING",
+        "doc_reindex_" + _uid(),
+        "索引重建测试文档",
+        "全文索引必须包含标题与正文",
+        "全科门诊",
+        "test",
+    )
+    response = client.post("/api/v1/admin/rag/reindex", headers=admin)
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["index"] == "tsv"
+    assert payload["documents"] >= 1
+    assert payload["ms"] >= 0
+    assert "embedding" in payload["his_note"]
+
+    rows = _sql("SELECT count(*) AS c FROM documents WHERE tsv IS NOT NULL")
+    assert int(rows[0]["c"]) >= 1, "重建后 tsv 不能为空"
+
+    audit = client.get("/api/v1/admin/audit", headers=admin)
+    assert "admin.rag.reindex" in str(audit.json())
 
 
 # ------------------------------------------------------------------ 检索调试 / RAG 链路

@@ -207,6 +207,12 @@ export const listRagDocuments = (department?: string) =>
     ADMIN_ROOT + "/rag/documents?limit=100" + (department ? "&department=" + encodeURIComponent(department) : ""),
   );
 
+export const reindexRag = () =>
+  adminFetch<{ documents: number; ms: number; index: string; his_note: string }>(
+    ADMIN_ROOT + "/rag/reindex",
+    { method: "POST" },
+  );
+
 export const debugRetrieval = (query: string, department?: string) =>
   adminFetch<RetrievalDebug>(ADMIN_ROOT + "/retrieval/debug", {
     method: "POST",

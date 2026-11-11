@@ -8,6 +8,7 @@ import {
   debugRetrieval,
   getKbOverview,
   listRagDocuments,
+  reindexRag,
   listUnmatched,
   resolveUnmatched,
   runPipelineCheck,
@@ -47,6 +48,7 @@ export default function KnowledgePage() {
   const [answer, setAnswer] = useState("");
   const [target, setTarget] = useState<UnmatchedItem | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [denied, setDenied] = useState(false);
 
@@ -142,6 +144,7 @@ export default function KnowledgePage() {
       </nav>
 
       {error ? <p className="mt-3 rounded-2xl bg-rose-50 px-4 py-2 text-[12px] text-rose-700">{error}</p> : null}
+      {message ? <p className="mt-3 rounded-2xl bg-primary-soft px-4 py-2 text-[12px] text-primary">{message}</p> : null}
 
       {loading ? (
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
@@ -175,6 +178,35 @@ export default function KnowledgePage() {
                 ) : (
                   <p className="mt-3 text-[12px] text-emerald-700">21 个科室均有语料</p>
                 )}
+              </section>
+
+              <section className="card p-5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="section-title">索引维护</h2>
+                  <button
+                    onClick={() =>
+                      void (async () => {
+                        setError(null);
+                        setMessage(null);
+                        try {
+                          const result = await reindexRag();
+                          setMessage(
+                            "已重建全文索引：" + result.documents + " 条，耗时 " + result.ms + "ms（向量不重算）",
+                          );
+                          await load();
+                        } catch (err) {
+                          setError((err as Error).message || "重建失败");
+                        }
+                      })()
+                    }
+                    className="rounded-full bg-primary px-4 py-1.5 text-[12px] font-medium text-white"
+                  >
+                    重建全文索引
+                  </button>
+                </div>
+                <p className="mt-2 text-[11px] leading-5 text-muted">
+                  重建的是关键字检索用的 tsvector；向量在语料入库时由 embedding 模型写入，重跑代价高，不在本操作范围内。
+                </p>
               </section>
 
               <section className="card p-5">

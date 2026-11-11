@@ -95,7 +95,7 @@ export default function OpsPage() {
           </span>
           <div className="min-w-0">
             <p className="text-[15px] font-semibold text-ink">运营 / 质控台</p>
-            <p className="text-[11px] text-muted">支付异常、对账差异、人工接管（只读与处理）</p>
+            <p className="text-[11px] text-muted">支付异常逐笔、对账差异、人工接管、审计复盘、运营分析、医保对账、危机与通知记录</p>
           </div>
           <div className="ml-auto flex items-center gap-2">
             <SourceBadge live />

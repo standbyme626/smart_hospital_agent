@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 
 from .api.deps import require_admin, require_ops
 from .playbooks import PLAYBOOKS, summary as playbook_summary
+from .retrieval import tokenize
 from .policy import DEPARTMENT_NAMES
 from .schema_admin_ext import (
     EXPERIMENT_STATUSES,
@@ -222,6 +223,39 @@ async def admin_rag_documents(
             for row in rows
         ],
         "total": await _count(db, "SELECT count(*) FROM documents"),
+    }
+
+
+@router.post("/api/v1/admin/rag/reindex")
+async def admin_rag_reindex(
+    request: Request,
+    user: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    """重建全文索引（tsv）。
+
+    向量在入库时由 embedding 模型写入，重建向量代价高（要重跑模型），
+    所以这里只重算关键字检索用的 tsvector，并明确告知调用方。
+    """
+    db = await _ready(request)
+    actor = _actor(user)
+    rows = await db.fetch("SELECT id, title, content FROM documents ORDER BY id")
+    updated = 0
+    started = time.perf_counter()
+    for row in rows:
+        tokens = tokenize(f"{row['title']} {row['content']}")
+        await db.execute(
+            "UPDATE documents SET tsv = to_tsvector('simple', $2) WHERE id=$1",
+            row["id"],
+            tokens,
+        )
+        updated += 1
+    elapsed = round((time.perf_counter() - started) * 1000, 1)
+    await _audit(db, request, actor, "admin.rag.reindex", {"documents": updated, "ms": elapsed})
+    return {
+        "documents": updated,
+        "ms": elapsed,
+        "index": "tsv",
+        "his_note": "向量由入库时写入；本操作只重建全文（tsvector）索引，不重跑 embedding",
     }
 
 
