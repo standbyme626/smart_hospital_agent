@@ -94,6 +94,7 @@ class RetrievalService:
         by_id.update({row["id"]: row for row in sparse if row["id"] not in by_id})
         candidates = [by_id[doc_id] for doc_id, _ in fused[: self.settings.RERANK_TOP_N] if doc_id in by_id]
         if not candidates:
+            await self._record_unmatched(query, department)
             return []
         reranked = await self.gateway.rerank(
             query,
@@ -116,6 +117,8 @@ class RetrievalService:
                     "score": round(float(score), 4),
                 }
             )
+        if not results:
+            await self._record_unmatched(query, department)
         return results
 
     async def _dense(self, vector: list[float], department: str | None) -> list[dict[str, Any]]:
@@ -241,6 +244,30 @@ class RetrievalService:
                 if len(rows) >= limit:
                     break
         return await self.ingest(rows)
+
+    async def _record_unmatched(self, question: str, department: str | None) -> None:
+        """检索命中 0 条时把问题记入未命中问题池（管理端「未命中问题」屏的数据来源）。
+
+        只记录问题文本、科室与次数，不记录用户身份；写失败不影响问诊主链路。
+        """
+        text = (question or "").strip()
+        if not text:
+            return
+        key = hashlib.sha1(re.sub(r"\s+", "", text).lower().encode("utf-8")).hexdigest()[:16]
+        try:
+            await self.db.execute(
+                """
+                INSERT INTO unmatched_questions (question_key, question, department)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (question_key) DO UPDATE
+                    SET hits = unmatched_questions.hits + 1, last_seen = now()
+                """,
+                key,
+                text[:300],
+                normalize_department(department) if department else None,
+            )
+        except Exception:
+            return
 
     async def stats(self) -> dict[str, Any]:
         total = await self.db.fetchval("SELECT count(*) FROM documents")

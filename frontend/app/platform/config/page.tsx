@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Plus, RefreshCw, Save, Undo2, Upload } from "lucide-react";
 import { OfflineBanner, SourceBadge, StateBlock } from "@/components/ui";
+import { PlatformNav } from "@/components/PlatformNav";
 import { ApiError } from "@/lib/api";
 import {
   getConfigHistory,
@@ -240,6 +241,7 @@ export default function PlatformConfigPage() {
         </button>
       </div>
 
+      <div className="mt-3"><PlatformNav /></div>
       <div className="mt-3">
         <OfflineBanner />
       </div>

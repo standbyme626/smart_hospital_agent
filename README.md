@@ -357,6 +357,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 | S11 | 管理端只读（`/platform`） | ✅ |
 | S12 | 合规与数据 / 告警与 SLO / 质量评测 | ✅（实验与灰度留待后续） |
 | S13 | 管理端配置管理（规则库 / 通知模板 / Prompt / Agent 配置，版本 + 发布 + 回滚 + 审计） | ✅ 4 屏（Wave E 配置类） |
+| S14 | 管理端其余 21 屏（知识库 / 语料 / 未命中问题 / 检索调试 / RAG 链路 / 模型网关 / 会话回放 / 配置审计 / 验收自测 / HIS 接入 / 多院区 / 实验灰度 / 数据流 / 状态规范） | ✅ 管理端 25/25 全部上线 |
 
 详细计划与完成定义见 [`docs/V3.3-ROLLOUT-PLAN.md`](docs/V3.3-ROLLOUT-PLAN.md)；
 V3.4 全量上线进度与 61 屏台账见 [`docs/V3.4-EXECUTION-LEDGER.md`](docs/V3.4-EXECUTION-LEDGER.md)；
