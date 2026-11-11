@@ -174,7 +174,6 @@ export default function ProfilePage() {
   return (
     <AppShell title="我的" subtitle="家庭档案、隐私与显示设置">
       <div className="mx-auto max-w-3xl space-y-4">
-        <h1 className="text-xl font-semibold text-ink lg:hidden">我的</h1>
         <section className="card p-5">
           <div className="flex items-center gap-3">
             <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-emerald-400 text-white">

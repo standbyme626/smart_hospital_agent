@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Cpu, Database, SlidersHorizontal } from "lucide-react";
 import { OfflineBanner, SourceBadge, StateBlock } from "@/components/ui";
-import { PlatformNav } from "@/components/PlatformNav";
+import { ConsoleShell } from "@/components/ConsoleShell";
 import {
   getCompliance,
   getEvaluation,
@@ -68,27 +68,9 @@ export default function PlatformPage() {
   }, [load]);
 
   return (
-    <div className="min-h-dvh bg-canvas">
-      <header className="sticky top-0 z-20 border-b border-line bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-soft text-primary">
-            <SlidersHorizontal size={17} />
-          </span>
-          <div className="min-w-0">
-            <p className="text-[15px] font-semibold text-ink">平台管理</p>
-            <p className="text-[11px] text-muted">运行总览 / 配置管理 / 知识库 / 可观测 / 接入与实验 / 规范与数据流</p>
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            <SourceBadge live />
-            <Link href="/" className="inline-flex min-h-9 items-center gap-1 rounded-full bg-white px-3 text-[12px] text-muted ring-1 ring-line hover:text-primary">
-              <ArrowLeft size={13} /> 患者端
-            </Link>
-          </div>
-        </div>
-      </header>
+    <ConsoleShell end="platform" title="运行总览" subtitle="平台管理 · 配置管理 / 知识库 / 可观测 / 接入与实验 / 规范与数据流">
 
-      <main className="mx-auto max-w-5xl space-y-4 px-4 py-5">
-        <PlatformNav />
+      <div className="space-y-4">
         <OfflineBanner />
 
         {denied ? (
@@ -322,7 +304,7 @@ export default function PlatformPage() {
             <Database size={13} /> 数据来源：平台运行接口
           </span>
         </div>
-      </main>
-    </div>
+      </div>
+    </ConsoleShell>
   );
 }

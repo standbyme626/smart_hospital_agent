@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ShieldAlert } from "lucide-react";
-import { OpsNav } from "@/components/OpsNav";
 import { StateBlock } from "@/components/ui";
+import { ConsoleShell } from "@/components/ConsoleShell";
 import { getOpsCrisis, resolveOpsCrisis, type OpsCrisisEvent } from "@/lib/api";
 
 export default function OpsCrisisPage() {
@@ -40,16 +40,8 @@ export default function OpsCrisisPage() {
   }
 
   return (
-    <div className="min-h-dvh bg-canvas">
-      <header className="border-b border-line bg-white/90">
-        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
-          <ShieldAlert size={18} className="text-rose-600" />
-          <div><p className="text-[15px] font-semibold text-ink">危机事件</p><p className="text-[11px] text-muted">红旗信号与人工介入记录</p></div>
-          <Link href="/" className="ml-auto inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-[11px] text-muted ring-1 ring-line hover:text-primary"><ArrowLeft size={12} /> 患者端</Link>
-        </div>
-        <div className="mx-auto max-w-5xl px-4 pb-3"><OpsNav /></div>
-      </header>
-      <main className="mx-auto max-w-5xl space-y-3 px-4 py-5">
+    <ConsoleShell end="ops" title="危机事件" subtitle="红旗信号与人工介入记录">
+      <div className="space-y-4">
         {loading ? <div className="card h-24 animate-pulse" /> : failed ? <div className="card p-3"><StateBlock kind="error" onRetry={load} /></div> : items.length === 0 ? (
           <div className="card p-3"><StateBlock kind="empty" title="没有危机事件" /></div>
         ) : items.map((item) => (
@@ -67,7 +59,7 @@ export default function OpsCrisisPage() {
             )}
           </section>
         ))}
-      </main>
-    </div>
+      </div>
+    </ConsoleShell>
   );
 }

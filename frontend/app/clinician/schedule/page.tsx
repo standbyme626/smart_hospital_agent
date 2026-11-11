@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, CalendarDays } from "lucide-react";
 import { StateBlock } from "@/components/ui";
-import { ClinicianNav } from "@/components/ClinicianNav";
+import { ConsoleShell } from "@/components/ConsoleShell";
 import { getMySchedules, type ScheduleItem } from "@/lib/api";
 
 export default function ClinicianSchedulePage() {
@@ -33,16 +33,8 @@ export default function ClinicianSchedulePage() {
   }, []);
 
   return (
-    <div className="min-h-dvh bg-canvas">
-      <header className="sticky top-0 z-20 border-b border-line bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-4xl items-center gap-3 px-4 py-3">
-          <CalendarDays size={18} className="text-primary" />
-          <div><p className="text-[15px] font-semibold text-ink">我的排班</p><p className="text-[11px] text-muted">平台维护的排班（HIS 排班接口未开放）</p></div>
-          <Link href="/clinician/" className="ml-auto rounded-full bg-white px-3 py-1 text-[11px] text-muted ring-1 ring-line hover:text-primary">返回工作台</Link>
-        </div>
-      </header>
-      <main className="mx-auto max-w-4xl space-y-4 px-4 py-5">
-        <ClinicianNav />
+    <ConsoleShell end="clinician" title="我的排班" subtitle="平台维护的排班（HIS 排班接口未开放）">
+      <div className="space-y-4">
         {denied ? <div className="card p-3"><StateBlock kind="denied" title="当前账号无医生权限" /></div> : loading ? (
           <div className="card h-32 animate-pulse" />
         ) : failed ? (
@@ -68,7 +60,7 @@ export default function ClinicianSchedulePage() {
           </section>
         )}
         <p className="px-1 text-[11px] leading-5 text-muted">排班为平台数据；停诊/加号需在后续版本接入审批流。</p>
-      </main>
-    </div>
+      </div>
+    </ConsoleShell>
   );
 }

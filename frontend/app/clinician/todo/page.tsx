@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ListChecks } from "lucide-react";
 import { StateBlock } from "@/components/ui";
-import { ClinicianNav } from "@/components/ClinicianNav";
+import { ConsoleShell } from "@/components/ConsoleShell";
 import { getClinicianQueue, type ClinicianQueueItem } from "@/lib/api";
 
 export default function ClinicianTodoPage() {
@@ -32,16 +32,8 @@ export default function ClinicianTodoPage() {
   const unregistered = items.filter((item) => item.status !== "registered" && item.status !== "completed");
 
   return (
-    <div className="min-h-dvh bg-canvas">
-      <header className="sticky top-0 z-20 border-b border-line bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 py-3">
-          <ListChecks size={18} className="text-primary" />
-          <div><p className="text-[15px] font-semibold text-ink">移动待办</p><p className="text-[11px] text-muted">待缴费与待接诊</p></div>
-          <Link href="/clinician/" className="ml-auto rounded-full bg-white px-3 py-1 text-[11px] text-muted ring-1 ring-line hover:text-primary">返回</Link>
-        </div>
-      </header>
-      <main className="mx-auto max-w-3xl space-y-3 px-4 py-4">
-        <ClinicianNav />
+    <ConsoleShell end="clinician" title="移动待办" subtitle="待缴费与待接诊">
+      <div className="space-y-4">
         {loading ? <div className="card h-24 animate-pulse" /> : failed ? (
           <div className="card p-3"><StateBlock kind="error" onRetry={load} /></div>
         ) : items.length === 0 ? (
@@ -63,7 +55,7 @@ export default function ClinicianTodoPage() {
           </>
         )}
         <p className="px-1 text-[11px] leading-5 text-muted">签名类操作请回桌面工作台完成。</p>
-      </main>
-    </div>
+      </div>
+    </ConsoleShell>
   );
 }

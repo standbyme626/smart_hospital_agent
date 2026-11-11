@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { OfflineBanner, SourceBadge, StateBlock } from "@/components/ui";
-import { PlatformNav } from "@/components/PlatformNav";
+import { ConsoleShell } from "@/components/ConsoleShell";
 import { statusOf, useAdminLoad } from "@/lib/use-admin-load";
 import {
   debugRetrieval,
@@ -114,16 +114,8 @@ export default function KnowledgePage() {
   };
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-4 py-6">
-      <header className="flex flex-wrap items-center gap-3">
-        <div>
-          <h1 className="text-[20px] font-semibold text-ink">知识库与检索</h1>
-          <p className="mt-1 text-[12px] text-muted">文档覆盖、未命中问题、检索调试与 RAG 链路自检</p>
-        </div>
-        <div className="ml-auto"><SourceBadge live /></div>
-      </header>
+    <ConsoleShell end="platform" title="知识库与检索" subtitle="文档覆盖、未命中问题、检索调试与 RAG 链路自检">
 
-      <div className="mt-3"><PlatformNav /></div>
       <div className="mt-3"><OfflineBanner /></div>
 
       <nav className="mt-4 flex flex-wrap gap-2">
@@ -432,6 +424,6 @@ export default function KnowledgePage() {
           ) : null}
         </div>
       )}
-    </main>
+    </ConsoleShell>
   );
 }

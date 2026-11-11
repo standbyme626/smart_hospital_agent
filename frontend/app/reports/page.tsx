@@ -183,7 +183,6 @@ export default function ReportsPage() {
       actions={<SourceBadge live />}
     >
       <div className="mx-auto max-w-4xl space-y-4">
-        <h1 className="text-xl font-semibold text-ink lg:hidden">报告解读</h1>
         <OfflineBanner />
         <div className="flex gap-2">
           <button onClick={() => { setMode("report"); setSelected(null); }} aria-pressed={mode === "report"} className={clsx("chip min-h-11 px-4", mode === "report" ? "chip-active" : "")}>检查报告</button>

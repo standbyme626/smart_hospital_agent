@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Plus, RefreshCw, Save, Undo2, Upload } from "lucide-react";
 import { OfflineBanner, SourceBadge, StateBlock } from "@/components/ui";
-import { PlatformNav } from "@/components/PlatformNav";
+import { ConsoleShell } from "@/components/ConsoleShell";
 import { ApiError } from "@/lib/api";
 import {
   getConfigHistory,
@@ -224,10 +224,9 @@ export default function PlatformConfigPage() {
   };
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-4 py-6">
+    <ConsoleShell end="platform" title="配置管理" subtitle="规则 / 通知模板 / Prompt / Agent 参数：草稿 → 发布 → 回滚">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <h1 className="text-[20px] font-semibold text-ink">配置管理</h1>
           <SourceBadge live />
         </div>
         <button
@@ -238,7 +237,6 @@ export default function PlatformConfigPage() {
         </button>
       </div>
 
-      <div className="mt-3"><PlatformNav /></div>
       <div className="mt-3">
         <OfflineBanner />
       </div>
@@ -473,6 +471,6 @@ export default function PlatformConfigPage() {
           </section>
         </div>
       )}
-    </main>
+    </ConsoleShell>
   );
 }

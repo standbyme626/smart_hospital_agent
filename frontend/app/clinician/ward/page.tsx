@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, BedDouble } from "lucide-react";
 import { StateBlock } from "@/components/ui";
-import { ClinicianNav } from "@/components/ClinicianNav";
+import { ConsoleShell } from "@/components/ConsoleShell";
 import { getClinicianQueue, type ClinicianQueueItem } from "@/lib/api";
 
 export default function ClinicianWardPage() {
@@ -29,16 +29,8 @@ export default function ClinicianWardPage() {
   }, []);
 
   return (
-    <div className="min-h-dvh bg-canvas">
-      <header className="sticky top-0 z-20 border-b border-line bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-md items-center gap-3 px-4 py-3">
-          <BedDouble size={18} className="text-primary" />
-          <div><p className="text-[15px] font-semibold text-ink">移动查房</p><p className="text-[11px] text-muted">手机端只看摘要</p></div>
-          <Link href="/clinician/" className="ml-auto rounded-full bg-white px-3 py-1 text-[11px] text-muted ring-1 ring-line hover:text-primary">返回</Link>
-        </div>
-      </header>
-      <main className="mx-auto max-w-md space-y-3 px-4 py-4">
-        <ClinicianNav />
+    <ConsoleShell end="clinician" title="移动查房" subtitle="手机端只看摘要">
+      <div className="space-y-4">
         {loading ? <div className="card h-24 animate-pulse" /> : failed ? (
           <div className="card p-3"><StateBlock kind="error" onRetry={load} /></div>
         ) : items.length === 0 ? (
@@ -57,7 +49,7 @@ export default function ClinicianWardPage() {
           </div>
         ))}
         <p className="px-1 text-[11px] leading-5 text-muted">移动端只读：签名、开医嘱请回桌面工作台。</p>
-      </main>
-    </div>
+      </div>
+    </ConsoleShell>
   );
 }

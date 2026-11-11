@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { OfflineBanner, SourceBadge, StateBlock } from "@/components/ui";
-import { PlatformNav } from "@/components/PlatformNav";
+import { ConsoleShell } from "@/components/ConsoleShell";
 import { statusOf } from "@/lib/use-admin-load";
 import {
   getAcceptance,
@@ -91,16 +91,8 @@ export default function InsightPage() {
   };
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-4 py-6">
-      <header className="flex flex-wrap items-center gap-3">
-        <div>
-          <h1 className="text-[20px] font-semibold text-ink">可观测与验收</h1>
-          <p className="mt-1 text-[12px] text-muted">模型调用、会话回放、审计聚合与 25 条剧本看板</p>
-        </div>
-        <div className="ml-auto"><SourceBadge live /></div>
-      </header>
+    <ConsoleShell end="platform" title="可观测与验收" subtitle="模型调用、会话回放、审计聚合与 25 条剧本看板">
 
-      <div className="mt-3"><PlatformNav /></div>
       <div className="mt-3"><OfflineBanner /></div>
 
       <nav className="mt-4 flex flex-wrap gap-2">
@@ -362,6 +354,6 @@ export default function InsightPage() {
           ) : null}
         </div>
       )}
-    </main>
+    </ConsoleShell>
   );
 }

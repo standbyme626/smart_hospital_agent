@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import UTC, datetime, timedelta
+
+from .clock import hospital_today
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -420,7 +422,7 @@ async def clinician_close_visit(
     owner = await db.fetchval("SELECT user_id FROM family_members WHERE id=$1", member_id) or "unknown"
 
     followup_id = "fu_" + uuid.uuid4().hex[:12]
-    due_date = (datetime.now(UTC) + timedelta(days=payload.followup_days)).date()
+    due_date = hospital_today() + timedelta(days=payload.followup_days)
     followup = await db.fetchrow(
         """
         INSERT INTO followups (id, user_id, member_id, title, due_date, status, notes)

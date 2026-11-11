@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ReceiptText } from "lucide-react";
-import { OpsNav } from "@/components/OpsNav";
 import { StateBlock } from "@/components/ui";
+import { ConsoleShell } from "@/components/ConsoleShell";
 import { getOpsInsuranceRecon, type OpsInsuranceItem } from "@/lib/api";
 
 export default function OpsInsurancePage() {
@@ -34,16 +34,8 @@ export default function OpsInsurancePage() {
   }, []);
 
   return (
-    <div className="min-h-dvh bg-canvas">
-      <header className="border-b border-line bg-white/90">
-        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
-          <ReceiptText size={18} className="text-primary" />
-          <div><p className="text-[15px] font-semibold text-ink">医保对账</p><p className="text-[11px] text-muted">结算快照 vs 挂号金额</p></div>
-          <Link href="/" className="ml-auto inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-[11px] text-muted ring-1 ring-line hover:text-primary"><ArrowLeft size={12} /> 患者端</Link>
-        </div>
-        <div className="mx-auto max-w-5xl px-4 pb-3"><OpsNav /></div>
-      </header>
-      <main className="mx-auto max-w-5xl space-y-3 px-4 py-5">
+    <ConsoleShell end="ops" title="医保对账" subtitle="结算快照 vs 挂号金额">
+      <div className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="card p-4"><p className="text-[12px] text-muted">核对笔数</p><p className="mt-1 text-[24px] font-semibold text-ink">{checked}</p></div>
           <div className="card p-4"><p className="text-[12px] text-muted">差异笔数</p><p className={diffCount ? "mt-1 text-[24px] font-semibold text-rose-600" : "mt-1 text-[24px] font-semibold text-emerald-600"}>{diffCount}</p></div>
@@ -69,7 +61,7 @@ export default function OpsInsurancePage() {
             </table>
           )}
         </section>
-      </main>
-    </div>
+      </div>
+    </ConsoleShell>
   );
 }

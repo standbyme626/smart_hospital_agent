@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { OfflineBanner, SourceBadge, StateBlock } from "@/components/ui";
-import { ClinicianNav } from "@/components/ClinicianNav";
+import { ConsoleShell } from "@/components/ConsoleShell";
 import {
   getPrescriptionReviews,
   reviewOrder,
@@ -69,16 +69,8 @@ export default function ClinicianReviewPage() {
   };
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-4 py-6">
-      <header className="flex flex-wrap items-center gap-3">
-        <div>
-          <h1 className="text-[20px] font-semibold text-ink">药师审方</h1>
-          <p className="mt-1 text-[12px] text-muted">已签名医嘱的审方状态；HIS 审方记录待院方开通</p>
-        </div>
-        <div className="ml-auto"><SourceBadge live={false} /></div>
-      </header>
+    <ConsoleShell end="clinician" title="药师审方" subtitle="已签名医嘱的审方状态；HIS 审方记录待院方开通">
 
-      <div className="mt-3"><ClinicianNav /></div>
       <div className="mt-3"><OfflineBanner /></div>
 
       {error ? <p className="mt-3 rounded-2xl bg-rose-50 px-4 py-2 text-[12px] text-rose-700">{error}</p> : null}
@@ -155,6 +147,6 @@ export default function ClinicianReviewPage() {
           )}
         </section>
       )}
-    </main>
+    </ConsoleShell>
   );
 }

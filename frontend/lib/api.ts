@@ -1281,3 +1281,21 @@ export async function* streamChat(payload: {
     }
   }
 }
+
+// ---------------------------------------------------------------- Agent 面板
+
+export type AgentPanelData = {
+  end: "patient" | "clinician" | "ops" | "platform";
+  role: string;
+  capabilities: Array<{ name: string; note: string }>;
+  recent: Array<{ name: string; model?: string; latency_ms: number; at?: string | null }>;
+  summary: { calls_7d: number; avg_latency_ms: number };
+  boundaries: string[];
+  starter: string;
+};
+
+export async function getAgentPanel(end?: "patient" | "clinician" | "ops" | "platform"): Promise<AgentPanelData> {
+  const query = end ? "?end=" + end : "";
+  return apiFetch<AgentPanelData>("/api/v1/agent/panel" + query);
+}
+

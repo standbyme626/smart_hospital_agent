@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ShieldCheck } from "lucide-react";
-import { OpsNav } from "@/components/OpsNav";
 import { StateBlock } from "@/components/ui";
+import { ConsoleShell } from "@/components/ConsoleShell";
 import { decideOpsReview, getOpsReviews, type OpsReview } from "@/lib/api";
 
 export default function OpsReviewsPage() {
@@ -44,16 +44,8 @@ export default function OpsReviewsPage() {
   }
 
   return (
-    <div className="min-h-dvh bg-canvas">
-      <header className="border-b border-line bg-white/90">
-        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
-          <ShieldCheck size={18} className="text-primary" />
-          <div><p className="text-[15px] font-semibold text-ink">运营 / 质控台</p><p className="text-[11px] text-muted">支付与异常逐笔审核</p></div>
-          <Link href="/" className="ml-auto inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-[11px] text-muted ring-1 ring-line hover:text-primary"><ArrowLeft size={12} /> 患者端</Link>
-        </div>
-        <div className="mx-auto max-w-5xl px-4 pb-3"><OpsNav /></div>
-      </header>
-      <main className="mx-auto max-w-5xl space-y-3 px-4 py-5">
+    <ConsoleShell end="ops" title="运营 / 质控台" subtitle="支付与异常逐笔审核">
+      <div className="space-y-4">
         {denied ? <div className="card p-3"><StateBlock kind="denied" title="当前账号无运营权限" /></div> : loading ? (
           <div className="card h-24 animate-pulse" />
         ) : failed ? (
@@ -76,7 +68,7 @@ export default function OpsReviewsPage() {
           </section>
         ))}
         <p className="px-1 text-[11px] leading-5 text-muted">仅异常进入人工：退款/改价、金额不一致、重复支付、超阈值、对账差异。</p>
-      </main>
-    </div>
+      </div>
+    </ConsoleShell>
   );
 }

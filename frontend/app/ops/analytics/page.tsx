@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, BarChart3 } from "lucide-react";
-import { OpsNav } from "@/components/OpsNav";
 import { StateBlock } from "@/components/ui";
+import { ConsoleShell } from "@/components/ConsoleShell";
 import { getOpsAnalytics, type OpsAnalytics } from "@/lib/api";
 
 export default function OpsAnalyticsPage() {
@@ -17,16 +17,8 @@ export default function OpsAnalyticsPage() {
   }, []);
 
   return (
-    <div className="min-h-dvh bg-canvas">
-      <header className="border-b border-line bg-white/90">
-        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
-          <BarChart3 size={18} className="text-primary" />
-          <div><p className="text-[15px] font-semibold text-ink">运营分析</p><p className="text-[11px] text-muted">规模与事件计数（真实数据）</p></div>
-          <Link href="/" className="ml-auto inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-[11px] text-muted ring-1 ring-line hover:text-primary"><ArrowLeft size={12} /> 患者端</Link>
-        </div>
-        <div className="mx-auto max-w-5xl px-4 pb-3"><OpsNav /></div>
-      </header>
-      <main className="mx-auto max-w-5xl space-y-3 px-4 py-5">
+    <ConsoleShell end="ops" title="运营分析" subtitle="规模与事件计数（真实数据）">
+      <div className="space-y-4">
         {loading ? <div className="card h-24 animate-pulse" /> : failed ? (
           <div className="card p-3"><StateBlock kind="error" onRetry={() => window.location.reload()} /></div>
         ) : data ? (
@@ -55,7 +47,7 @@ export default function OpsAnalyticsPage() {
           </>
         ) : null}
         <p className="px-1 text-[11px] leading-5 text-muted">漏斗与成本分析在后续版本接入；当前为真实事件聚合。</p>
-      </main>
-    </div>
+      </div>
+    </ConsoleShell>
   );
 }

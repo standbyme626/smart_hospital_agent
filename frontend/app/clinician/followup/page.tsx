@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { OfflineBanner, SourceBadge, StateBlock } from "@/components/ui";
-import { ClinicianNav } from "@/components/ClinicianNav";
+import { ConsoleShell } from "@/components/ConsoleShell";
 import { getClinicalNotes, getClinicianQueue, type ClinicalNote, type ClinicianQueueItem } from "@/lib/api";
 import { closeVisit, getFollowupPlans, type CloseVisitResult, type FollowupPlan } from "@/lib/api-clinician-ext";
 
@@ -85,16 +85,8 @@ export default function ClinicianFollowupPage() {
   };
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-4 py-6">
-      <header className="flex flex-wrap items-center gap-3">
-        <div>
-          <h1 className="text-[20px] font-semibold text-ink">诊毕与随访</h1>
-          <p className="mt-1 text-[12px] text-muted">诊毕会把病历置为只读，并给患者生成一条随访计划</p>
-        </div>
-        <div className="ml-auto"><SourceBadge live /></div>
-      </header>
+    <ConsoleShell end="clinician" title="诊毕与随访" subtitle="诊毕会把病历置为只读，并给患者生成一条随访计划">
 
-      <div className="mt-3"><ClinicianNav /></div>
       <div className="mt-3"><OfflineBanner /></div>
 
       {error ? <p className="mt-3 rounded-2xl bg-rose-50 px-4 py-2 text-[12px] text-rose-700">{error}</p> : null}
@@ -210,6 +202,6 @@ export default function ClinicianFollowupPage() {
           </section>
         </div>
       )}
-    </main>
+    </ConsoleShell>
   );
 }

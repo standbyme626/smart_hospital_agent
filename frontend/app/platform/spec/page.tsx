@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { OfflineBanner, SourceBadge, StateBlock } from "@/components/ui";
-import { PlatformNav } from "@/components/PlatformNav";
+import { ConsoleShell } from "@/components/ConsoleShell";
 import { statusOf } from "@/lib/use-admin-load";
 import { getFlow, getStates, type FlowData, type StatesData } from "@/lib/api-admin-ext";
 
@@ -55,16 +55,8 @@ export default function SpecPage() {
   const maxCount = flow ? Math.max(1, ...flow.stages.map((stage) => stage.count)) : 1;
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-4 py-6">
-      <header className="flex flex-wrap items-center gap-3">
-        <div>
-          <h1 className="text-[20px] font-semibold text-ink">规范与数据流</h1>
-          <p className="mt-1 text-[12px] text-muted">内部工具页：真实数据在各环节的流量，以及各状态机的实际取值</p>
-        </div>
-        <div className="ml-auto"><SourceBadge live /></div>
-      </header>
+    <ConsoleShell end="platform" title="规范与数据流" subtitle="内部工具页：真实数据在各环节的流量，以及各状态机的实际取值">
 
-      <div className="mt-3"><PlatformNav /></div>
       <div className="mt-3"><OfflineBanner /></div>
 
       <nav className="mt-4 flex flex-wrap gap-2">
@@ -149,6 +141,6 @@ export default function SpecPage() {
           ) : null}
         </div>
       )}
-    </main>
+    </ConsoleShell>
   );
 }

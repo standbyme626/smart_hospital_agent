@@ -75,7 +75,6 @@ export default function HealthPage() {
   return (
     <AppShell title="健康档案" subtitle={`${activeMember?.name || "本人"}的健康时间线与家庭档案`}>
       <div className="mx-auto max-w-4xl space-y-4">
-        <h1 className="text-xl font-semibold text-ink lg:hidden">健康档案</h1>
         {loadError ? (
           <div className="card flex flex-wrap items-center justify-between gap-2 border-rose-200 bg-rose-50 p-3 text-[13px] text-rose-700">
             <span>加载失败，请重试</span>

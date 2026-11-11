@@ -367,7 +367,6 @@ export default function ConsultPage() {
       actions={<SourceBadge live />}
     >
       <div className="mx-auto max-w-3xl space-y-4">
-        <h1 className="text-xl font-semibold text-ink lg:hidden">AI 诊室</h1>
         <OfflineBanner />
         {streamError ? (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-800">

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Activity, ArrowLeft, CalendarCheck2, ClipboardList, FileText, PenLine, Pill, ShieldAlert, Stethoscope } from "lucide-react";
 import { ClinicalWorkspace } from "@/components/ClinicalWorkspace";
 import { OfflineBanner, SourceBadge, StateBlock } from "@/components/ui";
-import { ClinicianNav } from "@/components/ClinicianNav";
+import { ConsoleShell } from "@/components/ConsoleShell";
 import {
   createClinicianDraft,
   getClinicianConfig,
@@ -119,27 +119,9 @@ export default function ClinicianPage() {
   }
 
   return (
-    <div className="min-h-dvh bg-canvas">
-      <header className="sticky top-0 z-20 border-b border-line bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-soft text-primary">
-            <Stethoscope size={17} />
-          </span>
-          <div className="min-w-0">
-            <p className="text-[15px] font-semibold text-ink">医生工作台</p>
-            <p className="text-[11px] text-muted">今日队列 / 患者 360 / 病历 / 医嘱 / 检验 / 会诊；文书打印、诊毕随访、审方在顶部导航</p>
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            <SourceBadge live />
-            <Link href="/" className="inline-flex min-h-9 items-center gap-1 rounded-full bg-white px-3 text-[12px] text-muted ring-1 ring-line hover:text-primary">
-              <ArrowLeft size={13} /> 患者端
-            </Link>
-          </div>
-        </div>
-      </header>
+    <ConsoleShell end="clinician" title="诊室工作台" subtitle="医生工作台 · 今日队列 / 患者 360 / 病历 / 医嘱 / 检验 / 会诊">
 
-      <main className="mx-auto max-w-6xl space-y-4 px-4 py-5">
-        <ClinicianNav />
+      <div className="space-y-4">
         <OfflineBanner />
 
         {denied ? (
@@ -346,7 +328,7 @@ export default function ClinicianPage() {
             </section>
           </div>
         )}
-      </main>
-    </div>
+      </div>
+    </ConsoleShell>
   );
 }

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, CheckCircle2, ClipboardList, HandHeart, ShieldCheck } from "lucide-react";
 import { OfflineBanner, SourceBadge, StateBlock } from "@/components/ui";
-import { OpsNav } from "@/components/OpsNav";
+import { ConsoleShell } from "@/components/ConsoleShell";
 import {
   claimOpsHandoff,
   getOpsFindings,
@@ -87,28 +87,10 @@ export default function OpsPage() {
   const waitingHandoff = handoff.filter((item) => item.status === "requested");
 
   return (
-    <div className="min-h-dvh bg-canvas">
-      <header className="sticky top-0 z-20 border-b border-line bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-soft text-primary">
-            <ShieldCheck size={17} />
-          </span>
-          <div className="min-w-0">
-            <p className="text-[15px] font-semibold text-ink">运营 / 质控台</p>
-            <p className="text-[11px] text-muted">支付异常逐笔、对账差异、人工接管、审计复盘、运营分析、医保对账、危机与通知记录</p>
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            <SourceBadge live />
-            <Link href="/" className="inline-flex min-h-9 items-center gap-1 rounded-full bg-white px-3 text-[12px] text-muted ring-1 ring-line hover:text-primary">
-              <ArrowLeft size={13} /> 患者端
-            </Link>
-          </div>
-        </div>
-      </header>
+    <ConsoleShell end="ops" title="运营 / 质控台" subtitle="支付异常、对账差异、人工接管、审计、分析、医保、危机与通知记录">
 
-      <main className="mx-auto max-w-5xl space-y-4 px-4 py-5">
+      <div className="space-y-4">
         <OfflineBanner />
-        <OpsNav />
 
         {denied ? (
           <div className="card p-3">
@@ -229,7 +211,7 @@ export default function OpsPage() {
             )}
           </>
         )}
-      </main>
-    </div>
+      </div>
+    </ConsoleShell>
   );
 }

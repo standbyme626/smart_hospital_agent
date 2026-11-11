@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { OfflineBanner, SourceBadge, StateBlock } from "@/components/ui";
-import { PlatformNav } from "@/components/PlatformNav";
+import { ConsoleShell } from "@/components/ConsoleShell";
 import { statusOf } from "@/lib/use-admin-load";
 import {
   createExperiment,
@@ -99,16 +99,8 @@ export default function IntegrationsPage() {
   };
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-4 py-6">
-      <header className="flex flex-wrap items-center gap-3">
-        <div>
-          <h1 className="text-[20px] font-semibold text-ink">接入与实验</h1>
-          <p className="mt-1 text-[12px] text-muted">HIS 连通性、多院区与灰度实验（全部落库，变更留痕）</p>
-        </div>
-        <div className="ml-auto"><SourceBadge live /></div>
-      </header>
+    <ConsoleShell end="platform" title="接入与实验" subtitle="HIS 连通性、多院区与灰度实验（全部落库，变更留痕）">
 
-      <div className="mt-3"><PlatformNav /></div>
       <div className="mt-3"><OfflineBanner /></div>
 
       <nav className="mt-4 flex flex-wrap gap-2">
@@ -411,6 +403,6 @@ export default function IntegrationsPage() {
           ) : null}
         </div>
       )}
-    </main>
+    </ConsoleShell>
   );
 }

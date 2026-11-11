@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { OfflineBanner, SourceBadge, StateBlock } from "@/components/ui";
-import { ClinicianNav } from "@/components/ClinicianNav";
+import { ConsoleShell } from "@/components/ConsoleShell";
 import { getClinicalNotes, getClinicianQueue, type ClinicalNote, type ClinicianQueueItem } from "@/lib/api";
 import {
   createPrintJob,
@@ -107,16 +107,8 @@ export default function ClinicianPrintPage() {
   };
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-4 py-6">
-      <header className="flex flex-wrap items-center gap-3">
-        <div>
-          <h1 className="text-[20px] font-semibold text-ink">文书打印</h1>
-          <p className="mt-1 text-[12px] text-muted">门诊病历 / 处方笺 / 检查申请单，正文由服务端渲染并存库</p>
-        </div>
-        <div className="ml-auto"><SourceBadge live /></div>
-      </header>
+    <ConsoleShell end="clinician" title="文书打印" subtitle="门诊病历 / 处方笺 / 检查申请单，正文由服务端渲染并存库">
 
-      <div className="mt-3"><ClinicianNav /></div>
       <div className="mt-3"><OfflineBanner /></div>
 
       {error ? <p className="mt-3 rounded-2xl bg-rose-50 px-4 py-2 text-[12px] text-rose-700">{error}</p> : null}
@@ -239,6 +231,6 @@ export default function ClinicianPrintPage() {
           </section>
         </div>
       )}
-    </main>
+    </ConsoleShell>
   );
 }
