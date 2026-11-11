@@ -478,6 +478,37 @@ SCHEMA = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_clinician_drafts_member ON clinician_drafts (member_id, created_at DESC)",
+    """
+    CREATE TABLE IF NOT EXISTS previsit_forms (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        member_id TEXT NOT NULL,
+        appointment_id TEXT,
+        chief_complaint TEXT NOT NULL,
+        duration TEXT,
+        medications TEXT,
+        allergies TEXT,
+        history TEXT,
+        questions TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_previsit_member ON previsit_forms (member_id, created_at DESC)",
+    """
+    CREATE TABLE IF NOT EXISTS doctor_directory (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        department TEXT NOT NULL,
+        title TEXT,
+        intro TEXT,
+        fee NUMERIC(10, 2) NOT NULL DEFAULT 0,
+        active BOOLEAN NOT NULL DEFAULT true,
+        schedule TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_doctor_directory_dept ON doctor_directory (department, active)",
 ]
 
 MIGRATIONS = [

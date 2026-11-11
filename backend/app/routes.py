@@ -2492,6 +2492,13 @@ async def clinician_patient(
         """,
         member_id,
     )
+    previsit = await db.fetchrow(
+        """
+        SELECT id, chief_complaint, duration, medications, allergies, history, questions, created_at
+        FROM previsit_forms WHERE member_id=$1 ORDER BY created_at DESC LIMIT 1
+        """,
+        member_id,
+    )
     return {
         "member": {
             "id": member["id"],
@@ -2506,6 +2513,7 @@ async def clinician_patient(
         "medications": [dict(row) for row in medications],
         "followups": [dict(row) for row in followups],
         "appointments": [dict(row) for row in appointments],
+        "previsit": dict(previsit) if previsit else None,
     }
 
 
@@ -2938,3 +2946,96 @@ async def admin_evaluation(
     )
     runs = [dict(row) for row in rows]
     return {"runs": runs, "latest": runs[0] if runs else None, "total": len(runs)}
+
+
+# ---------------------------------------------------------------- previsit
+class PrevisitRequest(BaseModel):
+    member_id: str | None = None
+    chief_complaint: str
+    duration: str | None = None
+    medications: str | None = None
+    allergies: str | None = None
+    history: str | None = None
+    questions: str | None = None
+
+
+@router.post("/api/v1/previsit")
+async def create_previsit(
+    payload: PrevisitRequest,
+    request: Request,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    db = _state(request).db
+    user_id = str(user["sub"])
+    member = await _member_row(db, payload.member_id, user_id)
+    previsit_id = "pv_" + uuid.uuid4().hex[:12]
+    row = await db.fetchrow(
+        """
+        INSERT INTO previsit_forms
+            (id, user_id, member_id, chief_complaint, duration, medications,
+             allergies, history, questions)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        RETURNING *
+        """,
+        previsit_id,
+        user_id,
+        member["id"],
+        payload.chief_complaint,
+        payload.duration,
+        payload.medications,
+        payload.allergies,
+        payload.history,
+        payload.questions,
+    )
+    await _add_event(
+        db,
+        user_id,
+        member["id"],
+        "previsit",
+        "就诊准备 · " + payload.chief_complaint[:30],
+        {"previsit_id": previsit_id},
+    )
+    return {"previsit": dict(row) if row else None}
+
+
+@router.get("/api/v1/previsit")
+async def list_previsit(
+    request: Request,
+    member_id: str | None = Query(None),
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    db = _state(request).db
+    user_id = str(user["sub"])
+    member = await _member_row(db, member_id, user_id)
+    rows = await db.fetch(
+        """
+        SELECT id, member_id, chief_complaint, duration, medications, allergies,
+               history, questions, created_at
+        FROM previsit_forms
+        WHERE user_id=$1 AND member_id=$2
+        ORDER BY created_at DESC LIMIT 5
+        """,
+        user_id,
+        member["id"],
+    )
+    return {"items": [dict(row) for row in rows]}
+
+
+# ----------------------------------------------------------- doctor directory
+@router.get("/api/v1/doctors")
+async def list_doctor_directory(
+    request: Request,
+    department: str | None = Query(None),
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    db = _state(request).db
+    rows = await db.fetch(
+        """
+        SELECT id, name, department, title, intro, fee, schedule
+        FROM doctor_directory
+        WHERE active = true AND ($1::text IS NULL OR department=$1)
+        ORDER BY department, name
+        """,
+        department,
+    )
+    return {"doctors": [dict(row) for row in rows]}
