@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Activity, ArrowLeft, CalendarCheck2, ClipboardList, FileText, PenLine, Pill, ShieldAlert, Stethoscope } from "lucide-react";
+import { ClinicalWorkspace } from "@/components/ClinicalWorkspace";
 import { OfflineBanner, SourceBadge, StateBlock } from "@/components/ui";
 import {
   createClinicianDraft,
@@ -128,6 +129,9 @@ export default function ClinicianPage() {
             <p className="text-[11px] text-muted">今日就诊队列与患者 360 · 写操作与签名尚未开放（S9）</p>
           </div>
           <div className="ml-auto flex items-center gap-2">
+            <Link href="/clinician/schedule/" className="rounded-full bg-white px-3 py-1 text-[11px] text-muted ring-1 ring-line hover:text-primary">我的排班</Link>
+            <Link href="/clinician/ward/" className="rounded-full bg-white px-3 py-1 text-[11px] text-muted ring-1 ring-line hover:text-primary">移动查房</Link>
+            <Link href="/clinician/todo/" className="rounded-full bg-white px-3 py-1 text-[11px] text-muted ring-1 ring-line hover:text-primary">待办</Link>
             <SourceBadge live />
             <Link href="/" className="inline-flex min-h-9 items-center gap-1 rounded-full bg-white px-3 text-[12px] text-muted ring-1 ring-line hover:text-primary">
               <ArrowLeft size={13} /> 患者端
@@ -333,8 +337,10 @@ export default function ClinicianPage() {
                     </div>
                   </div>
 
+                  <ClinicalWorkspace memberId={detail.member.id} writeEnabled={writeEnabled} />
+
                   <p className="border-t border-line pt-3 text-[11px] leading-5 text-muted">
-                    只读视图：数据来自本地投影与档案，写操作（接诊、医嘱、签名）在 S9 开放。医生身份应以 HIS 账号为准。
+                    写操作受门禁控制：病历与医嘱草稿可保存；签名需要医生 HIS 账号透传（当前 {writeEnabled ? "已启用" : "未启用"}）。
                   </p>
                 </div>
               ) : null}

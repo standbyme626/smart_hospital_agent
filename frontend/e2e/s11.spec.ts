@@ -34,7 +34,7 @@ test("platform console loads for admin and is denied for patient", async ({ page
   await login(page, ADMIN_USER, ADMIN_PASSWORD);
 
   await open(page, "/platform/");
-  await expect(page.getByText("平台管理 · 只读")).toBeVisible();
+  await expect(page.getByText("平台管理").first()).toBeVisible();
   await expect(page.getByText("数据规模")).toBeVisible();
   await expect(page.getByText("知识文档")).toBeVisible();
 

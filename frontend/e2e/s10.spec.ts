@@ -70,6 +70,20 @@ test("support feedback and consent pages work for patient", async ({ page }) => 
   await expect(page.getByText("查看：能否读取成员的就诊、报告与用药")).toBeVisible();
 });
 
+test("clinician schedule, ward and todo pages load for admin", async ({ page }) => {
+  await login(page, ADMIN_USER, ADMIN_PASSWORD);
+
+  await open(page, "/clinician/schedule/");
+  await expect(page.getByText("我的排班").first()).toBeVisible();
+  await expect(page.getByText("周一").first().or(page.getByText("还没有排班"))).toBeVisible();
+
+  await open(page, "/clinician/ward/");
+  await expect(page.getByText("移动查房")).toBeVisible();
+
+  await open(page, "/clinician/todo/");
+  await expect(page.getByText("移动待办")).toBeVisible();
+});
+
 test("clinician and ops pages load for admin and are denied for patient", async ({ page }) => {
   await login(page, ADMIN_USER, ADMIN_PASSWORD);
 

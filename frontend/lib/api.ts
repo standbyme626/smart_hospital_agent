@@ -706,6 +706,144 @@ export async function saveConsentScope(input: {
   return data.scope;
 }
 
+// ------------------------------------------------------------ wave C doctor
+export type ClinicalNote = {
+  id: string;
+  doctor: string;
+  member_id: string;
+  chief_complaint?: string | null;
+  present_illness?: string | null;
+  physical_exam?: string | null;
+  diagnosis?: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ClinicalOrder = {
+  id: string;
+  kind: string;
+  name: string;
+  dose?: string | null;
+  usage?: string | null;
+  status: string;
+  review_status: string;
+  review_note?: string | null;
+  created_at: string;
+  signed_at?: string | null;
+};
+
+export type LabResult = {
+  id: string;
+  name: string;
+  result_value?: string | null;
+  reference_range?: string | null;
+  abnormal?: string | null;
+  measured_at: string;
+};
+
+export type ScheduleItem = {
+  id: string;
+  doctor: string;
+  department?: string | null;
+  weekday: string;
+  period: string;
+  status: string;
+  note?: string | null;
+};
+
+export type Consultation = {
+  id: string;
+  target_department: string;
+  reason?: string | null;
+  status: string;
+  reply?: string | null;
+  created_at: string;
+};
+
+export async function getClinicalNotes(memberId: string): Promise<ClinicalNote[]> {
+  const data = await apiFetch<{ items: ClinicalNote[] }>(`/api/v1/clinician/notes?member_id=${encodeURIComponent(memberId)}`);
+  return data.items;
+}
+
+export async function createClinicalNote(input: {
+  member_id: string;
+  chief_complaint?: string;
+  present_illness?: string;
+  physical_exam?: string;
+  diagnosis?: string;
+}): Promise<ClinicalNote> {
+  const data = await apiFetch<{ note: ClinicalNote }>("/api/v1/clinician/notes", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return data.note;
+}
+
+export async function completeClinicalNote(id: string): Promise<ClinicalNote> {
+  const data = await apiFetch<{ note: ClinicalNote }>(`/api/v1/clinician/notes/${id}/complete`, { method: "POST" });
+  return data.note;
+}
+
+export async function getClinicalOrders(memberId: string): Promise<ClinicalOrder[]> {
+  const data = await apiFetch<{ items: ClinicalOrder[] }>(`/api/v1/clinician/orders?member_id=${encodeURIComponent(memberId)}`);
+  return data.items;
+}
+
+export async function createClinicalOrder(input: {
+  member_id: string;
+  kind: string;
+  name: string;
+  dose?: string;
+  usage?: string;
+}): Promise<ClinicalOrder> {
+  const data = await apiFetch<{ order: ClinicalOrder }>("/api/v1/clinician/orders", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return data.order;
+}
+
+export async function signClinicalOrder(id: string): Promise<ClinicalOrder> {
+  const data = await apiFetch<{ order: ClinicalOrder }>(`/api/v1/clinician/orders/${id}/sign`, { method: "POST" });
+  return data.order;
+}
+
+export async function reviewClinicalOrder(id: string, status: string, note?: string): Promise<ClinicalOrder> {
+  const data = await apiFetch<{ order: ClinicalOrder }>(`/api/v1/clinician/orders/${id}/review`, {
+    method: "POST",
+    body: JSON.stringify({ status, note }),
+  });
+  return data.order;
+}
+
+export async function getLabResults(memberId: string): Promise<LabResult[]> {
+  const data = await apiFetch<{ items: LabResult[] }>(`/api/v1/clinician/labs?member_id=${encodeURIComponent(memberId)}`);
+  return data.items;
+}
+
+export async function getMySchedules(): Promise<ScheduleItem[]> {
+  const data = await apiFetch<{ items: ScheduleItem[] }>("/api/v1/clinician/schedules");
+  return data.items;
+}
+
+export async function getConsultations(memberId: string): Promise<Consultation[]> {
+  const data = await apiFetch<{ items: Consultation[] }>(`/api/v1/clinician/consultations?member_id=${encodeURIComponent(memberId)}`);
+  return data.items;
+}
+
+export async function createConsultation(input: {
+  member_id: string;
+  target_department: string;
+  reason?: string;
+}): Promise<Consultation> {
+  const data = await apiFetch<{ consultation: Consultation }>("/api/v1/clinician/consultations", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return data.consultation;
+}
+
 export async function getTimeline(memberId?: string): Promise<TimelineEvent[]> {
   const query = memberId ? `?member_id=${encodeURIComponent(memberId)}` : "";
   const data = await apiFetch<{ timeline: TimelineEvent[] }>(`/api/v1/health/timeline${query}`);
