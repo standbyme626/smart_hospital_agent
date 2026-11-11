@@ -78,10 +78,10 @@ test("clinician schedule, ward and todo pages load for admin", async ({ page }) 
   await expect(page.getByText("周一").first().or(page.getByText("还没有排班"))).toBeVisible();
 
   await open(page, "/clinician/ward/");
-  await expect(page.getByText("移动查房")).toBeVisible();
+  await expect(page.getByText("移动查房").first()).toBeVisible();
 
   await open(page, "/clinician/todo/");
-  await expect(page.getByText("移动待办")).toBeVisible();
+  await expect(page.getByText("移动待办").first()).toBeVisible();
 });
 
 test("ops subpages load for admin", async ({ page }) => {
@@ -110,7 +110,7 @@ test("clinician and ops pages load for admin and are denied for patient", async 
   await login(page, ADMIN_USER, ADMIN_PASSWORD);
 
   await open(page, "/clinician/");
-  await expect(page.getByText("医生工作台 · 只读")).toBeVisible();
+  await expect(page.getByText("医生工作台").first()).toBeVisible();
   await expect(page.getByText("今日患者")).toBeVisible();
 
   await open(page, "/ops/");

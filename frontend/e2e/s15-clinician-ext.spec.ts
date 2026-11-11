@@ -49,7 +49,7 @@ test("文书打印：生成门诊病历打印任务并留痕", async ({ page, re
 
   const memberResponse = await request.post(API_BASE + "/api/v1/family", {
     headers: { Authorization: "Bearer " + patientToken },
-    data: { name: "E2E文书患者", relation: "self", is_self: true },
+    data: { name: "E2E文书患者", relation: "other", is_self: false },
   });
   expect(memberResponse.ok(), "创建就诊人失败：" + memberResponse.status()).toBeTruthy();
   const memberId = ((await memberResponse.json()) as { member: { id: string } }).member.id;
@@ -84,6 +84,11 @@ test("文书打印：生成门诊病历打印任务并留痕", async ({ page, re
 
   await page.getByRole("button", { name: "标记已打印" }).click();
   await expect(page.getByText(/已标记打印完成/)).toBeVisible();
+
+  // 清理：E2E 共享同一个库，家庭档案不能留（会影响 v31 的成员切换用例）
+  await request.delete(API_BASE + "/api/v1/family/" + memberId, {
+    headers: { Authorization: "Bearer " + patientToken },
+  });
 });
 
 test("诊毕与随访：页面可进入且给出随访规则", async ({ page }) => {
