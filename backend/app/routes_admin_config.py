@@ -258,7 +258,7 @@ async def config_save_draft(
         """
         INSERT INTO config_entries (kind, key, draft, updated_by, updated_at)
         VALUES ($1, $2, $3::jsonb, $4, now())
-        ON CONFLICT (kind, key) DO UPDATE
+        ON CONFLICT (tenant_id, kind, key) DO UPDATE
             SET draft=$3::jsonb, updated_by=$4, updated_at=now()
         RETURNING *
         """,

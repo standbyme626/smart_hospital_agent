@@ -11,6 +11,8 @@ import asyncpg
 import jwt
 from fastapi import HTTPException, Request
 
+from .tenancy import DEFAULT_TENANT, TENANT_HEADER, resolve_tenant, set_tenant
+
 logger = logging.getLogger(__name__)
 
 SCRYPT_N = 2**14
@@ -255,7 +257,7 @@ async def load_user(request: Request, authorization: str | None) -> dict[str, An
         raise HTTPException(status_code=503, detail="database unavailable")
     try:
         row = await db.fetchrow(
-            "SELECT id, username, role, enabled, token_version FROM users WHERE id=$1",
+            "SELECT id, username, role, enabled, token_version, tenant_id FROM users WHERE id=$1",
             subject,
         )
     except (AssertionError, OSError, asyncpg.PostgresError) as exc:
@@ -266,10 +268,16 @@ async def load_user(request: Request, authorization: str | None) -> dict[str, An
         raise HTTPException(status_code=401, detail="user disabled")
     if int(payload.get("token_version", 0)) != int(row["token_version"] or 0):
         raise HTTPException(status_code=401, detail="token revoked")
-    return {
+    user = {
         "sub": row["id"],
         "user": row["id"],
         "username": row["username"],
         "role": row["role"],
         "enabled": row["enabled"],
+        "tenant_id": row["tenant_id"] or DEFAULT_TENANT,
     }
+    # 解析本次请求的租户（管理员可用 X-Tenant 跨院区运维），写进上下文供数据层读取
+    tenant_id = await resolve_tenant(db, user, request.headers.get(TENANT_HEADER))
+    set_tenant(tenant_id)
+    user["tenant_id"] = tenant_id
+    return user

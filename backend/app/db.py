@@ -7,6 +7,7 @@ from typing import Any
 import asyncpg
 
 from .config import Settings
+from .tenancy import enforcing, tenant
 
 SCHEMA_VERSION = "2026-11-09.p0"
 
@@ -679,6 +680,154 @@ SCHEMA = [
 ]
 
 MIGRATIONS = [
+    # ---- Wave G：租户隔离用的非超级用户角色（超级用户会绕过 RLS）----
+    """
+    DO $$
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='app_tenant') THEN
+            CREATE ROLE app_tenant NOLOGIN;
+        END IF;
+    END
+    $$;
+    """,
+    "GRANT USAGE, CREATE ON SCHEMA public TO app_tenant",
+    "GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA public TO app_tenant",
+    "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_tenant",
+    # 之后由 sha 新建的表/序列自动授权（新表在启动时由 ensure_* 创建）
+    "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE ON TABLES TO app_tenant",
+    "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO app_tenant",
+    # ---- Wave G 多租户：先加列，再索引/默认值，最后开行级安全 ----
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tn_default'",
+    "ALTER TABLE family_members ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tn_default'",
+    "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tn_default'",
+    "ALTER TABLE messages ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tn_default'",
+    "ALTER TABLE reports ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tn_default'",
+    "ALTER TABLE medications ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tn_default'",
+    "ALTER TABLE followups ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tn_default'",
+    "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tn_default'",
+    "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tn_default'",
+    "ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tn_default'",
+    "ALTER TABLE clinical_orders ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tn_default'",
+    "ALTER TABLE documents ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tn_default'",
+    "ALTER TABLE config_entries ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tn_default'",
+    "ALTER TABLE config_entries DROP CONSTRAINT IF EXISTS config_entries_kind_key_key",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_config_entries_tenant_kind_key ON config_entries (tenant_id, kind, key)",
+    "ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tn_default'",
+    "ALTER TABLE review_requests ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tn_default'",
+    "ALTER TABLE previsit_forms ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tn_default'",
+    "ALTER TABLE visit_encounters ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tn_default'",
+    "ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tn_default'",
+    "ALTER TABLE visit_closures ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tn_default'",
+    "ALTER TABLE unmatched_questions ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tn_default'",
+    "ALTER TABLE feedback_tickets ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'tn_default'",
+    "CREATE INDEX IF NOT EXISTS idx_family_members_tenant ON family_members (tenant_id)",
+    "CREATE INDEX IF NOT EXISTS idx_bookings_tenant ON bookings (tenant_id)",
+    "CREATE INDEX IF NOT EXISTS idx_documents_tenant ON documents (tenant_id)",
+    "CREATE INDEX IF NOT EXISTS idx_config_entries_tenant ON config_entries (tenant_id)",
+    "CREATE INDEX IF NOT EXISTS idx_audit_log_tenant ON audit_log (tenant_id)",
+    "CREATE INDEX IF NOT EXISTS idx_clinical_notes_tenant ON clinical_notes (tenant_id)",
+    "CREATE INDEX IF NOT EXISTS idx_sessions_tenant ON sessions (tenant_id)",
+    "ALTER TABLE users ALTER COLUMN tenant_id SET DEFAULT coalesce(nullif(current_setting('app.tenant_id', true), ''), 'tn_default')",
+    "ALTER TABLE family_members ALTER COLUMN tenant_id SET DEFAULT coalesce(nullif(current_setting('app.tenant_id', true), ''), 'tn_default')",
+    "ALTER TABLE sessions ALTER COLUMN tenant_id SET DEFAULT coalesce(nullif(current_setting('app.tenant_id', true), ''), 'tn_default')",
+    "ALTER TABLE messages ALTER COLUMN tenant_id SET DEFAULT coalesce(nullif(current_setting('app.tenant_id', true), ''), 'tn_default')",
+    "ALTER TABLE reports ALTER COLUMN tenant_id SET DEFAULT coalesce(nullif(current_setting('app.tenant_id', true), ''), 'tn_default')",
+    "ALTER TABLE medications ALTER COLUMN tenant_id SET DEFAULT coalesce(nullif(current_setting('app.tenant_id', true), ''), 'tn_default')",
+    "ALTER TABLE followups ALTER COLUMN tenant_id SET DEFAULT coalesce(nullif(current_setting('app.tenant_id', true), ''), 'tn_default')",
+    "ALTER TABLE notifications ALTER COLUMN tenant_id SET DEFAULT coalesce(nullif(current_setting('app.tenant_id', true), ''), 'tn_default')",
+    "ALTER TABLE bookings ALTER COLUMN tenant_id SET DEFAULT coalesce(nullif(current_setting('app.tenant_id', true), ''), 'tn_default')",
+    "ALTER TABLE clinical_notes ALTER COLUMN tenant_id SET DEFAULT coalesce(nullif(current_setting('app.tenant_id', true), ''), 'tn_default')",
+    "ALTER TABLE clinical_orders ALTER COLUMN tenant_id SET DEFAULT coalesce(nullif(current_setting('app.tenant_id', true), ''), 'tn_default')",
+    "ALTER TABLE documents ALTER COLUMN tenant_id SET DEFAULT coalesce(nullif(current_setting('app.tenant_id', true), ''), 'tn_default')",
+    "ALTER TABLE config_entries ALTER COLUMN tenant_id SET DEFAULT coalesce(nullif(current_setting('app.tenant_id', true), ''), 'tn_default')",
+    "ALTER TABLE audit_log ALTER COLUMN tenant_id SET DEFAULT coalesce(nullif(current_setting('app.tenant_id', true), ''), 'tn_default')",
+    "ALTER TABLE review_requests ALTER COLUMN tenant_id SET DEFAULT coalesce(nullif(current_setting('app.tenant_id', true), ''), 'tn_default')",
+    "ALTER TABLE previsit_forms ALTER COLUMN tenant_id SET DEFAULT coalesce(nullif(current_setting('app.tenant_id', true), ''), 'tn_default')",
+    "ALTER TABLE visit_encounters ALTER COLUMN tenant_id SET DEFAULT coalesce(nullif(current_setting('app.tenant_id', true), ''), 'tn_default')",
+    "ALTER TABLE print_jobs ALTER COLUMN tenant_id SET DEFAULT coalesce(nullif(current_setting('app.tenant_id', true), ''), 'tn_default')",
+    "ALTER TABLE visit_closures ALTER COLUMN tenant_id SET DEFAULT coalesce(nullif(current_setting('app.tenant_id', true), ''), 'tn_default')",
+    "ALTER TABLE unmatched_questions ALTER COLUMN tenant_id SET DEFAULT coalesce(nullif(current_setting('app.tenant_id', true), ''), 'tn_default')",
+    "ALTER TABLE feedback_tickets ALTER COLUMN tenant_id SET DEFAULT coalesce(nullif(current_setting('app.tenant_id', true), ''), 'tn_default')",
+    "ALTER TABLE family_members ENABLE ROW LEVEL SECURITY",
+    "ALTER TABLE family_members FORCE ROW LEVEL SECURITY",
+    "DROP POLICY IF EXISTS tenant_iso ON family_members",
+    "CREATE POLICY tenant_iso ON family_members USING (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id)) WITH CHECK (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id))",
+    "ALTER TABLE sessions ENABLE ROW LEVEL SECURITY",
+    "ALTER TABLE sessions FORCE ROW LEVEL SECURITY",
+    "DROP POLICY IF EXISTS tenant_iso ON sessions",
+    "CREATE POLICY tenant_iso ON sessions USING (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id)) WITH CHECK (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id))",
+    "ALTER TABLE messages ENABLE ROW LEVEL SECURITY",
+    "ALTER TABLE messages FORCE ROW LEVEL SECURITY",
+    "DROP POLICY IF EXISTS tenant_iso ON messages",
+    "CREATE POLICY tenant_iso ON messages USING (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id)) WITH CHECK (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id))",
+    "ALTER TABLE reports ENABLE ROW LEVEL SECURITY",
+    "ALTER TABLE reports FORCE ROW LEVEL SECURITY",
+    "DROP POLICY IF EXISTS tenant_iso ON reports",
+    "CREATE POLICY tenant_iso ON reports USING (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id)) WITH CHECK (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id))",
+    "ALTER TABLE medications ENABLE ROW LEVEL SECURITY",
+    "ALTER TABLE medications FORCE ROW LEVEL SECURITY",
+    "DROP POLICY IF EXISTS tenant_iso ON medications",
+    "CREATE POLICY tenant_iso ON medications USING (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id)) WITH CHECK (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id))",
+    "ALTER TABLE followups ENABLE ROW LEVEL SECURITY",
+    "ALTER TABLE followups FORCE ROW LEVEL SECURITY",
+    "DROP POLICY IF EXISTS tenant_iso ON followups",
+    "CREATE POLICY tenant_iso ON followups USING (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id)) WITH CHECK (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id))",
+    "ALTER TABLE notifications ENABLE ROW LEVEL SECURITY",
+    "ALTER TABLE notifications FORCE ROW LEVEL SECURITY",
+    "DROP POLICY IF EXISTS tenant_iso ON notifications",
+    "CREATE POLICY tenant_iso ON notifications USING (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id)) WITH CHECK (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id))",
+    "ALTER TABLE bookings ENABLE ROW LEVEL SECURITY",
+    "ALTER TABLE bookings FORCE ROW LEVEL SECURITY",
+    "DROP POLICY IF EXISTS tenant_iso ON bookings",
+    "CREATE POLICY tenant_iso ON bookings USING (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id)) WITH CHECK (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id))",
+    "ALTER TABLE clinical_notes ENABLE ROW LEVEL SECURITY",
+    "ALTER TABLE clinical_notes FORCE ROW LEVEL SECURITY",
+    "DROP POLICY IF EXISTS tenant_iso ON clinical_notes",
+    "CREATE POLICY tenant_iso ON clinical_notes USING (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id)) WITH CHECK (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id))",
+    "ALTER TABLE clinical_orders ENABLE ROW LEVEL SECURITY",
+    "ALTER TABLE clinical_orders FORCE ROW LEVEL SECURITY",
+    "DROP POLICY IF EXISTS tenant_iso ON clinical_orders",
+    "CREATE POLICY tenant_iso ON clinical_orders USING (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id)) WITH CHECK (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id))",
+    "ALTER TABLE documents ENABLE ROW LEVEL SECURITY",
+    "ALTER TABLE documents FORCE ROW LEVEL SECURITY",
+    "DROP POLICY IF EXISTS tenant_iso ON documents",
+    "CREATE POLICY tenant_iso ON documents USING (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id)) WITH CHECK (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id))",
+    "ALTER TABLE config_entries ENABLE ROW LEVEL SECURITY",
+    "ALTER TABLE config_entries FORCE ROW LEVEL SECURITY",
+    "DROP POLICY IF EXISTS tenant_iso ON config_entries",
+    "CREATE POLICY tenant_iso ON config_entries USING (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id)) WITH CHECK (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id))",
+    "ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY",
+    "ALTER TABLE audit_log FORCE ROW LEVEL SECURITY",
+    "DROP POLICY IF EXISTS tenant_iso ON audit_log",
+    "CREATE POLICY tenant_iso ON audit_log USING (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id)) WITH CHECK (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id))",
+    "ALTER TABLE review_requests ENABLE ROW LEVEL SECURITY",
+    "ALTER TABLE review_requests FORCE ROW LEVEL SECURITY",
+    "DROP POLICY IF EXISTS tenant_iso ON review_requests",
+    "CREATE POLICY tenant_iso ON review_requests USING (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id)) WITH CHECK (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id))",
+    "ALTER TABLE previsit_forms ENABLE ROW LEVEL SECURITY",
+    "ALTER TABLE previsit_forms FORCE ROW LEVEL SECURITY",
+    "DROP POLICY IF EXISTS tenant_iso ON previsit_forms",
+    "CREATE POLICY tenant_iso ON previsit_forms USING (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id)) WITH CHECK (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id))",
+    "ALTER TABLE visit_encounters ENABLE ROW LEVEL SECURITY",
+    "ALTER TABLE visit_encounters FORCE ROW LEVEL SECURITY",
+    "DROP POLICY IF EXISTS tenant_iso ON visit_encounters",
+    "CREATE POLICY tenant_iso ON visit_encounters USING (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id)) WITH CHECK (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id))",
+    "ALTER TABLE print_jobs ENABLE ROW LEVEL SECURITY",
+    "ALTER TABLE print_jobs FORCE ROW LEVEL SECURITY",
+    "DROP POLICY IF EXISTS tenant_iso ON print_jobs",
+    "CREATE POLICY tenant_iso ON print_jobs USING (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id)) WITH CHECK (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id))",
+    "ALTER TABLE visit_closures ENABLE ROW LEVEL SECURITY",
+    "ALTER TABLE visit_closures FORCE ROW LEVEL SECURITY",
+    "DROP POLICY IF EXISTS tenant_iso ON visit_closures",
+    "CREATE POLICY tenant_iso ON visit_closures USING (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id)) WITH CHECK (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id))",
+    "ALTER TABLE unmatched_questions ENABLE ROW LEVEL SECURITY",
+    "ALTER TABLE unmatched_questions FORCE ROW LEVEL SECURITY",
+    "DROP POLICY IF EXISTS tenant_iso ON unmatched_questions",
+    "CREATE POLICY tenant_iso ON unmatched_questions USING (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id)) WITH CHECK (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id))",
+    "ALTER TABLE feedback_tickets ENABLE ROW LEVEL SECURITY",
+    "ALTER TABLE feedback_tickets FORCE ROW LEVEL SECURITY",
+    "DROP POLICY IF EXISTS tenant_iso ON feedback_tickets",
+    "CREATE POLICY tenant_iso ON feedback_tickets USING (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id)) WITH CHECK (tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), tenant_id))",
     "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS user_id TEXT",
     """
     UPDATE bookings b
@@ -787,22 +936,63 @@ class Database:
             async with conn.transaction():
                 yield conn
 
+    async def _scoped(self, conn: asyncpg.Connection) -> Any:
+        """每个事务：写入当前租户 + 切到非超级用户角色。
+
+        应用连接用的是超级用户（迁移/运维需要），而超级用户会绕过 RLS，
+        所以这里在事务内 SET LOCAL ROLE app_tenant，让行级安全真正生效。
+        未设置租户时策略 fail-open（脚本 / 迁移 / 备份不受影响）。
+        数据重置脚本会关闭 enforcing，以免被 RLS/权限挡住。
+        """
+        if not enforcing():
+            return
+        await conn.execute("SELECT set_config('app.tenant_id', $1, true)", tenant())
+        await conn.execute("SET LOCAL ROLE app_tenant")
+
+    async def grant_app_role(self) -> None:
+        """给租户隔离角色补齐权限（新表创建后调用一次即可）。"""
+        assert self.pool is not None
+        async with self.pool.acquire() as conn:
+            for statement in (
+                "GRANT USAGE, CREATE ON SCHEMA public TO app_tenant",
+                "GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA public TO app_tenant",
+                "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_tenant",
+            ):
+                try:
+                    await conn.execute(statement)
+                except Exception:
+                    continue
+
+    async def execute_system(self, query: str, *args: Any) -> str:
+        """系统级写入：不设租户、不切角色（建表、灌种子、迁移用）。"""
+        assert self.pool is not None
+        async with self.pool.acquire() as conn:
+            return await conn.execute(query, *args)
+
     async def fetch(self, query: str, *args: Any) -> list[asyncpg.Record]:
         assert self.pool is not None
         async with self.pool.acquire() as conn:
-            return await conn.fetch(query, *args)
+            async with conn.transaction():
+                await self._scoped(conn)
+                return await conn.fetch(query, *args)
 
     async def fetchrow(self, query: str, *args: Any) -> asyncpg.Record | None:
         assert self.pool is not None
         async with self.pool.acquire() as conn:
-            return await conn.fetchrow(query, *args)
+            async with conn.transaction():
+                await self._scoped(conn)
+                return await conn.fetchrow(query, *args)
 
     async def fetchval(self, query: str, *args: Any) -> Any:
         assert self.pool is not None
         async with self.pool.acquire() as conn:
-            return await conn.fetchval(query, *args)
+            async with conn.transaction():
+                await self._scoped(conn)
+                return await conn.fetchval(query, *args)
 
     async def execute(self, query: str, *args: Any) -> str:
         assert self.pool is not None
         async with self.pool.acquire() as conn:
-            return await conn.execute(query, *args)
+            async with conn.transaction():
+                await self._scoped(conn)
+                return await conn.execute(query, *args)

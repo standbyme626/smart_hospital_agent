@@ -189,13 +189,14 @@ DEFAULT_ENTRIES: tuple[tuple[str, str, dict[str, Any], str], ...] = (
 async def ensure_admin_schema(db: Any) -> None:
     """幂等建表 + 灌默认条目（已存在则不动，避免覆盖运营改过的配置）。"""
     for statement in ADMIN_SCHEMA:
-        await db.execute(statement)
+        await db.execute_system(statement)
+    await db.grant_app_role()
     for kind, key, value, _note in DEFAULT_ENTRIES:
-        await db.execute(
+        await db.execute_system(
             """
             INSERT INTO config_entries (kind, key, draft)
             VALUES ($1, $2, $3::jsonb)
-            ON CONFLICT (kind, key) DO NOTHING
+            ON CONFLICT (tenant_id, kind, key) DO NOTHING
             """,
             kind,
             key,

@@ -73,4 +73,5 @@ PRINT_TEMPLATES: dict[str, dict[str, str]] = {
 
 async def ensure_clinician_ext_schema(db: Any) -> None:
     for statement in CLINICIAN_EXT_SCHEMA:
-        await db.execute(statement)
+        await db.execute_system(statement)
+    await db.grant_app_role()

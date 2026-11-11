@@ -67,6 +67,7 @@ class AdminUserCreateRequest(BaseModel):
     password: str = Field(..., min_length=6, max_length=200)
     role: Literal["admin", "patient"] = "patient"
     enabled: bool = True
+    tenant_id: str | None = None
 
 
 class AdminUserUpdateRequest(BaseModel):

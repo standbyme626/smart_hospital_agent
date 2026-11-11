@@ -89,8 +89,9 @@ EXPERIMENT_STATUSES = ("draft", "running", "paused", "archived")
 async def ensure_admin_ext_schema(db: Any) -> None:
     """幂等建表；只灌「部署事实」级别的默认租户，不灌任何业务假数据。"""
     for statement in ADMIN_EXT_SCHEMA:
-        await db.execute(statement)
-    await db.execute(
+        await db.execute_system(statement)
+    await db.grant_app_role()
+    await db.execute_system(
         """
         INSERT INTO tenants (id, code, name, status, isolation, note)
         VALUES ('tn_default', 'default', '本地 OpenHIS 试点院区', 'active', 'logical',

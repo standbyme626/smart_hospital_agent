@@ -31,6 +31,7 @@ from .reports import (
     resolve_report_image,
 )
 from .reviews import approve_review, create_payment_review, reject_review, review_json
+from .tenancy import tenant
 from .schemas import (
     AccountDeleteRequest,
     AdminUserCreateRequest,
@@ -102,7 +103,7 @@ def _public_user(row: Any) -> dict[str, Any]:
     return {
         key: value
         for key, value in data.items()
-        if key in {"id", "username", "role", "enabled", "created_at", "updated_at"}
+        if key in {"id", "username", "role", "enabled", "tenant_id", "created_at", "updated_at"}
     }
 
 
@@ -170,30 +171,33 @@ def _report_json(settings: Any, row: Any) -> dict[str, Any]:
 
 async def _ensure_self_member(db: Any, user_id: str) -> dict[str, Any]:
     row = await db.fetchrow(
-        "SELECT * FROM family_members WHERE user_id=$1 AND is_self=true ORDER BY created_at LIMIT 1",
+        "SELECT * FROM family_members WHERE user_id=$1 AND is_self=true AND tenant_id=$2 ORDER BY created_at LIMIT 1",
         user_id,
+        tenant(),
     )
     if row:
         return dict(row)
     member_id = "mem_" + uuid.uuid4().hex[:10]
     row = await db.fetchrow(
         """
-        INSERT INTO family_members (id, user_id, name, relation, is_self, hospital_patient_id)
-        VALUES ($1, $2, '本人', 'self', true, $3)
+        INSERT INTO family_members (id, user_id, name, relation, is_self, hospital_patient_id, tenant_id)
+        VALUES ($1, $2, '本人', 'self', true, $3, $4)
         RETURNING *
         """,
         member_id,
         user_id,
         f"HP-{member_id}",
+        tenant(),
     )
     return dict(row) if row else {"id": member_id, "user_id": user_id, "name": "本人", "relation": "self", "is_self": True}
 
 
 async def _owned_member(db: Any, member_id: str, user_id: str) -> dict[str, Any]:
     row = await db.fetchrow(
-        "SELECT * FROM family_members WHERE id=$1 AND user_id=$2",
+        "SELECT * FROM family_members WHERE id=$1 AND user_id=$2 AND tenant_id=$3",
         member_id,
         user_id,
+        tenant(),
     )
     if not row:
         raise HTTPException(status_code=404, detail="member not found")
@@ -1064,15 +1068,16 @@ async def create_user(
     db = _state(request).db
     row = await db.fetchrow(
         """
-        INSERT INTO users (id, username, password_hash, role, enabled)
-        VALUES ($1, $1, $2, $3, $4)
+        INSERT INTO users (id, username, password_hash, role, enabled, tenant_id)
+        VALUES ($1, $1, $2, $3, $4, coalesce($5, 'tn_default'))
         ON CONFLICT (id) DO NOTHING
-        RETURNING id, username, role, enabled, created_at, updated_at
+        RETURNING id, username, role, enabled, tenant_id, created_at, updated_at
         """,
         payload.username,
         await asyncio.to_thread(hash_password, payload.password),
         payload.role,
         payload.enabled,
+        payload.tenant_id,
     )
     if not row:
         raise HTTPException(status_code=409, detail="user already exists")
@@ -1354,8 +1359,9 @@ async def list_family(
     user_id = str(user["sub"])
     await _ensure_self_member(db, user_id)
     rows = await db.fetch(
-        "SELECT * FROM family_members WHERE user_id=$1 ORDER BY is_self DESC, created_at ASC",
+        "SELECT * FROM family_members WHERE user_id=$1 AND tenant_id=$2 ORDER BY is_self DESC, created_at ASC",
         user_id,
+        tenant(),
     )
     return {"members": [_member_public(row) for row in rows]}
 
@@ -1379,11 +1385,12 @@ async def create_family_member(
         reused = await db.fetchrow(
             """
             SELECT * FROM family_members
-            WHERE user_id=$1 AND id_card_hash=$2
+            WHERE user_id=$1 AND id_card_hash=$2 AND tenant_id=$3
             LIMIT 1
             """,
             user_id,
             id_card_hash(_state(request).settings, id_card),
+            tenant(),
         )
         if reused is not None:
             return {"member": _member_public(reused), "reused": True}
@@ -1392,11 +1399,11 @@ async def create_family_member(
         """
         INSERT INTO family_members
             (id, user_id, name, relation, gender, birth_date, phone, allergies, conditions,
-             is_self, hospital_patient_id, id_card_ciphertext, id_card_hash, id_card_last4)
+             is_self, hospital_patient_id, id_card_ciphertext, id_card_hash, id_card_last4, tenant_id)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
                 CASE WHEN $12::text IS NULL THEN NULL
                      ELSE encode(pgp_sym_encrypt($12::text, $13::text), 'base64') END,
-                $14, $15)
+                $14, $15, $16)
         RETURNING *
         """,
         member_id,
@@ -1414,6 +1421,7 @@ async def create_family_member(
         key,
         id_card_hash(_state(request).settings, id_card) if id_card else None,
         id_card[-4:] if id_card else None,
+        tenant(),
     )
     return {"member": _member_public(row) if row else None}
 
@@ -1448,7 +1456,7 @@ async def update_family_member(
             id_card_last4 = CASE WHEN $11::text IS NULL THEN id_card_last4
                 ELSE $14 END,
             updated_at=now()
-        WHERE id=$1 AND user_id=$2
+        WHERE id=$1 AND user_id=$2 AND tenant_id=$15
         RETURNING *
         """,
         member_id,
@@ -1465,6 +1473,7 @@ async def update_family_member(
         key,
         id_card_hash(_state(request).settings, id_card) if id_card else None,
         id_card[-4:] if id_card else None,
+        tenant(),
     )
     return {"member": _member_public(row) if row else None}
 
@@ -1479,7 +1488,7 @@ async def delete_family_member(
     db = state.db
     user_id = str(user["sub"])
     row = await db.fetchrow(
-        "SELECT is_self FROM family_members WHERE id=$1 AND user_id=$2", member_id, user_id
+        "SELECT is_self FROM family_members WHERE id=$1 AND user_id=$2 AND tenant_id=$3", member_id, user_id, tenant()
     )
     if not row:
         raise HTTPException(status_code=404, detail="member not found")
@@ -1588,7 +1597,7 @@ async def delete_family_member(
                 member_id,
             )
             await conn.execute(
-                "DELETE FROM family_members WHERE id=$1 AND user_id=$2", member_id, user_id
+                "DELETE FROM family_members WHERE id=$1 AND user_id=$2 AND tenant_id=$3", member_id, user_id, tenant()
             )
     except Exception as exc:
         logger.exception("family delete failed for member %s", member_id)

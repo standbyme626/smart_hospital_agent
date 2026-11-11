@@ -60,6 +60,10 @@ APP_TABLES = (
 
 
 async def _reset(dsn: str) -> None:
+    from app.tenancy import set_enforce
+
+    # 数据重置需要全库权限：关掉租户隔离（应用进程不受影响）
+    set_enforce(False)
     database = urlsplit(dsn).path.lstrip("/")
     if not database.endswith("_e2e"):
         raise SystemExit(f"refusing to reset non-E2E database: {database!r}")

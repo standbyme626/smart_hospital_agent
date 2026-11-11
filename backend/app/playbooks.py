@@ -51,7 +51,7 @@ PLAYBOOKS: tuple[Playbook, ...] = (
     Playbook("INT-03", "强制不一致产生 finding", "集成", "ready", "/api/v1/ops/reconciliation/run", "backend/tests/test_v34_playbooks_exec.py", "主动对账把 HIS 差异镜像进平台 findings，重复对账幂等"),
     Playbook("INT-04", "权限越界 403 / 未登录 401", "集成", "ready", "/api/health", "backend/tests/test_p0_security.py"),
     Playbook("INT-05", "审计完整（人/时间/内容）", "集成", "ready", "/api/v1/admin/audit", "backend/tests/test_v34_playbooks_exec.py", "打印/诊毕/接诊/登录四类动作均带 actor + request_id"),
-    Playbook("INT-06", "租户数据隔离", "集成", "blocked", "-", "-", "租户表与路由已建，隔离执行未接"),
+    Playbook("INT-06", "租户数据隔离", "集成", "ready", "/api/v1/admin/tenants", "backend/tests/test_tenancy.py", "tenant_id + 行级安全；跨院区 404；演练脚本 scripts/tenant_isolation_drill.py"),
 )
 
 BY_ID = {pb.pid: pb for pb in PLAYBOOKS}
