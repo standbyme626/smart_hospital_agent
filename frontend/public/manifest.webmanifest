@@ -1,0 +1,14 @@
+{
+  "name": "大医 · 有证据的就医助手",
+  "short_name": "大医",
+  "description": "分诊、报告解读、用药检查、挂号支付与健康档案",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#F5F8F6",
+  "theme_color": "#0E9384",
+  "lang": "zh-CN",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

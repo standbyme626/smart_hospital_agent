@@ -190,6 +190,24 @@ export default function HomePage() {
           </div>
         </section>
 
+        <div className="flex flex-wrap gap-2">
+          {[
+            { href: "/pickup/", label: "取药进度" },
+            { href: "/insurance/", label: "医保结算" },
+            { href: "/queue/", label: "排队叫号" },
+            { href: "/support/", label: "客服反馈" },
+            { href: "/consent/", label: "家庭授权" },
+          ].map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="rounded-full bg-white px-3 py-1.5 text-[12px] text-muted ring-1 ring-line hover:text-primary"
+            >
+              {item.label}
+            </Link>
+          ))}
+        </div>
+
         <div className="grid gap-4 lg:grid-cols-2">
           <section className="card p-5">
             <div className="flex items-center justify-between">

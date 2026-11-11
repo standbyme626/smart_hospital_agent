@@ -617,6 +617,95 @@ export async function getDirectoryDoctors(department?: string): Promise<Director
   return data.doctors;
 }
 
+// ------------------------------------------------------ wave B patient side
+export type DispensingItem = {
+  id: string;
+  appointment_id?: string | null;
+  status: string;
+  window?: string | null;
+  ready_at?: string | null;
+  created_at: string;
+};
+
+export async function getDispensing(): Promise<DispensingItem[]> {
+  const data = await apiFetch<{ items: DispensingItem[] }>("/api/v1/dispensing");
+  return data.items;
+}
+
+export type SettlementItem = {
+  id: string;
+  total: number | string;
+  insurance: number | string;
+  account: number | string;
+  self_pay: number | string;
+  status: string;
+  settled_at: string;
+};
+
+export async function getSettlements(): Promise<{ items: SettlementItem[]; source: string }> {
+  return apiFetch<{ items: SettlementItem[]; source: string }>("/api/v1/insurance/settlements");
+}
+
+export type QueueToday = {
+  mine: { ticket_no: string; department?: string | null; status: string; called_at?: string | null } | null;
+  current_called: { ticket_no: string; department?: string | null; called_at?: string | null } | null;
+  waiting_ahead: number;
+};
+
+export async function getQueueToday(): Promise<QueueToday> {
+  return apiFetch<QueueToday>("/api/v1/queue/today");
+}
+
+export type FeedbackTicket = {
+  id: string;
+  category: string;
+  content: string;
+  status: string;
+  reply?: string | null;
+  created_at: string;
+};
+
+export async function createFeedback(input: { category: string; content: string }): Promise<FeedbackTicket> {
+  const data = await apiFetch<{ ticket: FeedbackTicket }>("/api/v1/feedback", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return data.ticket;
+}
+
+export async function getFeedback(): Promise<FeedbackTicket[]> {
+  const data = await apiFetch<{ items: FeedbackTicket[] }>("/api/v1/feedback");
+  return data.items;
+}
+
+export type ConsentScopeItem = {
+  id: string;
+  member_id: string;
+  name?: string | null;
+  relation?: string | null;
+  can_view: boolean;
+  can_act: boolean;
+  version: string;
+  updated_at: string;
+};
+
+export async function getConsentScopes(): Promise<ConsentScopeItem[]> {
+  const data = await apiFetch<{ items: ConsentScopeItem[] }>("/api/v1/consent/scopes");
+  return data.items;
+}
+
+export async function saveConsentScope(input: {
+  member_id: string;
+  can_view: boolean;
+  can_act: boolean;
+}): Promise<ConsentScopeItem> {
+  const data = await apiFetch<{ scope: ConsentScopeItem }>("/api/v1/consent/scopes", {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+  return data.scope;
+}
+
 export async function getTimeline(memberId?: string): Promise<TimelineEvent[]> {
   const query = memberId ? `?member_id=${encodeURIComponent(memberId)}` : "";
   const data = await apiFetch<{ timeline: TimelineEvent[] }>(`/api/v1/health/timeline${query}`);

@@ -56,6 +56,20 @@ test("previsit submits and appears in history", async ({ page }) => {
   await expect(page.getByText(complaint).first()).toBeVisible();
 });
 
+test("support feedback and consent pages work for patient", async ({ page }) => {
+  await login(page, PATIENT_USER, PATIENT_PASSWORD);
+
+  await open(page, "/support/");
+  await expect(page.getByRole("heading", { name: "常见问题" })).toBeVisible();
+  await page.getByPlaceholder("请描述发生了什么、时间与地点…").fill("E2E 反馈：排队时间过长 " + Date.now());
+  await page.getByRole("button", { name: "提交", exact: true }).click();
+  await expect(page.getByText("已提交，24 小时内受理")).toBeVisible({ timeout: 20_000 });
+
+  await open(page, "/consent/");
+  await expect(page.getByText("谁可以查看资料、谁可以代办")).toBeVisible();
+  await expect(page.getByText("查看：能否读取成员的就诊、报告与用药")).toBeVisible();
+});
+
 test("clinician and ops pages load for admin and are denied for patient", async ({ page }) => {
   await login(page, ADMIN_USER, ADMIN_PASSWORD);
 
