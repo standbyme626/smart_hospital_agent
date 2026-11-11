@@ -142,8 +142,38 @@ test("生成 README 界面截图", async ({ browser, request }) => {
 
   await request.post(API_BASE + "/api/v1/feedback", {
     headers: auth(patientToken),
-    data: { category: "服务建议", content: "候诊区座位偏少，建议增加座椅与饮水点。" },
+    data: { category: "排队等候", content: "候诊区座位偏少，建议增加座椅与饮水点。" },
   });
+
+  // 通知走真实接口产生：随访安排会写入站内信（短信 / 微信通道未接）
+  const dueDays = (days: number) => {
+    const date = new Date();
+    date.setDate(date.getDate() + days);
+    return date.toLocaleDateString("sv-SE");
+  };
+  for (const seed of [
+    { title: "血压复测提醒", days: 1, notes: "早晚各测一次，记录后可上传到健康档案" },
+    { title: "心电图复查预约", days: 3, notes: "空腹前往心功能室，携带上次报告" },
+    { title: "用药依从性回访", days: 7, notes: "确认阿司匹林与他汀是否规律服用" },
+  ]) {
+    await request.post(API_BASE + "/api/v1/followups", {
+      headers: auth(patientToken),
+      data: { title: seed.title, member_id: memberId, due_date: dueDays(seed.days), notes: seed.notes },
+    });
+  }
+
+  // 读掉最早一条，截图里能同时看到「已读 / 未读」
+  const inbox = await request.get(API_BASE + "/api/v1/notifications", { headers: auth(patientToken) });
+  if (inbox.ok()) {
+    const body = (await inbox.json()) as { notifications?: Array<{ id: number }> };
+    const rows = body.notifications || [];
+    const oldest = rows[rows.length - 1];
+    if (oldest) {
+      await request.post(API_BASE + "/api/v1/notifications/" + oldest.id + "/read", {
+        headers: auth(patientToken),
+      });
+    }
+  }
 
   // ---------------- 患者端 ----------------
   const patient = await newPage(browser, patientToken);

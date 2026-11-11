@@ -59,7 +59,7 @@ export default function OpsNotificationsPage() {
                 <span className="badge">{item.channel}</span>
                 <span className={item.status === "sent" ? "badge bg-emerald-50 text-emerald-700" : "badge bg-amber-50 text-amber-700"}>{item.status === "sent" ? "已发送" : "失败"}</span>
                 <span className="text-[11px] text-muted">尝试 {item.attempts} 次</span>
-                {item.error ? <span className="truncate text-[11px] text-rose-600">{item.error}</span> : null}
+                {item.error ? <span className="min-w-0 flex-1 truncate text-[11px] text-rose-600">{item.error}</span> : null}
                 <span className="ml-auto text-[11px] text-muted">{item.created_at?.slice(0, 16).replace("T", " ")}</span>
                 {item.status !== "sent" ? (
                   <button onClick={() => retry(item.id)} disabled={busy === item.id} className="rounded-full bg-primary px-3 py-1 text-[11px] font-medium text-white disabled:opacity-50">重试</button>

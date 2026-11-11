@@ -56,6 +56,19 @@ APP_TABLES = (
     "his_prescription_map",
     "sync_outbox",
     "reconciliation_finding",
+    # —— Wave B/C/D/E 新增业务表：不清理会串到下一次 E2E 与截图里 ——
+    "notifications",
+    "clinical_notes",
+    "clinical_orders",
+    "previsit_forms",
+    "feedback_tickets",
+    "visit_encounters",
+    "print_jobs",
+    "visit_closures",
+    "queue_tickets",
+    "dispensing_progress",
+    "insurance_settlements",
+    "consent_scopes",
 )
 
 

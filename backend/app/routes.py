@@ -8,7 +8,7 @@ import logging
 import re
 import uuid
 import zipfile
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -2223,6 +2223,15 @@ async def create_followup(
     user_id = str(user["sub"])
     member = await _member_row(db, payload.member_id, user_id)
     followup_id = "fu_" + uuid.uuid4().hex[:10]
+
+    # due_date 是 DATE 列：asyncpg 需要 date 对象，直接传字符串会抛 500
+    due_date: date | None = None
+    if payload.due_date:
+        try:
+            due_date = date.fromisoformat(payload.due_date)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="due_date 需要 YYYY-MM-DD 格式") from None
+
     row = await db.fetchrow(
         """
         INSERT INTO followups (id, user_id, member_id, title, due_date, notes)
@@ -2233,7 +2242,7 @@ async def create_followup(
         user_id,
         member["id"],
         payload.title,
-        payload.due_date,
+        due_date,
         payload.notes,
     )
     await _add_event(db, user_id, member["id"], "followup", f"随访 · {payload.title}", {"followup_id": followup_id})

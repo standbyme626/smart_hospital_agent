@@ -71,11 +71,16 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base", default="http://127.0.0.1:8020")
     parser.add_argument("--strict", action="store_true")
+    parser.add_argument("--admin-user", default=None, help="默认取 .env 里的 ADMIN_USER")
+    parser.add_argument("--admin-password", default=None, help="默认取 .env 里的 ADMIN_PASSWORD")
     args = parser.parse_args()
 
     env = load_env()
     api = Api(args.base)
-    admin = api.login(env.get("ADMIN_USER", "admin"), env.get("ADMIN_PASSWORD", ""))
+    admin = api.login(
+        args.admin_user or env.get("ADMIN_USER", "admin"),
+        args.admin_password or env.get("ADMIN_PASSWORD", ""),
+    )
     results: list[tuple[str, bool, str]] = []
 
     def check(name: str, ok: bool, detail: str) -> None:
