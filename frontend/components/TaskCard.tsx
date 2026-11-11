@@ -17,10 +17,11 @@ export function TaskCard({
   icon: LucideIcon;
   title: string;
   description: string;
-  tone?: "primary" | "amber" | "rose" | "sky" | "violet" | "emerald";
+  tone?: "primary" | "primarySolid" | "amber" | "rose" | "sky" | "violet" | "emerald";
 }) {
   const tones = {
     primary: "bg-primary-soft text-primary",
+    primarySolid: "bg-primary text-white",
     amber: "bg-amber-50 text-amber-600",
     rose: "bg-rose-50 text-rose-500",
     sky: "bg-sky-50 text-sky-600",

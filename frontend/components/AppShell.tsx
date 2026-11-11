@@ -17,6 +17,7 @@ import {
   Pill,
   Settings,
   ShieldCheck,
+  SlidersHorizontal,
   Stethoscope,
   UserRound,
 } from "lucide-react";
@@ -37,6 +38,7 @@ const navItems = [
 
 const mobileNav = [
   { href: "/", label: "首页", icon: Home },
+  { href: "/messages", label: "消息", icon: Bell },
   { href: "/consult", label: "问诊", icon: Stethoscope },
   { href: "/services", label: "服务", icon: CalendarClock },
   { href: "/health", label: "健康", icon: HeartPulse },
@@ -109,10 +111,16 @@ export function AppShell({
 
         <div className="mt-auto space-y-1">
           {user.role === "admin" ? (
-            <Link href="/admin" className="flex min-h-11 items-center gap-3 rounded-2xl px-3 text-sm text-muted hover:bg-canvas hover:text-ink">
-              <ClipboardList size={18} />
-              运营后台
-            </Link>
+            <>
+              <Link href="/ops" className="flex min-h-11 items-center gap-3 rounded-2xl px-3 text-sm text-muted hover:bg-canvas hover:text-ink">
+                <ClipboardList size={18} />
+                运营台
+              </Link>
+              <Link href="/platform" className="flex min-h-11 items-center gap-3 rounded-2xl px-3 text-sm text-muted hover:bg-canvas hover:text-ink">
+                <SlidersHorizontal size={18} />
+                平台管理
+              </Link>
+            </>
           ) : null}
           <Link href="/profile" className="flex min-h-11 items-center gap-3 rounded-2xl px-3 text-sm text-muted hover:bg-canvas hover:text-ink">
             <Settings size={18} />
@@ -144,6 +152,7 @@ export function AppShell({
               </span>
               <span className="text-sm font-semibold">大医</span>
             </Link>
+            {title ? <h1 className="min-w-0 flex-1 truncate text-[15px] font-semibold text-ink lg:hidden">{title}</h1> : null}
             <div className="hidden min-w-0 flex-1 lg:block">
               {title ? <h1 className="truncate text-[17px] font-semibold text-ink">{title}</h1> : null}
               {subtitle ? <p className="truncate text-[12px] text-muted">{subtitle}</p> : null}
@@ -166,7 +175,7 @@ export function AppShell({
       </div>
 
       <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-line bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
-        <div className="grid grid-cols-5">
+        <div className="grid grid-cols-6">
           {mobileNav.map((item) => {
             const active = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
             return (
@@ -174,7 +183,7 @@ export function AppShell({
                 key={item.href}
                 href={item.href}
                 className={clsx(
-                  "flex min-h-14 flex-col items-center justify-center gap-1 text-[11px]",
+                  "flex min-h-14 flex-col items-center justify-center gap-1 text-[10.5px]",
                   active ? "text-primary" : "text-muted",
                 )}
               >

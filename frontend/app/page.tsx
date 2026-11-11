@@ -181,12 +181,12 @@ export default function HomePage() {
             <span className="text-[11px] text-muted">选一个入口，少走弯路</span>
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <TaskCard href="/consult/" icon={Stethoscope} title="AI 诊室" description="描述症状，得到分诊与就医方向" />
-            <TaskCard href="/reports/" icon={FileText} title="报告解读" description="上传化验/检查报告，看懂异常指标" tone="amber" />
-            <TaskCard href="/meds/" icon={Pill} title="药管家" description="用药清单与相互作用检查" tone="emerald" />
-            <TaskCard href="/previsit/" icon={ClipboardList} title="就诊准备" description="提前写清主诉与用药，医生接诊直接看" tone="amber" />
-            <TaskCard href="/services/" icon={CalendarClock} title="挂号服务" description="选科室、医生与号源，支付由管理员审核" tone="sky" />
-            <TaskCard href="/health/" icon={HeartPulse} title="健康档案" description="报告、用药、就诊与随访时间线" tone="violet" />
+            <TaskCard href="/consult/" icon={Stethoscope} title="AI 诊室" description="描述症状，得到分诊与就医方向" tone="primarySolid" />
+            <TaskCard href="/reports/" icon={FileText} title="报告解读" description="上传化验/检查报告，看懂异常指标" />
+            <TaskCard href="/meds/" icon={Pill} title="药管家" description="用药清单与相互作用检查" />
+            <TaskCard href="/previsit/" icon={ClipboardList} title="就诊准备" description="提前写清主诉与用药，医生接诊直接看" />
+            <TaskCard href="/services/" icon={CalendarClock} title="挂号服务" description="选科室、医生与号源，支付由管理员审核" />
+            <TaskCard href="/health/" icon={HeartPulse} title="健康档案" description="报告、用药、就诊与随访时间线" />
           </div>
         </section>
 

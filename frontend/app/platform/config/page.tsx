@@ -227,9 +227,6 @@ export default function PlatformConfigPage() {
     <main className="mx-auto w-full max-w-6xl px-4 py-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <Link href="/platform" className="inline-flex items-center gap-1 text-[13px] text-muted">
-            <ArrowLeft size={14} /> 返回平台
-          </Link>
           <h1 className="text-[20px] font-semibold text-ink">配置管理</h1>
           <SourceBadge live />
         </div>
