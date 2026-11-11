@@ -75,10 +75,13 @@ export default function PlatformPage() {
           </span>
           <div className="min-w-0">
             <p className="text-[15px] font-semibold text-ink">平台管理 · 只读</p>
-            <p className="text-[11px] text-muted">运行状态、开关、能力矩阵（配置变更与发布在后续切片）</p>
+            <p className="text-[11px] text-muted">运行状态、开关、能力矩阵；规则 / 模板 / Prompt 的修改在「配置管理」</p>
           </div>
           <div className="ml-auto flex items-center gap-2">
             <SourceBadge live />
+            <Link href="/platform/config/" className="inline-flex min-h-9 items-center gap-1 rounded-full bg-primary px-3 text-[12px] font-medium text-white">
+              <SlidersHorizontal size={13} /> 配置管理
+            </Link>
             <Link href="/" className="inline-flex min-h-9 items-center gap-1 rounded-full bg-white px-3 text-[12px] text-muted ring-1 ring-line hover:text-primary">
               <ArrowLeft size={13} /> 患者端
             </Link>
