@@ -188,6 +188,12 @@
   </tr>
 </table>
 
+<p align="center">
+  <img src="docs/screenshots/09-clinician-followup.png" width="900" alt="诊毕与随访：诊毕生成随访计划">
+</p>
+
+<p align="center"><sub>诊毕与随访：诊毕把病历置只读，同时给患者生成随访计划（患者端「今日待办」可见）</sub></p>
+
 ### 3.3 运营端：对账、支付异常、审计与接管
 
 <table align="center">
