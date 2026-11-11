@@ -158,6 +158,9 @@ export default function LoginPage() {
           <p className="mt-5 text-center text-[11px] leading-5 text-muted">
             登录会记录你同意的协议版本；演示账号请向管理员获取。
           </p>
+          <p className="mt-3 text-center text-[11px]">
+            <Link href="/entries/" className="font-medium text-primary hover:underline">其他入口：医生工作台 / 运营台 / 平台管理 →</Link>
+          </p>
         </div>
       </div>
     </div>
