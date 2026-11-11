@@ -302,7 +302,7 @@ def test_audit_aggregate(client: TestClient, admin: dict[str, str]) -> None:
 def test_acceptance_board(client: TestClient, admin: dict[str, str]) -> None:
     payload = client.get("/api/v1/admin/acceptance", headers=admin).json()
     assert len(payload["playbooks"]) == 25
-    assert payload["playbook_summary"] == {"ready": 22, "partial": 2, "blocked": 1}
+    assert payload["playbook_summary"] == {"ready": 23, "partial": 1, "blocked": 1}
     assert payload["checks"], "自检项不能为空"
     assert payload["summary"]["total"] == len(payload["checks"])
     names = {check["name"] for check in payload["checks"]}

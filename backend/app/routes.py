@@ -1373,6 +1373,21 @@ async def create_family_member(
         await db.execute("UPDATE family_members SET is_self=false WHERE user_id=$1", user_id)
     id_card = (payload.id_card or "").strip() or None
     key = id_card_key(_state(request).settings)
+
+    # 同一账号下同一身份证只保留一份档案（剧本 P-01）：重复提交直接复用，不新增。
+    if id_card:
+        reused = await db.fetchrow(
+            """
+            SELECT * FROM family_members
+            WHERE user_id=$1 AND id_card_hash=$2
+            LIMIT 1
+            """,
+            user_id,
+            id_card_hash(_state(request).settings, id_card),
+        )
+        if reused is not None:
+            return {"member": _member_public(reused), "reused": True}
+
     row = await db.fetchrow(
         """
         INSERT INTO family_members

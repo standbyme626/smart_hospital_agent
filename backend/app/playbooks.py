@@ -24,7 +24,7 @@ class Playbook:
 
 PLAYBOOKS: tuple[Playbook, ...] = (
     # ---- 患者端 P-01 ~ P-08
-    Playbook("P-01", "新患者建档", "患者", "partial", "/api/v1/family", "backend/tests/test_v31_family.py", "真实 HIS 建档走适配器；当前为平台侧家庭成员"),
+    Playbook("P-01", "新患者建档", "患者", "ready", "/api/v1/family", "backend/tests/test_v34_playbooks_exec.py", "同身份证复用档案（返回 reused=true）；HIS 建档由适配器在挂号时完成"),
     Playbook("P-02", "查询号源", "患者", "ready", "/api/v1/booking/schedules", "backend/tests/test_v31_booking.py"),
     Playbook("P-03", "挂号", "患者", "ready", "/api/v1/booking/orders", "backend/tests/test_booking_v2.py"),
     Playbook("P-04", "缴费", "患者", "ready", "/api/v1/booking/orders/{order_id}/pay", "backend/tests/test_booking_v2.py"),

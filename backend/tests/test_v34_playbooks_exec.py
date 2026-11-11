@@ -155,6 +155,30 @@ def cleanup_playbook_rows():
             continue
 
 
+# ---------------------------------------------------------------- P-01 建档复用
+def test_p01_same_id_card_reuses_member(client: TestClient, patient: dict[str, str]) -> None:
+    id_card = "4401011992030" + str(int(uuid.uuid4().int % 10000)).zfill(4)
+    first = client.post(
+        "/api/v1/family",
+        json={"name": "建档复用A", "relation": "self", "id_card": id_card},
+        headers=patient,
+    )
+    assert first.status_code == 200, first.text
+    assert first.json().get("reused") is not True, "首次建档不应标记复用"
+
+    second = client.post(
+        "/api/v1/family",
+        json={"name": "建档复用B", "relation": "other", "id_card": id_card},
+        headers=patient,
+    )
+    assert second.status_code == 200, second.text
+    assert second.json()["reused"] is True, "同一身份证再次建档必须复用"
+    assert second.json()["member"]["id"] == first.json()["member"]["id"]
+
+    rows = _sql("SELECT count(*) AS c FROM family_members WHERE id_card_last4 = $1", id_card[-4:])
+    assert rows[0]["c"] == 1, "库里不能出现两份同身份证档案"
+
+
 # ---------------------------------------------------------------- INT-01 幂等重放
 def test_int01_replay_ten_times_creates_one_order(client: TestClient, patient: dict[str, str], member: str) -> None:
     payload = {"lock_id": "lock_replay", "member_id": member}
