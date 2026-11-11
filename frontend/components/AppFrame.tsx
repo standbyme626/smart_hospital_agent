@@ -51,6 +51,16 @@ export function AppFrame({ end, title, subtitle, actions, children, hideAgent = 
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  useEffect(() => {
+    const open = siderOpen || agentOpen;
+    if (!open) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [siderOpen, agentOpen]);
+
   const groups = NAV[end];
 
   return (
@@ -63,6 +73,7 @@ export function AppFrame({ end, title, subtitle, actions, children, hideAgent = 
           className="icon-btn lg:hidden"
           aria-label="打开导航"
           aria-expanded={siderOpen}
+          aria-controls="app-sider"
           onClick={() => setSiderOpen((v) => !v)}
         >
           {siderOpen ? <X size={18} /> : <Menu size={18} />}
@@ -114,7 +125,7 @@ export function AppFrame({ end, title, subtitle, actions, children, hideAgent = 
       </header>
 
       <div className="app-grid">
-        <aside className={"app-sider" + (siderOpen ? " open" : "")} aria-label="主导航">
+        <aside id="app-sider" className={"app-sider" + (siderOpen ? " open" : "")} aria-label="主导航">
           {groups.map((group) => (
             <nav key={group.title} aria-label={group.title}>
               <p className="sider-title">{group.title}</p>
