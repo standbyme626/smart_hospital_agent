@@ -63,6 +63,6 @@ def test_board_summary(capsys: pytest.CaptureFixture[str]) -> None:
     lines += ["-" * 60, f"ready {counts['ready']} · partial {counts['partial']} · blocked {counts['blocked']} · 合计 {len(PLAYBOOKS)}", ""]
     print("\n".join(lines))
 
-    assert counts == {"ready": 10, "partial": 10, "blocked": 5}, (
+    assert counts == {"ready": 11, "partial": 10, "blocked": 4}, (
         f"看板统计变了：{counts}；如为有意推进，请同步更新断言与台账"
     )

@@ -39,7 +39,7 @@ PLAYBOOKS: tuple[Playbook, ...] = (
     Playbook("D-04", "接诊状态同步", "医生", "blocked", "-", "-", "d-note 之外的接诊动作未实现"),
     Playbook("D-05", "诊断保存带医生 ID", "医生", "partial", "/api/v1/clinician/drafts", "backend/tests/test_clinician.py", "草稿已可存；HIS 落库待签名门禁"),
     Playbook("D-06", "医嘱 / 处方签名门禁", "医生", "partial", "/api/v1/clinician/drafts/{draft_id}/sign", "backend/tests/test_clinician.py", "签名默认关，缺 HIS 账号；422/不落库断言待补"),
-    Playbook("D-07", "诊毕后只读", "医生", "blocked", "-", "-", "d-follow 未实现"),
+    Playbook("D-07", "诊毕后只读", "医生", "ready", "/api/v1/clinician/notes/{note_id}/close-visit", "backend/tests/test_clinician_ext.py"),
     Playbook("D-08", "跨科 / 跨患者 404", "医生", "ready", "/api/v1/clinician/patients/", "backend/tests/test_clinician.py"),
     # ---- 双端闭环 E2E-01 ~ E2E-03
     Playbook("E2E-01", "常规门诊全链路", "双端", "blocked", "-", "frontend/e2e/v31.spec.ts", "缺预问诊→医生接诊→处方签名段"),

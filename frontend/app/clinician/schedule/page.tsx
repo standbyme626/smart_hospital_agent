@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, CalendarDays } from "lucide-react";
 import { StateBlock } from "@/components/ui";
+import { ClinicianNav } from "@/components/ClinicianNav";
 import { getMySchedules, type ScheduleItem } from "@/lib/api";
 
 export default function ClinicianSchedulePage() {
@@ -41,6 +42,7 @@ export default function ClinicianSchedulePage() {
         </div>
       </header>
       <main className="mx-auto max-w-4xl space-y-4 px-4 py-5">
+        <ClinicianNav />
         {denied ? <div className="card p-3"><StateBlock kind="denied" title="当前账号无医生权限" /></div> : loading ? (
           <div className="card h-32 animate-pulse" />
         ) : failed ? (

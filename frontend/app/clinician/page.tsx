@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Activity, ArrowLeft, CalendarCheck2, ClipboardList, FileText, PenLine, Pill, ShieldAlert, Stethoscope } from "lucide-react";
 import { ClinicalWorkspace } from "@/components/ClinicalWorkspace";
 import { OfflineBanner, SourceBadge, StateBlock } from "@/components/ui";
+import { ClinicianNav } from "@/components/ClinicianNav";
 import {
   createClinicianDraft,
   getClinicianConfig,
@@ -125,13 +126,10 @@ export default function ClinicianPage() {
             <Stethoscope size={17} />
           </span>
           <div className="min-w-0">
-            <p className="text-[15px] font-semibold text-ink">医生工作台 · 只读</p>
-            <p className="text-[11px] text-muted">今日就诊队列与患者 360 · 写操作与签名尚未开放（S9）</p>
+            <p className="text-[15px] font-semibold text-ink">医生工作台</p>
+            <p className="text-[11px] text-muted">今日队列 / 患者 360 / 病历 / 医嘱 / 检验 / 会诊；文书打印、诊毕随访、审方在顶部导航</p>
           </div>
           <div className="ml-auto flex items-center gap-2">
-            <Link href="/clinician/schedule/" className="rounded-full bg-white px-3 py-1 text-[11px] text-muted ring-1 ring-line hover:text-primary">我的排班</Link>
-            <Link href="/clinician/ward/" className="rounded-full bg-white px-3 py-1 text-[11px] text-muted ring-1 ring-line hover:text-primary">移动查房</Link>
-            <Link href="/clinician/todo/" className="rounded-full bg-white px-3 py-1 text-[11px] text-muted ring-1 ring-line hover:text-primary">待办</Link>
             <SourceBadge live />
             <Link href="/" className="inline-flex min-h-9 items-center gap-1 rounded-full bg-white px-3 text-[12px] text-muted ring-1 ring-line hover:text-primary">
               <ArrowLeft size={13} /> 患者端
@@ -141,6 +139,7 @@ export default function ClinicianPage() {
       </header>
 
       <main className="mx-auto max-w-6xl space-y-4 px-4 py-5">
+        <ClinicianNav />
         <OfflineBanner />
 
         {denied ? (

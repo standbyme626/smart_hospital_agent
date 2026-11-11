@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, BedDouble } from "lucide-react";
 import { StateBlock } from "@/components/ui";
+import { ClinicianNav } from "@/components/ClinicianNav";
 import { getClinicianQueue, type ClinicianQueueItem } from "@/lib/api";
 
 export default function ClinicianWardPage() {
@@ -37,6 +38,7 @@ export default function ClinicianWardPage() {
         </div>
       </header>
       <main className="mx-auto max-w-md space-y-3 px-4 py-4">
+        <ClinicianNav />
         {loading ? <div className="card h-24 animate-pulse" /> : failed ? (
           <div className="card p-3"><StateBlock kind="error" onRetry={load} /></div>
         ) : items.length === 0 ? (
