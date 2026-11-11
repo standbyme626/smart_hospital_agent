@@ -119,10 +119,22 @@ def _sse(event: dict[str, Any]) -> str:
 
 
 async def _mcp(state: Any, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-    result = await state.mcp.call_tool(name, arguments)
-    if result["is_error"]:
-        raise HTTPException(status_code=502, detail=result["text"])
-    return result["data"] or {}
+    """调用医院系统 MCP。
+
+    错误一律**脱敏**后返回：只给错误码 + 中文提示 + 是否可重试，不回显上游原文
+    （上游报错可能带 SQL、路径、凭据片段）。
+    """
+    try:
+        result = await state.mcp.call_tool(name, arguments)
+    except (TimeoutError, asyncio.TimeoutError):
+        raise HTTPException(status_code=504, detail="HIS_TIMEOUT：医院系统响应超时，可重试") from None
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=502, detail="HIS_UNAVAILABLE：医院系统暂时不可用，可重试") from None
+    if result.get("is_error"):
+        raise HTTPException(status_code=502, detail="HIS_ERROR：医院系统返回错误，可重试") from None
+    return result.get("data") or {}
 
 
 
@@ -744,16 +756,20 @@ async def booking_order(
         {"lock_id": payload.lock_id, "patient_id": hospital_patient_id},
         idempotency_key=idempotency_key,
     )
-    if result["is_error"]:
+    if result.get("is_error"):
         raise HTTPException(status_code=502, detail=result["text"])
-    data = result["data"] or {}
-    await state.db.execute(
+    data = result.get("data") or {}
+
+    # 幂等重放：同一 lock 重复下单只保留第一条投影（HIS 侧靠 idempotency_key 去重，
+    # 平台侧靠唯一索引 + ON CONFLICT，避免并发/重放时 500）。
+    inserted = await state.db.fetchrow(
         """
         INSERT INTO bookings
             (id, session_id, patient_id, user_id, department, slot_id, order_id, status,
              payment_status, amount, idempotency_key, member_id, hospital_patient_id, detail)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb)
-        ON CONFLICT (id) DO NOTHING
+        ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
+        RETURNING id
         """,
         data.get("order_id"),
         user_id,
@@ -770,6 +786,26 @@ async def booking_order(
         hospital_patient_id,
         json.dumps(data, ensure_ascii=False),
     )
+    if inserted is None:
+        existing = await state.db.fetchrow(
+            "SELECT order_id, slot_id, status, payment_status, amount, detail FROM bookings WHERE idempotency_key=$1",
+            idempotency_key,
+        )
+        if existing is not None:
+            stored = _row_json(dict(existing)).get("detail") or {}
+            if not isinstance(stored, dict):
+                stored = {}
+            return {
+                "order": {
+                    **stored,
+                    "order_id": existing["order_id"],
+                    "slot_id": existing["slot_id"],
+                    "status": existing["status"],
+                    "payment_status": existing["payment_status"],
+                    "amount": float(existing["amount"] or 0),
+                },
+                "replayed": True,
+            }
     return {"order": data}
 
 

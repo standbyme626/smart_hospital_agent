@@ -32,6 +32,11 @@ class CloseVisitRequest(BaseModel):
     followup_days: int = 7
 
 
+class ReceiveRequest(BaseModel):
+    member_id: str
+    note: str | None = None
+
+
 def _state(request: Request) -> Any:
     return request.app.state
 
@@ -262,6 +267,125 @@ async def clinician_print_mark(
         raise HTTPException(status_code=404, detail="打印任务不存在")
     await _audit(db, request, actor, "clinician.print.marked", {"job_id": job_id})
     return {"job": {"id": row["id"], "status": row["status"], "printed_at": _iso(row["printed_at"])}}
+
+
+# ------------------------------------------------------------------ 接诊
+@router.post("/api/v1/clinician/receive")
+async def clinician_receive(
+    payload: ReceiveRequest,
+    request: Request,
+    user: dict[str, Any] = Depends(require_clinician),
+) -> dict[str, Any]:
+    """接诊：平台侧记录"在诊"状态。
+
+    HIS encounter 写入待院方开通，所以这里 source='platform'、his_encounter_id 为空，
+    页面必须标注"平台数据 · HIS 待对接"。
+    """
+    db = await _ready(request)
+    actor = _actor(user)
+    await _member_exists(db, payload.member_id)
+    existing = await db.fetchrow(
+        "SELECT id FROM visit_encounters WHERE member_id=$1 AND status='in_progress'",
+        payload.member_id,
+    )
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="该就诊人已在诊，不能重复接诊")
+
+    encounter_id = "enc_" + uuid.uuid4().hex[:12]
+    row = await db.fetchrow(
+        """
+        INSERT INTO visit_encounters (id, member_id, doctor, status, source, note)
+        VALUES ($1, $2, $3, 'in_progress', 'platform', $4)
+        RETURNING *
+        """,
+        encounter_id,
+        payload.member_id,
+        actor,
+        payload.note,
+    )
+    await _audit(
+        db,
+        request,
+        actor,
+        "clinician.encounter.received",
+        {"encounter_id": encounter_id, "member_id": payload.member_id},
+    )
+    return {
+        "encounter": {
+            "id": row["id"],
+            "member_id": row["member_id"],
+            "doctor": row["doctor"],
+            "status": row["status"],
+            "source": row["source"],
+            "his_encounter_id": row["his_encounter_id"],
+            "started_at": _iso(row["started_at"]),
+        },
+        "his_note": "HIS encounter 写入待院方开通；当前为平台侧接诊状态",
+    }
+
+
+@router.get("/api/v1/clinician/encounters")
+async def clinician_encounters(
+    request: Request,
+    member_id: str | None = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    user: dict[str, Any] = Depends(require_clinician),
+) -> dict[str, Any]:
+    db = await _ready(request)
+    rows = await db.fetch(
+        """
+        SELECT e.*, m.name AS member_name FROM visit_encounters e
+        LEFT JOIN family_members m ON m.id = e.member_id
+        WHERE ($1::text IS NULL OR e.member_id=$1)
+        ORDER BY e.started_at DESC LIMIT $2
+        """,
+        member_id,
+        limit,
+    )
+    return {
+        "items": [
+            {
+                "id": row["id"],
+                "member_id": row["member_id"],
+                "member_name": row["member_name"],
+                "doctor": row["doctor"],
+                "status": row["status"],
+                "source": row["source"],
+                "his_encounter_id": row["his_encounter_id"],
+                "started_at": _iso(row["started_at"]),
+                "ended_at": _iso(row["ended_at"]),
+            }
+            for row in rows
+        ]
+    }
+
+
+@router.post("/api/v1/clinician/encounters/{encounter_id}/complete")
+async def clinician_encounter_complete(
+    encounter_id: str,
+    request: Request,
+    user: dict[str, Any] = Depends(require_clinician),
+) -> dict[str, Any]:
+    db = await _ready(request)
+    actor = _actor(user)
+    row = await db.fetchrow(
+        """
+        UPDATE visit_encounters SET status='completed', ended_at=now()
+        WHERE id=$1 AND status='in_progress' RETURNING *
+        """,
+        encounter_id,
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="接诊记录不存在或已结束")
+    await _audit(db, request, actor, "clinician.encounter.completed", {"encounter_id": encounter_id})
+    return {
+        "encounter": {
+            "id": row["id"],
+            "member_id": row["member_id"],
+            "status": row["status"],
+            "ended_at": _iso(row["ended_at"]),
+        }
+    }
 
 
 # ------------------------------------------------------------------ 诊毕 / 随访

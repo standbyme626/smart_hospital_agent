@@ -55,7 +55,7 @@ test("可观测：验收自测显示 25 条剧本看板", async ({ page }) => {
   await page.getByRole("button", { name: /验收自测/ }).click();
   await expect(page.getByText("系统自检")).toBeVisible();
   await expect(page.getByText("25 条验收剧本")).toBeVisible();
-  await expect(page.getByText(/可跑 11 · 部分 10 · 阻塞 4/)).toBeVisible();
+  await expect(page.getByText(/可跑 20 · 部分 3 · 阻塞 2/)).toBeVisible();
   await expect(page.getByText("INT-06")).toBeVisible();
 });
 

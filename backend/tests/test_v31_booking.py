@@ -315,7 +315,12 @@ def test_mock_dsn_requires_database_url(monkeypatch):
         mock._dsn()
 
 
-def test_booking_insert_does_not_swallow_idempotency_conflict(client):
+def test_booking_insert_handles_idempotency_conflict(client):
+    """同一 lock 重复下单：返回已有订单（replayed），不重复落库、也不 500。
+
+    早期实现用 ON CONFLICT (id)，与建在 idempotency_key 上的部分唯一索引不匹配，
+    第二次下单会抛 UniqueViolationError；现在按幂等语义返回首单。
+    """
     token = _token(client, "patient", PATIENT_PASSWORD)
     headers = {"Authorization": f"Bearer {token}"}
     fake: CaptureMCP = client.app.state.mcp
@@ -323,12 +328,10 @@ def test_booking_insert_does_not_swallow_idempotency_conflict(client):
 
     first = client.post("/api/v1/booking/orders", json={"lock_id": "lock_x"}, headers=headers)
     assert first.status_code == 200, first.text
-    try:
-        second = client.post("/api/v1/booking/orders", json={"lock_id": "lock_x"}, headers=headers)
-    except asyncpg.UniqueViolationError:
-        pass
-    else:
-        assert second.status_code >= 500
+    second = client.post("/api/v1/booking/orders", json={"lock_id": "lock_x"}, headers=headers)
+    assert second.status_code == 200, second.text
+    assert second.json()["order"]["order_id"] == first.json()["order"]["order_id"]
+    assert second.json().get("replayed") is True, "幂等重放应显式标记，便于前端提示"
 
     async def count():
         conn = await asyncpg.connect(os.environ["DATABASE_URL"])

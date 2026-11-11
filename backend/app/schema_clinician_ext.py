@@ -37,6 +37,22 @@ CLINICIAN_EXT_SCHEMA: tuple[str, ...] = (
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_visit_closures_member ON visit_closures (member_id, created_at DESC)",
+    # 接诊状态投影：平台侧记录"谁在什么时候接诊了谁"；HIS encounter 写入待院方开通
+    """
+    CREATE TABLE IF NOT EXISTS visit_encounters (
+        id TEXT PRIMARY KEY,
+        member_id TEXT NOT NULL,
+        doctor TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'in_progress',
+        source TEXT NOT NULL DEFAULT 'platform',
+        his_encounter_id TEXT,
+        note TEXT,
+        started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        ended_at TIMESTAMPTZ
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_visit_encounters_member ON visit_encounters (member_id, started_at DESC)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_visit_encounters_open ON visit_encounters (member_id) WHERE status='in_progress'",
 )
 
 PRINT_TEMPLATES: dict[str, dict[str, str]] = {
