@@ -37,6 +37,24 @@ class StubMCP:
             raise TimeoutError("upstream timed out after 30s")
         if self.mode == "error":
             return {"is_error": True, "text": "upstream secret detail DSN=postgres://admin:pass@db", "data": None}
+        if name == "his.reconcile":
+            return {
+                "is_error": False,
+                "text": "",
+                "data": {
+                    "summary": {"checked": 1, "findings": 1, "open_findings": 1, "scope": arguments.get("scope", "all")},
+                    "findings": [
+                        {
+                            "id": "find_int03_stable",
+                            "kind": "payment_mismatch",
+                            "severity": "high",
+                            "local_ref": "appt_mismatch",
+                            "his_ref": "enc_mismatch",
+                            "detail": "local=paid his=unpaid",
+                        }
+                    ],
+                },
+            }
         if name == "lock_slot":
             return {
                 "is_error": False,
@@ -129,6 +147,7 @@ def cleanup_playbook_rows():
         "DELETE FROM followups WHERE member_id IN (SELECT id FROM family_members WHERE name LIKE '剧本就诊人%')",
         "DELETE FROM bookings WHERE user_id IN (SELECT username FROM users)",
         "DELETE FROM family_members WHERE name LIKE '剧本就诊人%'",
+        "DELETE FROM reconciliation_finding WHERE id LIKE 'find_int03%' OR local_ref = 'appt_mismatch'",
     ):
         try:
             _sql(statement)
@@ -230,6 +249,32 @@ def test_int05_audit_has_actor_time_trace(client: TestClient, patient: dict[str,
         detail = row["detail"]
         text = detail if isinstance(detail, str) else json.dumps(detail, ensure_ascii=False)
         assert "password" not in text.lower()
+
+
+# ---------------------------------------------------------------- INT-03 强制不一致
+def test_int03_reconcile_mirrors_mismatch(client: TestClient, admin: dict[str, str]) -> None:
+    first = client.post("/api/v1/ops/reconciliation/run", json={"scope": "payment"}, headers=admin)
+    assert first.status_code == 200, first.text
+    payload = first.json()
+    assert payload["summary"]["findings"] >= 1
+    assert payload["mirrored"] >= 1, "HIS 侧差异必须镜像到平台 findings"
+
+    finding = payload["findings"][0]
+    assert finding["kind"] == "payment_mismatch" and finding["severity"] == "high"
+
+    listed = client.get("/api/v1/ops/reconciliation", headers=admin).json()
+    ids = {item["id"] for item in listed["items"]}
+    assert finding["id"] in ids, "运维页面必须能看到这条差异"
+
+    again = client.post("/api/v1/ops/reconciliation/run", json={"scope": "payment"}, headers=admin)
+    assert again.status_code == 200
+    assert again.json()["mirrored"] == 0, "同一差异重复对账不应重复落库（幂等）"
+
+    rows = _sql("SELECT count(*) AS c FROM reconciliation_finding WHERE id=$1", finding["id"])
+    assert rows[0]["c"] == 1
+
+    bad_scope = client.post("/api/v1/ops/reconciliation/run", json={"scope": "nope"}, headers=admin)
+    assert bad_scope.status_code == 422
 
 
 # ---------------------------------------------------------------- D-03 诊前摘要

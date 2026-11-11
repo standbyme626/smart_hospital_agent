@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import re
@@ -20,7 +21,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from .api.deps import require_admin
+from .api.deps import require_admin, require_ops
 from .playbooks import PLAYBOOKS, summary as playbook_summary
 from .policy import DEPARTMENT_NAMES
 from .schema_admin_ext import (
@@ -67,6 +68,10 @@ class TenantUpdate(BaseModel):
     status: str | None = None
     isolation: str | None = None
     note: str | None = None
+
+
+class ReconcileRequest(BaseModel):
+    scope: str = "all"
 
 
 class ExperimentCreate(BaseModel):
@@ -998,6 +1003,90 @@ async def admin_experiment_assignments(
             {"subject_id": row["subject_id"][:8], "variant": row["variant"], "created_at": _iso(row["created_at"])}
             for row in rows
         ],
+    }
+
+
+# ================================================================== 主动对账（INT-03）
+@router.post("/api/v1/ops/reconciliation/run")
+async def ops_reconciliation_run(
+    request: Request,
+    payload: ReconcileRequest | None = None,
+    user: dict[str, Any] = Depends(require_ops),
+) -> dict[str, Any]:
+    """主动向 HIS 发起对账，并把发现的差异镜像到平台 findings 表。
+
+    之前只能等定时同步产出 finding，运维无法"立刻核一次"；这个入口补上了这一点。
+    """
+    state = _state(request)
+    db = await _ready(request)
+    actor = _actor(user)
+    scope = (payload.scope if payload else "all") or "all"
+    if scope not in {"all", "appointment", "payment"}:
+        raise HTTPException(status_code=422, detail="scope 只能是 all / appointment / payment")
+
+    try:
+        result = await state.mcp.call_tool(
+            "his.reconcile",
+            {"scope": scope, "idempotency_key": "reconcile:" + scope},
+            scope="service_write",
+            idempotency_key="reconcile:" + scope,
+        )
+    except (TimeoutError, asyncio.TimeoutError):
+        raise HTTPException(status_code=504, detail="HIS_TIMEOUT：医院系统响应超时，可重试") from None
+    except Exception:
+        raise HTTPException(status_code=502, detail="HIS_UNAVAILABLE：医院系统暂时不可用，可重试") from None
+    if result.get("is_error"):
+        raise HTTPException(status_code=502, detail="HIS_ERROR：医院系统返回错误，可重试")
+
+    data = result.get("data") or {}
+    findings = data.get("findings") or []
+    mirrored = 0
+    for item in findings:
+        kind = str(item.get("kind") or "unknown")
+        local_ref = item.get("local_ref")
+        # 平台侧按 (kind, local_ref) 去重：适配器换 id 或不稳定时也不会重复刷差异
+        existing = await db.fetchrow(
+            """
+            SELECT id FROM reconciliation_finding
+            WHERE kind=$1 AND local_ref IS NOT DISTINCT FROM $2 AND status='open'
+            LIMIT 1
+            """,
+            kind,
+            local_ref,
+        )
+        if existing is not None:
+            continue
+        finding_id = str(item.get("id") or ("find_" + uuid.uuid4().hex[:10]))
+        row = await db.fetchrow(
+            """
+            INSERT INTO reconciliation_finding (id, kind, severity, local_ref, his_ref, detail)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (id) DO NOTHING
+            RETURNING id
+            """,
+            finding_id,
+            kind,
+            str(item.get("severity") or "medium"),
+            item.get("local_ref"),
+            item.get("his_ref"),
+            item.get("detail"),
+        )
+        if row is not None:
+            mirrored += 1
+
+    summary = data.get("summary") or {}
+    await _audit(
+        db,
+        request,
+        actor,
+        "ops.reconciliation.run",
+        {"scope": scope, "checked": summary.get("checked"), "findings": len(findings), "mirrored": mirrored},
+    )
+    return {
+        "summary": summary,
+        "mirrored": mirrored,
+        "his_note": "本地 OpenHIS 为验收目标；生产对接需院方只读账号",
+        "findings": findings[:20],
     }
 
 

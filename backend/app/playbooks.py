@@ -42,13 +42,13 @@ PLAYBOOKS: tuple[Playbook, ...] = (
     Playbook("D-07", "诊毕后只读", "医生", "ready", "/api/v1/clinician/notes/{note_id}/close-visit", "backend/tests/test_clinician_ext.py"),
     Playbook("D-08", "跨科 / 跨患者 404", "医生", "ready", "/api/v1/clinician/patients/", "backend/tests/test_clinician.py"),
     # ---- 双端闭环 E2E-01 ~ E2E-03
-    Playbook("E2E-01", "常规门诊全链路", "双端", "blocked", "-", "frontend/e2e/v31.spec.ts", "缺预问诊→医生接诊→处方签名段"),
+    Playbook("E2E-01", "常规门诊全链路", "双端", "ready", "/api/v1/booking/appointments", "frontend/e2e/s16-outpatient-chain.spec.ts", "预问诊→挂号→收款→接诊→病历→签名→诊毕→患者看到 HIS 处方"),
     Playbook("E2E-02", "退号退费闭环", "双端", "partial", "/api/v1/booking/appointments/{appointment_id}/cancel", "frontend/e2e/v31.spec.ts", "双端状态一致性断言待补"),
     Playbook("E2E-03", "并发抢号恰 1 单成功", "双端", "ready", "/api/v1/booking/orders", "backend/tests/test_v34_playbooks_exec.py", "10 并发同锁号只产生 1 个订单"),
     # ---- 集成一致性 INT-01 ~ INT-06
     Playbook("INT-01", "幂等重放 10 次", "集成", "ready", "/api/v1/booking/orders", "backend/tests/test_v34_playbooks_exec.py", "重放 10 次同锁号：平台 1 条投影 + 稳定 idempotency_key"),
     Playbook("INT-02", "故障注入 500 / 超时 / 401", "集成", "ready", "/api/v1/booking/lock", "backend/tests/test_v34_playbooks_exec.py", "上游错误/超时统一脱敏为 HIS_ERROR / HIS_TIMEOUT，且可重试"),
-    Playbook("INT-03", "强制不一致产生 finding", "集成", "partial", "/api/v1/ops/reconciliation", "backend/tests/test_ops.py", "缺手工改 HIS 状态→轮询出 finding 的注入用例"),
+    Playbook("INT-03", "强制不一致产生 finding", "集成", "ready", "/api/v1/ops/reconciliation/run", "backend/tests/test_v34_playbooks_exec.py", "主动对账把 HIS 差异镜像进平台 findings，重复对账幂等"),
     Playbook("INT-04", "权限越界 403 / 未登录 401", "集成", "ready", "/api/health", "backend/tests/test_p0_security.py"),
     Playbook("INT-05", "审计完整（人/时间/内容）", "集成", "ready", "/api/v1/admin/audit", "backend/tests/test_v34_playbooks_exec.py", "打印/诊毕/接诊/登录四类动作均带 actor + request_id"),
     Playbook("INT-06", "租户数据隔离", "集成", "blocked", "-", "-", "租户表与路由已建，隔离执行未接"),

@@ -104,7 +104,8 @@ test("药师审方：标注 HIS 口径并可筛选", async ({ page }) => {
   await open(page, "/clinician/review/");
   await expect(page.getByRole("heading", { name: "药师审方" })).toBeVisible();
   await expect(page.getByText(/HIS 药师审方记录待院方开通/)).toBeVisible();
-  for (const name of [/待审/, /通过/, /退回/, /全部/]) {
-    await expect(page.getByRole("button", { name })).toBeVisible();
+  for (const label of ["待审", "通过", "退回", "全部"]) {
+    // 筛选项名称后带计数（如「通过 0」），避开逐条的「审方通过」按钮
+    await expect(page.getByRole("button", { name: new RegExp("^" + label) }).first()).toBeVisible();
   }
 });

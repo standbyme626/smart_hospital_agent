@@ -64,6 +64,8 @@ export default defineConfig({
       env: {
         DATABASE_URL,
         AUTH_ENABLED: "true",
+        // E2E 要验证"诊毕/签名/处方"完整链路，HIS 侧是本地 mock，安全
+        CLINICIAN_WRITE_ENABLED: "true",
         JWT_SECRET: "e2e-jwt-secret",
         ADMIN_USER: "admin",
         ADMIN_PASSWORD,
