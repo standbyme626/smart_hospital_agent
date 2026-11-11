@@ -3039,3 +3039,211 @@ async def list_doctor_directory(
         department,
     )
     return {"doctors": [dict(row) for row in rows]}
+
+
+# ------------------------------------------------------------ wave B: 取药
+@router.get("/api/v1/dispensing")
+async def list_dispensing(
+    request: Request,
+    member_id: str | None = Query(None),
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    db = _state(request).db
+    user_id = str(user["sub"])
+    member = await _member_row(db, member_id, user_id)
+    rows = await db.fetch(
+        """
+        SELECT id, member_id, appointment_id, status, "window", ready_at, created_at
+        FROM dispensing_progress
+        WHERE user_id=$1 AND member_id=$2
+        ORDER BY created_at DESC LIMIT 10
+        """,
+        user_id,
+        member["id"],
+    )
+    return {"items": [dict(row) for row in rows]}
+
+
+# ------------------------------------------------------------ wave B: 医保
+@router.get("/api/v1/insurance/settlements")
+async def list_insurance_settlements(
+    request: Request,
+    member_id: str | None = Query(None),
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    db = _state(request).db
+    user_id = str(user["sub"])
+    member = await _member_row(db, member_id, user_id)
+    rows = await db.fetch(
+        """
+        SELECT id, member_id, appointment_id, total, insurance, account, self_pay, status, settled_at
+        FROM insurance_settlements
+        WHERE user_id=$1 AND member_id=$2
+        ORDER BY settled_at DESC LIMIT 20
+        """,
+        user_id,
+        member["id"],
+    )
+    return {"items": [dict(row) for row in rows], "source": "平台模拟结算（HIS 医保接口待开通）"}
+
+
+# ------------------------------------------------------------ wave B: 叫号
+@router.get("/api/v1/queue/today")
+async def queue_today(
+    request: Request,
+    member_id: str | None = Query(None),
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    db = _state(request).db
+    user_id = str(user["sub"])
+    member = await _member_row(db, member_id, user_id)
+    mine = await db.fetchrow(
+        """
+        SELECT id, ticket_no, department, status, called_at, created_at
+        FROM queue_tickets
+        WHERE user_id=$1 AND member_id=$2
+          AND created_at::date = (now() AT TIME ZONE 'Asia/Shanghai')::date
+        ORDER BY created_at DESC LIMIT 1
+        """,
+        user_id,
+        member["id"],
+    )
+    current = None
+    if mine:
+        current = await db.fetchrow(
+            """
+            SELECT ticket_no, department, called_at
+            FROM queue_tickets
+            WHERE department=$1 AND status='called'
+              AND created_at::date = (now() AT TIME ZONE 'Asia/Shanghai')::date
+            ORDER BY called_at DESC NULLS LAST LIMIT 1
+            """,
+            mine["department"],
+        )
+    waiting = 0
+    if mine and mine["department"]:
+        waiting = int(
+            await db.fetchval(
+                """
+                SELECT count(*) FROM queue_tickets
+                WHERE department=$1 AND status='waiting'
+                  AND created_at::date = (now() AT TIME ZONE 'Asia/Shanghai')::date
+                """,
+                mine["department"],
+            )
+            or 0
+        )
+    return {
+        "mine": dict(mine) if mine else None,
+        "current_called": dict(current) if current else None,
+        "waiting_ahead": waiting,
+    }
+
+
+# ------------------------------------------------------------ wave B: 客服
+class FeedbackRequest(BaseModel):
+    category: str
+    content: str
+    member_id: str | None = None
+
+
+@router.post("/api/v1/feedback")
+async def create_feedback(
+    payload: FeedbackRequest,
+    request: Request,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    db = _state(request).db
+    user_id = str(user["sub"])
+    category = payload.category.strip() or "其他"
+    if category not in {"服务态度", "排队等候", "费用问题", "隐私疑虑", "其他"}:
+        raise HTTPException(status_code=422, detail="invalid category")
+    if not payload.content.strip():
+        raise HTTPException(status_code=422, detail="content required")
+    ticket_id = "fb_" + uuid.uuid4().hex[:12]
+    member_id = payload.member_id or ""
+    row = await db.fetchrow(
+        """
+        INSERT INTO feedback_tickets (id, user_id, member_id, category, content)
+        VALUES ($1,$2,$3,$4,$5) RETURNING *
+        """,
+        ticket_id,
+        user_id,
+        member_id,
+        category,
+        payload.content.strip(),
+    )
+    await _notify(db, user_id, "system", "反馈已受理", category + " · 24 小时内回复", "/support/")
+    return {"ticket": dict(row) if row else None}
+
+
+@router.get("/api/v1/feedback")
+async def list_feedback(
+    request: Request,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    db = _state(request).db
+    rows = await db.fetch(
+        """
+        SELECT id, category, content, status, reply, created_at
+        FROM feedback_tickets WHERE user_id=$1 ORDER BY created_at DESC LIMIT 20
+        """,
+        str(user["sub"]),
+    )
+    return {"items": [dict(row) for row in rows]}
+
+
+# ------------------------------------------------------------ wave B: 授权
+class ConsentScopeRequest(BaseModel):
+    member_id: str
+    can_view: bool = True
+    can_act: bool = False
+
+
+@router.get("/api/v1/consent/scopes")
+async def list_consent_scopes(
+    request: Request,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    db = _state(request).db
+    rows = await db.fetch(
+        """
+        SELECT s.id, s.member_id, s.can_view, s.can_act, s.version, s.updated_at,
+               f.name, f.relation
+        FROM consent_scopes s
+        LEFT JOIN family_members f ON f.id = s.member_id
+        WHERE s.user_id=$1
+        ORDER BY s.updated_at DESC
+        """,
+        str(user["sub"]),
+    )
+    return {"items": [dict(row) for row in rows]}
+
+
+@router.put("/api/v1/consent/scopes")
+async def upsert_consent_scope(
+    payload: ConsentScopeRequest,
+    request: Request,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    db = _state(request).db
+    user_id = str(user["sub"])
+    member = await _member_row(db, payload.member_id, user_id)
+    scope_id = "cs_" + uuid.uuid4().hex[:12]
+    row = await db.fetchrow(
+        """
+        INSERT INTO consent_scopes (id, user_id, member_id, can_view, can_act, version)
+        VALUES ($1,$2,$3,$4,$5,'v1')
+        ON CONFLICT (user_id, member_id) DO UPDATE
+        SET can_view=EXCLUDED.can_view, can_act=EXCLUDED.can_act,
+            version='v' || (COALESCE(NULLIF(regexp_replace(consent_scopes.version, '\D', '', 'g'), ''), '0')::int + 1),
+            updated_at=now()
+        RETURNING id, member_id, can_view, can_act, version, updated_at
+        """,
+        scope_id,
+        user_id,
+        member["id"],
+        payload.can_view,
+        payload.can_act,
+    )
+    return {"scope": dict(row)}

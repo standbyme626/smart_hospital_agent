@@ -509,6 +509,75 @@ SCHEMA = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_doctor_directory_dept ON doctor_directory (department, active)",
+    """
+    CREATE TABLE IF NOT EXISTS dispensing_progress (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        member_id TEXT NOT NULL,
+        appointment_id TEXT,
+        status TEXT NOT NULL DEFAULT 'waiting_dispense',
+        "window" TEXT,
+        ready_at TIMESTAMPTZ,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_dispensing_member ON dispensing_progress (member_id, created_at DESC)",
+    """
+    CREATE TABLE IF NOT EXISTS insurance_settlements (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        member_id TEXT NOT NULL,
+        appointment_id TEXT,
+        total NUMERIC(10, 2) NOT NULL DEFAULT 0,
+        insurance NUMERIC(10, 2) NOT NULL DEFAULT 0,
+        account NUMERIC(10, 2) NOT NULL DEFAULT 0,
+        self_pay NUMERIC(10, 2) NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'settled',
+        settled_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_insurance_member ON insurance_settlements (member_id, settled_at DESC)",
+    """
+    CREATE TABLE IF NOT EXISTS queue_tickets (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        member_id TEXT NOT NULL,
+        appointment_id TEXT,
+        ticket_no TEXT NOT NULL,
+        department TEXT,
+        status TEXT NOT NULL DEFAULT 'waiting',
+        called_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_queue_tickets_day ON queue_tickets (status, created_at DESC)",
+    """
+    CREATE TABLE IF NOT EXISTS feedback_tickets (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        member_id TEXT,
+        category TEXT NOT NULL,
+        content TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'submitted',
+        reply TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_feedback_user ON feedback_tickets (user_id, created_at DESC)",
+    """
+    CREATE TABLE IF NOT EXISTS consent_scopes (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        member_id TEXT NOT NULL,
+        can_view BOOLEAN NOT NULL DEFAULT true,
+        can_act BOOLEAN NOT NULL DEFAULT false,
+        version TEXT NOT NULL DEFAULT 'v1',
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        UNIQUE (user_id, member_id)
+    )
+    """,
 ]
 
 MIGRATIONS = [

@@ -64,6 +64,61 @@ async def main() -> None:
             )
         total = await conn.fetchval("SELECT count(*) FROM doctor_directory WHERE active")
         print(f"seeded doctors: {len(DOCTORS)}; active total: {total}")
+
+        paid = await conn.fetch(
+            """
+            SELECT id, user_id, member_id, amount, department
+            FROM appointment_projection
+            WHERE payment_status = 'paid'
+            ORDER BY created_at DESC LIMIT 20
+            """
+        )
+        for index, row in enumerate(paid, start=1):
+            total_amount = float(row["amount"] or 0)
+            insurance = round(total_amount * 0.7, 2)
+            account = round(total_amount * 0.2, 2)
+            self_pay = round(total_amount - insurance - account, 2)
+            await conn.execute(
+                """
+                INSERT INTO dispensing_progress (id, user_id, member_id, appointment_id, status, "window", ready_at)
+                VALUES ($1,$2,$3,$4,'ready','3 号窗口', now())
+                ON CONFLICT (id) DO NOTHING
+                """,
+                "disp_" + row["id"],
+                row["user_id"],
+                row["member_id"],
+                row["id"],
+            )
+            await conn.execute(
+                """
+                INSERT INTO insurance_settlements
+                    (id, user_id, member_id, appointment_id, total, insurance, account, self_pay, status)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'settled')
+                ON CONFLICT (id) DO NOTHING
+                """,
+                "ins_" + row["id"],
+                row["user_id"],
+                row["member_id"],
+                row["id"],
+                total_amount,
+                insurance,
+                account,
+                self_pay,
+            )
+            await conn.execute(
+                """
+                INSERT INTO queue_tickets (id, user_id, member_id, appointment_id, ticket_no, department, status)
+                VALUES ($1,$2,$3,$4,$5,$6,'waiting')
+                ON CONFLICT (id) DO NOTHING
+                """,
+                "q_" + row["id"],
+                row["user_id"],
+                row["member_id"],
+                row["id"],
+                "A" + str(30 + index).zfill(3),
+                row["department"],
+            )
+        print(f"seeded patient-side rows for paid appointments: {len(paid)}")
     finally:
         await conn.close()
 
