@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1660" width="1240" height="1660">
+<rect width="1240" height="1660" fill="#FFFFFF"/>
+<text x="80" y="48" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" fill="#1F2937" text-anchor="start" font-weight="600">① 统一页框 · 控制台端（医生 / 运营 / 管理）</text>
+<text x="80" y="68" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="11" fill="#6B7280" text-anchor="start" font-weight="400">一条品牌条 + 一行页签 + 一个内容宽（1120）；子页复用同一页框，不再另造小页头</text>
+<rect x="80" y="100" width="1080" height="360" rx="14" fill="#F6F9F8" stroke="#D9E1E8" stroke-width="1.2"/>
+<rect x="80" y="100" width="1080" height="56" rx="10" fill="#E6F4F1" stroke="#D9E1E8" stroke-width="1.2"/>
+<text x="92" y="132.0" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="11" fill="#0E9384" text-anchor="start" font-weight="400">品牌条 56px：入口名 · 当前角色 · 账号 / 退出（右侧）</text>
+<rect x="80" y="156" width="1080" height="44" rx="10" fill="#F6F9F8" stroke="#D9E1E8" stroke-width="1.2"/>
+<text x="96" y="184" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="11" fill="#6B7280" text-anchor="start" font-weight="400">页签 44px：工作台 · 文书打印 · 诊毕随访 · 药师审方 …（当前项实心）</text>
+<rect x="96" y="212" width="1048" height="44" rx="8" fill="none" stroke="#D9E1E8" stroke-width="1.2"/>
+<text x="112" y="240" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="12" fill="#1F2937" text-anchor="start" font-weight="400">H1 页面标题 20/600  ·  副标题 12 muted  ·  右侧操作区（刷新 / 主操作）</text>
+<rect x="96" y="270" width="300" height="32" rx="8" fill="none" stroke="#D9E1E8" stroke-width="1.2"/>
+<text x="112" y="290" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="11" fill="#6B7280" text-anchor="start" font-weight="400">筛选 / 分段控件（44 高）</text>
+<rect x="96" y="316" width="336" height="112" rx="10" fill="none" stroke="#D9E1E8" stroke-width="1.2"/>
+<text x="112" y="344" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="11" fill="#1F2937" text-anchor="start" font-weight="400">卡片 H 112 · padding 20 · radius 16</text>
+<text x="112" y="368" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10" fill="#6B7280" text-anchor="start" font-weight="400">内容行 1（13/21）</text>
+<text x="112" y="388" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10" fill="#6B7280" text-anchor="start" font-weight="400">内容行 2（11/18）</text>
+<rect x="448" y="316" width="336" height="112" rx="10" fill="none" stroke="#D9E1E8" stroke-width="1.2"/>
+<text x="464" y="344" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="11" fill="#1F2937" text-anchor="start" font-weight="400">卡片 H 112 · padding 20 · radius 16</text>
+<text x="464" y="368" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10" fill="#6B7280" text-anchor="start" font-weight="400">内容行 1（13/21）</text>
+<text x="464" y="388" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10" fill="#6B7280" text-anchor="start" font-weight="400">内容行 2（11/18）</text>
+<rect x="800" y="316" width="336" height="112" rx="10" fill="none" stroke="#D9E1E8" stroke-width="1.2"/>
+<text x="816" y="344" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="11" fill="#1F2937" text-anchor="start" font-weight="400">卡片 H 112 · padding 20 · radius 16</text>
+<text x="816" y="368" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10" fill="#6B7280" text-anchor="start" font-weight="400">内容行 1（13/21）</text>
+<text x="816" y="388" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10" fill="#6B7280" text-anchor="start" font-weight="400">内容行 2（11/18）</text>
+<text x="80" y="484" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="11" fill="#6B7280" text-anchor="start" font-weight="400">页宽 1120 · 页面 padding 32 · 区块间距 16 · 行高 44（列表）/ 56（可点行）</text>
+<text x="80" y="520" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" fill="#1F2937" text-anchor="start" font-weight="600">② 患者端外壳（/ 与 /messages 等）</text>
+<text x="80" y="540" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="11" fill="#6B7280" text-anchor="start" font-weight="400">左侧 240 导航 + 顶部 64 页头 + 内容 1120；移动端换成底部 6 项导航</text>
+<rect x="80" y="572" width="1080" height="300" rx="14" fill="#F6F9F8" stroke="#D9E1E8" stroke-width="1.2"/>
+<rect x="80" y="572" width="240" height="300" rx="14" fill="none" stroke="#D9E1E8" stroke-width="1.2"/>
+<text x="96" y="602" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="11" fill="#1F2937" text-anchor="start" font-weight="600">侧栏 240</text>
+<text x="96" y="630" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="11" fill="#0E9384" text-anchor="start" font-weight="400">首页</text>
+<text x="96" y="656" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="11" fill="#6B7280" text-anchor="start" font-weight="400">消息</text>
+<text x="96" y="682" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="11" fill="#6B7280" text-anchor="start" font-weight="400">随访</text>
+<text x="96" y="708" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="11" fill="#6B7280" text-anchor="start" font-weight="400">AI 诊室</text>
+<text x="96" y="734" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="11" fill="#6B7280" text-anchor="start" font-weight="400">报告解读</text>
+<text x="96" y="760" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="11" fill="#6B7280" text-anchor="start" font-weight="400">药管家</text>
+<rect x="320" y="572" width="840" height="64" rx="10" fill="none" stroke="#D9E1E8" stroke-width="1.2"/>
+<text x="336" y="600" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="11" fill="#1F2937" text-anchor="start" font-weight="400">页头 64：H1 17/600 + 副标题 12 muted</text>
+<text x="336" y="620" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="11" fill="#6B7280" text-anchor="start" font-weight="400">右侧：消息 · 家庭成员切换 · 个人中心</text>
+<rect x="320" y="652" width="840" height="200" rx="10" fill="none" stroke="#D9E1E8" stroke-width="1.2"/>
+<text x="336" y="680" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="11" fill="#1F2937" text-anchor="start" font-weight="400">内容区 1120（阅读类页面收窄到 768）</text>
+<rect x="336" y="696" width="808" height="64" rx="8" fill="none" stroke="#D9E1E8" stroke-width="1.2"/>
+<text x="352" y="734" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10" fill="#6B7280" text-anchor="start" font-weight="400">首屏主操作卡：标题 + 输入 + 主按钮（高度固定 64）</text>
+<rect x="336" y="772" width="392" height="64" rx="8" fill="none" stroke="#D9E1E8" stroke-width="1.2"/>
+<rect x="752" y="772" width="392" height="64" rx="8" fill="none" stroke="#D9E1E8" stroke-width="1.2"/>
+<text x="352" y="810" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10" fill="#6B7280" text-anchor="start" font-weight="400">六宫格入口（3 列，卡高 118）</text>
+<text x="768" y="810" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10" fill="#6B7280" text-anchor="start" font-weight="400">入口卡 118 · 圆角 16 · 同一主色</text>
+<text x="80" y="894" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="11" fill="#6B7280" text-anchor="start" font-weight="400">统一：页头 64 / 侧栏 240 / 内容 1120 / 卡圆角 16 / 主色 #0E9384（唯一强调）</text>
+<text x="80" y="960" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" fill="#1F2937" text-anchor="start" font-weight="600">③ 布局不一致的根因 → 目标规则</text>
+<text x="80" y="980" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="11" fill="#6B7280" text-anchor="start" font-weight="400">现状 4 种内容宽 + 5 种页头；目标只保留 2 种外壳、2 档宽度</text>
+<rect x="80" y="1012" width="520" height="300" rx="14" fill="#F6F9F8" stroke="#D9E1E8" stroke-width="1.2"/>
+<text x="96" y="1038" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="12" fill="#1F2937" text-anchor="start" font-weight="600">现状（实测，1440 宽）</text>
+<rect x="96" y="1054" width="488" height="28" rx="6" fill="none" stroke="#D9E1E8" stroke-width="1.2"/>
+<text x="106" y="1072" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10" fill="#1F2937" text-anchor="start" font-weight="400">患者端 /messages</text>
+<text x="574" y="1072" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10" fill="#6B7280" text-anchor="end" font-weight="400">内容 1152 · 页头 69 · H1 15</text>
+<rect x="96" y="1090" width="488" height="28" rx="6" fill="none" stroke="#D9E1E8" stroke-width="1.2"/>
+<text x="106" y="1108" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10" fill="#1F2937" text-anchor="start" font-weight="400">医生端 /clinician</text>
+<text x="574" y="1108" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10" fill="#6B7280" text-anchor="end" font-weight="400">内容 1152 · 页头 64 · 无 H1</text>
+<rect x="96" y="1126" width="488" height="28" rx="6" fill="none" stroke="#D9E1E8" stroke-width="1.2"/>
+<text x="106" y="1144" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10" fill="#1F2937" text-anchor="start" font-weight="400">医生端 /clinician/print</text>
+<text x="574" y="1144" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10" fill="#6B7280" text-anchor="end" font-weight="400">内容 1024 · 页头 52 · H1 20</text>
+<rect x="96" y="1162" width="488" height="28" rx="6" fill="none" stroke="#D9E1E8" stroke-width="1.2"/>
+<text x="106" y="1180" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10" fill="#1F2937" text-anchor="start" font-weight="400">运营端 /ops/reviews</text>
+<text x="574" y="1180" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10" fill="#6B7280" text-anchor="end" font-weight="400">内容 1024 · 页头 106 · 无 H1</text>
+<rect x="96" y="1198" width="488" height="28" rx="6" fill="none" stroke="#D9E1E8" stroke-width="1.2"/>
+<text x="106" y="1216" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10" fill="#1F2937" text-anchor="start" font-weight="400">管理端 /platform/config</text>
+<text x="574" y="1216" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10" fill="#6B7280" text-anchor="end" font-weight="400">内容 1152 · 无页头 · H1 20</text>
+<rect x="96" y="1234" width="488" height="28" rx="6" fill="none" stroke="#D9E1E8" stroke-width="1.2"/>
+<text x="106" y="1252" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10" fill="#1F2937" text-anchor="start" font-weight="400">统一入口 /entries</text>
+<text x="574" y="1252" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10" fill="#6B7280" text-anchor="end" font-weight="400">内容 1440 · 页头 93 · H1 26</text>
+<rect x="640" y="1012" width="520" height="300" rx="14" fill="#E6F4F1" stroke="#0E9384" stroke-width="1.2"/>
+<text x="656" y="1038" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="12" fill="#0E9384" text-anchor="start" font-weight="600">目标（统一规则）</text>
+<text x="660" y="1072" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10.5" fill="#1F2937" text-anchor="start" font-weight="400">· 内容宽只有 2 档：1120（常规）· 768（阅读/表单）</text>
+<text x="660" y="1102" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10.5" fill="#1F2937" text-anchor="start" font-weight="400">· 页头只有 2 种：患者端 64 · 控制台 56+44</text>
+<text x="660" y="1132" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10.5" fill="#1F2937" text-anchor="start" font-weight="400">· 每页必有 H1：20/600；副标题 12；不再用 p 代替标题</text>
+<text x="660" y="1162" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10.5" fill="#1F2937" text-anchor="start" font-weight="400">· 页签位置固定：页头下、内容上，左对齐同宽</text>
+<text x="660" y="1192" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10.5" fill="#1F2937" text-anchor="start" font-weight="400">· 子页复用父页框，禁止另造窄页头</text>
+<text x="660" y="1222" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10.5" fill="#1F2937" text-anchor="start" font-weight="400">· 卡片：radius 16 / padding 20 / 边框 1px line</text>
+<text x="660" y="1252" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10.5" fill="#1F2937" text-anchor="start" font-weight="400">· 栅格：12 列 · 间距 16 · 页面 padding 32（移动 16）</text>
+<text x="660" y="1282" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10.5" fill="#1F2937" text-anchor="start" font-weight="400">· 主色唯一 #0E9384；渐变仅用于 logo</text>
+<text x="80" y="1350" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" fill="#1F2937" text-anchor="start" font-weight="600">④ 移动端（≤ 640）</text>
+<text x="80" y="1370" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="11" fill="#6B7280" text-anchor="start" font-weight="400">顶栏 52 带页面标题；底部 6 项导航；列表行高 44，内容单列</text>
+<rect x="80" y="1402" width="300" height="190" rx="20" fill="#F6F9F8" stroke="#D9E1E8" stroke-width="1.2"/>
+<rect x="80" y="1402" width="300" height="52" rx="20" fill="none" stroke="#D9E1E8" stroke-width="1.2"/>
+<text x="96" y="1434" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="11" fill="#1F2937" text-anchor="start" font-weight="400">标题 + 返回/操作</text>
+<rect x="92" y="1466" width="276" height="44" rx="8" fill="none" stroke="#D9E1E8" stroke-width="1.2"/>
+<text x="104" y="1494" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10" fill="#6B7280" text-anchor="start" font-weight="400">筛选行 44</text>
+<rect x="92" y="1518" width="276" height="30" rx="8" fill="none" stroke="#D9E1E8" stroke-width="1.2"/>
+<text x="104" y="1538" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10" fill="#6B7280" text-anchor="start" font-weight="400">列表行 44</text>
+<rect x="92" y="1552" width="276" height="28" rx="8" fill="none" stroke="#D9E1E8" stroke-width="1.2"/>
+<text x="104" y="1571" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="10" fill="#6B7280" text-anchor="start" font-weight="400">列表行 44</text>
+<text x="400" y="1432" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="11" fill="#6B7280" text-anchor="start" font-weight="400">底栏 56：首页 · 消息 · 问诊 · 服务 · 健康 · 我的（6 项均分）</text>
+<text x="400" y="1458" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="11" fill="#6B7280" text-anchor="start" font-weight="400">安全区：padding-bottom: env(safe-area-inset-bottom)</text>
+<text x="400" y="1484" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="11" fill="#6B7280" text-anchor="start" font-weight="400">所有列表横向 padding 16，禁止横向滚动（实测溢出 0）</text>
+</svg>
