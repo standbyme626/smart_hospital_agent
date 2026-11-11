@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="大医">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0E9384"/>
+      <stop offset="100%" stop-color="#0B7A6D"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <path d="M256 118c-42 0-76 33-76 75 0 56 76 121 76 121s76-65 76-121c0-42-34-75-76-75zm0 102c-15 0-27-12-27-27s12-27 27-27 27 12 27 27-12 27-27 27z" fill="#FFFFFF"/>
+  <rect x="176" y="336" width="160" height="34" rx="17" fill="#FFFFFFE6"/>
+  <rect x="239" y="286" width="34" height="134" rx="17" fill="#FFFFFFE6" opacity="0.85"/>
+</svg>
