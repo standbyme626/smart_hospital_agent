@@ -352,7 +352,9 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 | S13 | 管理端配置管理（规则库 / 通知模板 / Prompt / Agent 配置，版本 + 发布 + 回滚 + 审计） | ✅ 4 屏（Wave E 配置类） |
 
 详细计划与完成定义见 [`docs/V3.3-ROLLOUT-PLAN.md`](docs/V3.3-ROLLOUT-PLAN.md)；
-V3.4 全量上线进度与 61 屏台账见 [`docs/V3.4-EXECUTION-LEDGER.md`](docs/V3.4-EXECUTION-LEDGER.md)。
+V3.4 全量上线进度与 61 屏台账见 [`docs/V3.4-EXECUTION-LEDGER.md`](docs/V3.4-EXECUTION-LEDGER.md)；
+多方共维的修改记录（谁改了什么、验证结果、在途占用）见 [`docs/V3.4-CHANGELOG.md`](docs/V3.4-CHANGELOG.md)，
+校验命令：`python3 scripts/v34_status.py` 与 `python3 scripts/v34_changelog.py`。
 
 ---
 
