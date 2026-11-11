@@ -1,23 +1,37 @@
-# smart_hospital_agent
+<div align="center">
 
-**在真实医院信息系统（HIS）之上构建的医疗 Agent 平台**：分诊 · 报告解读 · 用药检查 · 挂号支付 · 医生工作台 · 运营与平台管理。
+# 大医 · 智能医院 Agent
 
-[![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)]()
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white)]()
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%20%2B%20pgvector-4169E1?logo=postgresql&logoColor=white)]()
-[![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)]()
-[![MCP](https://img.shields.io/badge/MCP-HIS%20Tools-6E56CF)]()
+**HIS 之上的智能层 · 四端 61 屏真实上线**
+
+分诊问诊 · 报告解读 · 挂号支付 · 医生工作台 · 运营质控 · 平台管理 · RAG 证据链 · 25 条验收剧本
+
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%20%2B%20pgvector-4169E1?logo=postgresql&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
+![MCP](https://img.shields.io/badge/MCP-HIS%20Tools-6E56CF)
+![Tests](https://img.shields.io/badge/tests-291%20passed-16A34A)
+![E2E](https://img.shields.io/badge/E2E-26%20passed-0EA5E9)
+![Screens](https://img.shields.io/badge/screens-61%2F61-14B8A6)
+
+[项目概览](#1-项目概览) · [核心特性](#2-核心特性) · [界面](#3-界面与原型) · [系统架构](#4-系统架构)
+· [测试与质量](#9-测试与质量) · [部署](#10-部署脱敏) · [进度](#11-进度) · [限制](#12-限制与合规)
+
+</div>
 
 > **脱敏说明**：本仓库不包含真实部署域名、服务器地址、账号口令、内网路径与第三方凭据。文中以 `<DOMAIN>`、`<API_HOST>`、`<HIS_HOST>` 等占位；实际部署信息见内部运维文档。
 >
 > **当前状态（2026-11-11）**：**四端 61 屏全部真实上线**（患者 16 / 医生 12 / 运营 8 / 管理 25，每屏都有页面 + 接口 + 自动化测试"三证"）。
-> **284 个后端测试通过（1 条按环境跳过）+ 26 条 Playwright E2E 全绿**；验收剧本 **24 可跑 / 0 部分 / 1 阻塞**；前端类型检查与构建通过。
+> **291 个后端测试通过（1 条按环境跳过）+ 26 条 Playwright E2E 全绿**；验收剧本 **25/25 全部可跑**；前端类型检查与构建通过。
 > 生产已部署：API 与静态站都在运行最新提交；安全加固（管理端 IP 白名单、分档限流、登录审计、审计抽查）已上线，
 > 其中 **IP 白名单默认未启用**（需先确认院方出口 IP）。
+>
+> **61 屏** · **144 个后端接口** · **25 条验收剧本** · **284 项后端测试 / 26 条 E2E** · **四端统一鉴权与审计**
+>
 > 进度真相见 [`docs/V3.4-EXECUTION-LEDGER.md`](docs/V3.4-EXECUTION-LEDGER.md)，变更流水见 [`docs/V3.4-CHANGELOG.md`](docs/V3.4-CHANGELOG.md)。
 
 ---
-
 ## 目录
 
 - [1. 项目概览](#1-项目概览)
@@ -124,14 +138,113 @@
 
 ## 3. 界面与原型
 
-- 真实前端截图：[`docs/screenshots/`](docs/screenshots)（首页、问诊结果、证据、挂号、报告、药管家、健康、我的、登录、后台、移动端）；
-- 四端完整原型：[`prototype/dual-end.html`](prototype/dual-end.html) —— 61 屏，含患者端 12、医生端 8、运营 5、管理 17，以及配置总览、未命中问题、接管队列、验收自测等；
+> 截图在**隔离环境**（独立数据库 + fake 模型 + mock HIS）里真实跑出来，不含生产数据与真实患者信息。
+
+### 3.1 患者端：一屏一问，证据可查
+
+<p align="center">
+  <img src="docs/screenshots/01-patient-home.png" width="900" alt="患者首页：问诊入口、六个服务入口、今日待办与最近记录">
+</p>
+
+<p align="center"><sub>首页：一屏一问的分诊入口 + 六个服务入口 + 今日待办（诊后随访）+ 最近记录</sub></p>
+
+<table align="center">
+  <tr>
+    <td align="center"><img src="docs/screenshots/02-patient-services.png" width="440" alt="挂号与就诊服务"></td>
+    <td align="center"><img src="docs/screenshots/03-patient-reports.png" width="440" alt="报告解读"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>挂号服务：当日号源、支付申请、就诊指引</sub></td>
+    <td align="center"><sub>报告解读：异常指标、危急值、建议问医生</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/04-patient-followups.png" width="440" alt="随访列表"></td>
+    <td align="center"><img src="docs/screenshots/05-patient-messages.png" width="440" alt="消息中心"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>随访：医生诊毕自动生成，到期提醒</sub></td>
+    <td align="center"><sub>消息中心：随访 / 报告通知，支持单条与全部已读</sub></td>
+  </tr>
+</table>
+
+### 3.2 医生端：诊前摘要 + 结构化病历 + 签名门禁
+
+<p align="center">
+  <img src="docs/screenshots/06-clinician-queue.png" width="900" alt="医生工作台：今日队列与患者 360，含预问诊摘要">
+</p>
+
+<p align="center"><sub>今日队列 + 患者 360：预问诊摘要（主诉/病程/用药/过敏/既往/想问的）直接可读，下方是病历、医嘱、检验、会诊四个工作页签</sub></p>
+
+<table align="center">
+  <tr>
+    <td align="center"><img src="docs/screenshots/07-clinician-print.png" width="440" alt="文书打印"></td>
+    <td align="center"><img src="docs/screenshots/08-clinician-review.png" width="440" alt="药师审方"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>文书打印：服务端渲染正文、可留痕「已打印」</sub></td>
+    <td align="center"><sub>药师审方：平台侧审方状态 + HIS 口径标注</sub></td>
+  </tr>
+</table>
+
+### 3.3 运营端：对账、支付异常、审计与接管
+
+<table align="center">
+  <tr>
+    <td align="center"><img src="docs/screenshots/10-ops-overview.png" width="440" alt="运营概览"></td>
+    <td align="center"><img src="docs/screenshots/11-ops-review.png" width="440" alt="支付异常逐笔"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>运营概览：待审核、对账差异、待接管</sub></td>
+    <td align="center"><sub>支付异常逐笔审核：人工放行，双人可复核</sub></td>
+  </tr>
+</table>
+
+### 3.4 管理端：配置版本、知识库、验收自测
+
+<p align="center">
+  <img src="docs/screenshots/12-platform-overview.png" width="900" alt="平台管理总览">
+</p>
+
+<p align="center"><sub>运行总览：版本、Schema、数据规模、开关与能力矩阵</sub></p>
+
+<table align="center">
+  <tr>
+    <td align="center"><img src="docs/screenshots/13-platform-knowledge.png" width="440" alt="知识库与检索"></td>
+    <td align="center"><img src="docs/screenshots/14-platform-config.png" width="440" alt="配置管理"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>知识库：覆盖 21 科室、未命中问题、检索调试、RAG 链路自检</sub></td>
+    <td align="center"><sub>配置管理：规则 / 模板 / Prompt / Agent 配置，草稿→发布→回滚</sub></td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2"><img src="docs/screenshots/15-platform-acceptance.png" width="900" alt="验收自测"></td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2"><sub>验收自测：8 项真实自检 + 25 条剧本看板（可跑 24 / 阻塞 1）</sub></td>
+  </tr>
+</table>
+
+### 3.5 统一入口与移动端
+
+<table align="center">
+  <tr>
+    <td align="center"><img src="docs/screenshots/16-entries.png" width="440" alt="四端统一入口"></td>
+    <td align="center"><img src="docs/screenshots/17-mobile-home.png" width="260" alt="移动端首页"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>统一入口：四端同一套登录与 API，角色不足显示无权限</sub></td>
+    <td align="center"><sub>移动端：PWA 可安装，导航与卡片自适应（390×844）</sub></td>
+  </tr>
+</table>
+
+### 3.6 交互原型
+
+- 四端完整交互稿：[`prototype/dual-end.html`](prototype/dual-end.html) —— 61 屏单文件、可点击，纯演示数据；
 - 原型截图：[`prototype/shots/`](prototype/shots)。
 
-> 原型使用模拟数据，页面顶部有「演示环境」提示；不代表真实数据或真实支付。
+> 原型与截图均使用模拟数据，页面顶部有「演示环境」提示；不代表真实数据或真实支付。
 
 ---
-
 ## 4. 系统架构
 
 ### 4.1 总览
@@ -319,8 +432,8 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 
 | 项 | 现状 |
 |---|---|
-| 后端测试 | **284 passed / 1 skipped**（含契约、集成、P0 安全、临床安全、漏洞剧本、HIS 适配器、通知、医生端、运营端、管理端 44 个接口、平台与合规） |
-| 验收剧本 | **25 条：24 ready / 0 partial / 1 blocked**（`pytest tests/test_v34_playbooks.py` 可核） |
+| 后端测试 | **291 passed / 1 skipped**（含契约、集成、P0 安全、临床安全、漏洞剧本、HIS 适配器、通知、医生端、运营端、管理端 44 个接口、多租户隔离、平台与合规） |
+| 验收剧本 | **25 条：25 ready / 0 partial / 0 blocked**（`pytest tests/test_v34_playbooks.py` 可核） |
 | 静态检查 | `ruff` 全绿 |
 | 前端 | `tsc --noEmit` 通过；单测通过；`next build` 通过（40+ 静态页面） |
 | E2E | Playwright **26 passed**（8 个 spec，见下） |
@@ -423,7 +536,7 @@ V3.4 全量上线进度与 61 屏台账见 [`docs/V3.4-EXECUTION-LEDGER.md`](doc
 backend/            FastAPI 应用、策略、检索、适配器、测试
   app/              API、Agent、RAG、策略、数据访问
   his_adapter/      HIS MCP 适配器（工具、幂等、对账）
-  tests/            284 个后端测试（含 25 条验收剧本的看板校验）
+  tests/            291 个后端测试（含 25 条验收剧本的看板校验）
 frontend/           Next.js 前端（四端：/ /clinician /ops /platform）
 prototype/          四端 61 屏原型（单文件 HTML）与截图
 docs/               架构、计划、部署、验收与审计文档
