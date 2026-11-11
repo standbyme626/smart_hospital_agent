@@ -188,7 +188,26 @@ class BookingService:
         if service is None:
             raise HTTPException(status_code=409, detail="该科室没有可用的挂号服务")
 
-        key = idempotency_key or f"appointment:{user_id}:{member['id']}:{org_id}:{practitioner_id}:{service_id}:{date}"
+        base_key = idempotency_key or f"appointment:{user_id}:{member['id']}:{org_id}:{practitioner_id}:{service_id}:{date}"
+        key = base_key
+        # 退号/退费后允许重新挂同一号：否则幂等键会把患者永远锁在"已取消"的旧预约上。
+        try:
+            cancelled_count = await self.db.fetchval(
+                """
+                SELECT count(*) FROM bookings
+                WHERE user_id=$1 AND member_id=$2
+                  AND status IN ('cancelled', 'refunded')
+                  AND idempotency_key LIKE $3
+                """,
+                user_id,
+                member["id"],
+                base_key + "%",
+            )
+        except Exception:
+            cancelled_count = 0
+        if int(cancelled_count or 0) > 0:
+            key = f"{base_key}:rebook:{int(cancelled_count)}"
+
         data = await self._call(
             "appointment.create",
             {
@@ -401,7 +420,13 @@ class BookingService:
     async def cancel_appointment(
         self, appointment_id: str, user_id: str, reason: str = "user_cancelled", refund: bool = True
     ) -> dict[str, Any]:
-        await self._appointment_row(appointment_id, user_id)
+        current = await self._appointment_row(appointment_id, user_id)
+        # 已取消/已退费：直接返回现状，**不再调用 HIS**，避免重复退费
+        if str(current.get("status") or "") in {"cancelled", "refunded"}:
+            return {
+                "cancel": {"status": current.get("status"), "already_cancelled": True},
+                "appointment": await self._appointment_view(appointment_id, user_id),
+            }
         key = f"cancel:{appointment_id}"
         data = await self._call(
             "appointment.cancel",

@@ -43,7 +43,7 @@ PLAYBOOKS: tuple[Playbook, ...] = (
     Playbook("D-08", "跨科 / 跨患者 404", "医生", "ready", "/api/v1/clinician/patients/", "backend/tests/test_clinician.py"),
     # ---- 双端闭环 E2E-01 ~ E2E-03
     Playbook("E2E-01", "常规门诊全链路", "双端", "ready", "/api/v1/booking/appointments", "frontend/e2e/s16-outpatient-chain.spec.ts", "预问诊→挂号→收款→接诊→病历→签名→诊毕→患者看到 HIS 处方"),
-    Playbook("E2E-02", "退号退费闭环", "双端", "partial", "/api/v1/booking/appointments/{appointment_id}/cancel", "frontend/e2e/v31.spec.ts", "双端状态一致性断言待补"),
+    Playbook("E2E-02", "退号退费闭环", "双端", "ready", "/api/v1/booking/appointments/{appointment_id}/cancel", "frontend/e2e/s17-refund-chain.spec.ts", "取消退费后对账无差异、号源可再挂、重复取消幂等短路"),
     Playbook("E2E-03", "并发抢号恰 1 单成功", "双端", "ready", "/api/v1/booking/orders", "backend/tests/test_v34_playbooks_exec.py", "10 并发同锁号只产生 1 个订单"),
     # ---- 集成一致性 INT-01 ~ INT-06
     Playbook("INT-01", "幂等重放 10 次", "集成", "ready", "/api/v1/booking/orders", "backend/tests/test_v34_playbooks_exec.py", "重放 10 次同锁号：平台 1 条投影 + 稳定 idempotency_key"),
