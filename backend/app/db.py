@@ -567,6 +567,76 @@ SCHEMA = [
     """,
     "CREATE INDEX IF NOT EXISTS idx_feedback_user ON feedback_tickets (user_id, created_at DESC)",
     """
+    CREATE TABLE IF NOT EXISTS clinical_notes (
+        id TEXT PRIMARY KEY,
+        doctor TEXT NOT NULL,
+        member_id TEXT NOT NULL,
+        appointment_id TEXT,
+        chief_complaint TEXT,
+        present_illness TEXT,
+        physical_exam TEXT,
+        diagnosis TEXT,
+        status TEXT NOT NULL DEFAULT 'draft',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_clinical_notes_member ON clinical_notes (member_id, created_at DESC)",
+    """
+    CREATE TABLE IF NOT EXISTS clinical_orders (
+        id TEXT PRIMARY KEY,
+        doctor TEXT NOT NULL,
+        member_id TEXT NOT NULL,
+        kind TEXT NOT NULL DEFAULT 'medication',
+        name TEXT NOT NULL,
+        dose TEXT,
+        usage TEXT,
+        status TEXT NOT NULL DEFAULT 'draft',
+        review_status TEXT NOT NULL DEFAULT 'pending',
+        review_note TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        signed_at TIMESTAMPTZ
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_clinical_orders_member ON clinical_orders (member_id, created_at DESC)",
+    """
+    CREATE TABLE IF NOT EXISTS lab_results (
+        id TEXT PRIMARY KEY,
+        member_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        result_value TEXT,
+        reference_range TEXT,
+        abnormal TEXT,
+        measured_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_lab_results_member ON lab_results (member_id, measured_at DESC)",
+    """
+    CREATE TABLE IF NOT EXISTS doctor_schedules (
+        id TEXT PRIMARY KEY,
+        doctor TEXT NOT NULL,
+        department TEXT,
+        weekday TEXT NOT NULL,
+        period TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'clinic',
+        note TEXT
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_doctor_schedules_doctor ON doctor_schedules (doctor, weekday)",
+    """
+    CREATE TABLE IF NOT EXISTS consultations (
+        id TEXT PRIMARY KEY,
+        doctor TEXT NOT NULL,
+        member_id TEXT NOT NULL,
+        target_department TEXT NOT NULL,
+        reason TEXT,
+        status TEXT NOT NULL DEFAULT 'requested',
+        reply TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_consultations_member ON consultations (member_id, created_at DESC)",
+    """
     CREATE TABLE IF NOT EXISTS consent_scopes (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,

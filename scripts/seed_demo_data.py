@@ -119,6 +119,53 @@ async def main() -> None:
                 row["department"],
             )
         print(f"seeded patient-side rows for paid appointments: {len(paid)}")
+
+        schedules = [
+            ("周一", "am", "clinic", "心血管内科门诊"),
+            ("周二", "am", "clinic", "心血管内科门诊"),
+            ("周二", "pm", "clinic", "心血管内科门诊"),
+            ("周四", "am", "clinic", "心血管内科门诊"),
+            ("周五", "pm", "clinic", "心血管内科门诊"),
+        ]
+        for weekday, period, status, note in schedules:
+            await conn.execute(
+                """
+                INSERT INTO doctor_schedules (id, doctor, department, weekday, period, status, note)
+                VALUES ($1,'admin','心血管内科',$2,$3,$4,$5)
+                ON CONFLICT (id) DO UPDATE SET status=EXCLUDED.status, note=EXCLUDED.note
+                """,
+                f"sch_{weekday}_{period}",
+                weekday,
+                period,
+                status,
+                note,
+            )
+        print(f"seeded schedules: {len(schedules)}")
+
+        members = {row["member_id"] for row in paid}
+        lab_seed = [
+            ("低密度脂蛋白 LDL-C", "3.8 mmol/L", "< 3.4", "↑"),
+            ("空腹血糖", "6.4 mmol/L", "3.9–6.1", "↑"),
+            ("肌酐", "96 μmol/L", "57–97", "正常"),
+        ]
+        count = 0
+        for member_id in members:
+            for name, value, reference, abnormal in lab_seed:
+                await conn.execute(
+                    """
+                    INSERT INTO lab_results (id, member_id, name, result_value, reference_range, abnormal)
+                    VALUES ($1,$2,$3,$4,$5,$6)
+                    ON CONFLICT (id) DO NOTHING
+                    """,
+                    f"lab_{member_id}_{name}",
+                    member_id,
+                    name,
+                    value,
+                    reference,
+                    abnormal,
+                )
+                count += 1
+        print(f"seeded lab results: {count}")
     finally:
         await conn.close()
 

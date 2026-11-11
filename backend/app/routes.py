@@ -3247,3 +3247,259 @@ async def upsert_consent_scope(
         payload.can_act,
     )
     return {"scope": dict(row)}
+
+
+# ------------------------------------------------------------ wave C: 病历
+class ClinicalNoteRequest(BaseModel):
+    member_id: str
+    chief_complaint: str | None = None
+    present_illness: str | None = None
+    physical_exam: str | None = None
+    diagnosis: str | None = None
+
+
+async def _ensure_member_exists(db: Any, member_id: str) -> None:
+    row = await db.fetchrow("SELECT id FROM family_members WHERE id=$1", member_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="member not found")
+
+
+@router.get("/api/v1/clinician/notes")
+async def list_clinical_notes(
+    request: Request,
+    member_id: str = Query(...),
+    user: dict[str, Any] = Depends(require_clinician),
+) -> dict[str, Any]:
+    db = _state(request).db
+    rows = await db.fetch(
+        """
+        SELECT id, doctor, member_id, chief_complaint, present_illness, physical_exam,
+               diagnosis, status, created_at, updated_at
+        FROM clinical_notes WHERE member_id=$1 ORDER BY created_at DESC LIMIT 20
+        """,
+        member_id,
+    )
+    return {"items": [dict(row) for row in rows]}
+
+
+@router.post("/api/v1/clinician/notes")
+async def create_clinical_note(
+    payload: ClinicalNoteRequest,
+    request: Request,
+    user: dict[str, Any] = Depends(require_clinician),
+) -> dict[str, Any]:
+    db = _state(request).db
+    await _ensure_member_exists(db, payload.member_id)
+    note_id = "cn_" + uuid.uuid4().hex[:12]
+    row = await db.fetchrow(
+        """
+        INSERT INTO clinical_notes
+            (id, doctor, member_id, chief_complaint, present_illness, physical_exam, diagnosis)
+        VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *
+        """,
+        note_id,
+        str(user.get("user") or user.get("sub")),
+        payload.member_id,
+        payload.chief_complaint,
+        payload.present_illness,
+        payload.physical_exam,
+        payload.diagnosis,
+    )
+    return {"note": dict(row) if row else None}
+
+
+@router.post("/api/v1/clinician/notes/{note_id}/complete")
+async def complete_clinical_note(
+    note_id: str,
+    request: Request,
+    user: dict[str, Any] = Depends(require_clinician),
+) -> dict[str, Any]:
+    row = await _state(request).db.fetchrow(
+        """
+        UPDATE clinical_notes SET status='completed', updated_at=now()
+        WHERE id=$1 AND status='draft' RETURNING *
+        """,
+        note_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="note not found or already completed")
+    return {"note": dict(row)}
+
+
+# ------------------------------------------------------------ wave C: 医嘱
+class ClinicalOrderRequest(BaseModel):
+    member_id: str
+    kind: str = "medication"
+    name: str
+    dose: str | None = None
+    usage: str | None = None
+
+
+@router.get("/api/v1/clinician/orders")
+async def list_clinical_orders(
+    request: Request,
+    member_id: str = Query(...),
+    user: dict[str, Any] = Depends(require_clinician),
+) -> dict[str, Any]:
+    db = _state(request).db
+    rows = await db.fetch(
+        """
+        SELECT id, doctor, member_id, kind, name, dose, usage, status,
+               review_status, review_note, created_at, signed_at
+        FROM clinical_orders WHERE member_id=$1 ORDER BY created_at DESC LIMIT 50
+        """,
+        member_id,
+    )
+    return {"items": [dict(row) for row in rows]}
+
+
+@router.post("/api/v1/clinician/orders")
+async def create_clinical_order(
+    payload: ClinicalOrderRequest,
+    request: Request,
+    user: dict[str, Any] = Depends(require_clinician),
+) -> dict[str, Any]:
+    if payload.kind not in {"medication", "exam", "lab"}:
+        raise HTTPException(status_code=422, detail="invalid kind")
+    db = _state(request).db
+    await _ensure_member_exists(db, payload.member_id)
+    order_id = "co_" + uuid.uuid4().hex[:12]
+    row = await db.fetchrow(
+        """
+        INSERT INTO clinical_orders (id, doctor, member_id, kind, name, dose, usage)
+        VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *
+        """,
+        order_id,
+        str(user.get("user") or user.get("sub")),
+        payload.member_id,
+        payload.kind,
+        payload.name,
+        payload.dose,
+        payload.usage,
+    )
+    return {"order": dict(row) if row else None}
+
+
+@router.post("/api/v1/clinician/orders/{order_id}/sign")
+async def sign_clinical_order(
+    order_id: str,
+    request: Request,
+    user: dict[str, Any] = Depends(require_clinician),
+) -> dict[str, Any]:
+    settings = _state(request).settings
+    if not settings.CLINICIAN_WRITE_ENABLED:
+        raise HTTPException(status_code=409, detail="HIS 写入尚未启用：医嘱签名需要医生 HIS 账号透传")
+    row = await _state(request).db.fetchrow(
+        """
+        UPDATE clinical_orders SET status='signed', signed_at=now(), review_status='pending'
+        WHERE id=$1 AND status='draft' RETURNING *
+        """,
+        order_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="order not found or already signed")
+    return {"order": dict(row)}
+
+
+class OrderReviewRequest(BaseModel):
+    status: str = "approved"
+    note: str | None = None
+
+
+@router.post("/api/v1/clinician/orders/{order_id}/review")
+async def review_clinical_order(
+    order_id: str,
+    payload: OrderReviewRequest,
+    request: Request,
+    user: dict[str, Any] = Depends(require_clinician),
+) -> dict[str, Any]:
+    if payload.status not in {"approved", "rejected"}:
+        raise HTTPException(status_code=422, detail="invalid review status")
+    row = await _state(request).db.fetchrow(
+        """
+        UPDATE clinical_orders SET review_status=$2, review_note=$3
+        WHERE id=$1 AND status='signed' RETURNING *
+        """,
+        order_id,
+        payload.status,
+        payload.note,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="order not found or not signed")
+    return {"order": dict(row)}
+
+
+@router.get("/api/v1/clinician/labs")
+async def list_lab_results(
+    request: Request,
+    member_id: str = Query(...),
+    user: dict[str, Any] = Depends(require_clinician),
+) -> dict[str, Any]:
+    rows = await _state(request).db.fetch(
+        """
+        SELECT id, name, result_value, reference_range, abnormal, measured_at
+        FROM lab_results WHERE member_id=$1 ORDER BY measured_at DESC LIMIT 50
+        """,
+        member_id,
+    )
+    return {"items": [dict(row) for row in rows]}
+
+
+@router.get("/api/v1/clinician/schedules")
+async def my_schedules(
+    request: Request,
+    user: dict[str, Any] = Depends(require_clinician),
+) -> dict[str, Any]:
+    rows = await _state(request).db.fetch(
+        """
+        SELECT id, doctor, department, weekday, period, status, note
+        FROM doctor_schedules WHERE doctor=$1 ORDER BY weekday, period
+        """,
+        str(user.get("user") or user.get("sub")),
+    )
+    return {"items": [dict(row) for row in rows]}
+
+
+class ConsultationRequest(BaseModel):
+    member_id: str
+    target_department: str
+    reason: str | None = None
+
+
+@router.get("/api/v1/clinician/consultations")
+async def list_consultations(
+    request: Request,
+    member_id: str = Query(...),
+    user: dict[str, Any] = Depends(require_clinician),
+) -> dict[str, Any]:
+    rows = await _state(request).db.fetch(
+        """
+        SELECT id, doctor, member_id, target_department, reason, status, reply, created_at
+        FROM consultations WHERE member_id=$1 ORDER BY created_at DESC LIMIT 20
+        """,
+        member_id,
+    )
+    return {"items": [dict(row) for row in rows]}
+
+
+@router.post("/api/v1/clinician/consultations")
+async def create_consultation(
+    payload: ConsultationRequest,
+    request: Request,
+    user: dict[str, Any] = Depends(require_clinician),
+) -> dict[str, Any]:
+    db = _state(request).db
+    await _ensure_member_exists(db, payload.member_id)
+    consult_id = "cons_" + uuid.uuid4().hex[:10]
+    row = await db.fetchrow(
+        """
+        INSERT INTO consultations (id, doctor, member_id, target_department, reason)
+        VALUES ($1,$2,$3,$4,$5) RETURNING *
+        """,
+        consult_id,
+        str(user.get("user") or user.get("sub")),
+        payload.member_id,
+        payload.target_department,
+        payload.reason,
+    )
+    return {"consultation": dict(row) if row else None}
