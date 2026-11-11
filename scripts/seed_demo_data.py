@@ -166,6 +166,56 @@ async def main() -> None:
                 )
                 count += 1
         print(f"seeded lab results: {count}")
+
+        crises = [
+            ("crisis_demo_1", "chest_pain", "胸痛伴大汗，已提示急诊", "open"),
+            ("crisis_demo_2", "self_harm", "言语中提及轻生念头，已转人工", "open"),
+        ]
+        for crisis_id, kind, detail, status in crises:
+            await conn.execute(
+                """
+                INSERT INTO crisis_events (id, kind, detail, status)
+                VALUES ($1,$2,$3,$4)
+                ON CONFLICT (id) DO NOTHING
+                """,
+                crisis_id,
+                kind,
+                detail,
+                status,
+            )
+        print(f"seeded crisis events: {len(crises)}")
+
+        existing = await conn.fetchval("SELECT count(*) FROM notifications WHERE user_id='admin'")
+        if not existing:
+            for kind, title, body, link in [
+                ("system", "欢迎使用大医", "这是平台演示通知", "/messages/"),
+                ("followup", "随访提醒", "2 周后复诊心内科", "/followups/"),
+                ("report", "报告解读完成", "血脂四项已生成解读", "/reports/"),
+            ]:
+                await conn.execute(
+                    "INSERT INTO notifications (user_id, kind, title, body, link) VALUES ('admin',$1,$2,$3,$4)",
+                    kind,
+                    title,
+                    body,
+                    link,
+                )
+        notes = await conn.fetch("SELECT id, user_id, title FROM notifications WHERE user_id='admin' ORDER BY created_at DESC LIMIT 5")
+        for index, row in enumerate(notes, start=1):
+            status = "failed" if index == 2 else "sent"
+            await conn.execute(
+                """
+                INSERT INTO notification_deliveries
+                    (id, notification_id, channel, target, status, attempts, error)
+                VALUES ($1,$2,'station',$3,$4,1,$5)
+                ON CONFLICT (id) DO NOTHING
+                """,
+                f"nd_{row['id']}",
+                row["id"],
+                row["user_id"],
+                status,
+                "模拟通道失败（可重试）" if status == "failed" else None,
+            )
+        print(f"seeded notification deliveries: {len(notes)}")
     finally:
         await conn.close()
 

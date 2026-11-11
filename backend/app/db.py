@@ -624,6 +624,34 @@ SCHEMA = [
     """,
     "CREATE INDEX IF NOT EXISTS idx_doctor_schedules_doctor ON doctor_schedules (doctor, weekday)",
     """
+    CREATE TABLE IF NOT EXISTS crisis_events (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        member_id TEXT,
+        kind TEXT NOT NULL,
+        detail TEXT,
+        status TEXT NOT NULL DEFAULT 'open',
+        handled_by TEXT,
+        handled_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_crisis_events_status ON crisis_events (status, created_at DESC)",
+    """
+    CREATE TABLE IF NOT EXISTS notification_deliveries (
+        id TEXT PRIMARY KEY,
+        notification_id BIGINT,
+        channel TEXT NOT NULL DEFAULT 'station',
+        target TEXT,
+        status TEXT NOT NULL DEFAULT 'sent',
+        attempts INT NOT NULL DEFAULT 1,
+        error TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_notification_deliveries_status ON notification_deliveries (status, created_at DESC)",
+    """
     CREATE TABLE IF NOT EXISTS consultations (
         id TEXT PRIMARY KEY,
         doctor TEXT NOT NULL,

@@ -3503,3 +3503,192 @@ async def create_consultation(
         payload.reason,
     )
     return {"consultation": dict(row) if row else None}
+
+
+# ---------------------------------------------------------------- wave D: ops
+class ReviewDecisionRequest(BaseModel):
+    action: str
+    note: str | None = None
+
+
+@router.get("/api/v1/ops/reviews")
+async def ops_reviews(
+    request: Request,
+    user: dict[str, Any] = Depends(require_ops),
+) -> dict[str, Any]:
+    rows = await _state(request).db.fetch(
+        """
+        SELECT id, kind, ref_id, user_id, member_id, status, payload, decision_note,
+               decided_by, decided_at, created_at
+        FROM review_requests
+        WHERE status IN ('pending', 'processing', 'acknowledged')
+        ORDER BY created_at DESC LIMIT 50
+        """
+    )
+    return {"items": [dict(row) for row in rows]}
+
+
+@router.post("/api/v1/ops/reviews/{review_id}/decide")
+async def decide_review(
+    review_id: str,
+    payload: ReviewDecisionRequest,
+    request: Request,
+    user: dict[str, Any] = Depends(require_ops),
+) -> dict[str, Any]:
+    if payload.action not in {"approve", "reject"}:
+        raise HTTPException(status_code=422, detail="action must be approve or reject")
+    db = _state(request).db
+    actor = str(user.get("user") or user.get("sub"))
+    row = await db.fetchrow(
+        """
+        UPDATE review_requests
+        SET status=$2, decision_note=$3, decided_by=$4, decided_at=now()
+        WHERE id=$1 AND status IN ('pending', 'processing', 'acknowledged')
+        RETURNING id, kind, ref_id, status, decision_note, decided_by, decided_at
+        """,
+        review_id,
+        "approved" if payload.action == "approve" else "rejected",
+        payload.note,
+        actor,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="review not found or already decided")
+    await db.execute(
+        "INSERT INTO audit_log (actor, action, detail) VALUES ($1,$2,$3)",
+        actor,
+        "ops.review.decide",
+        json.dumps({"review_id": review_id, "action": payload.action}, ensure_ascii=False),
+    )
+    return {"review": dict(row)}
+
+
+@router.get("/api/v1/ops/audit")
+async def ops_audit(
+    request: Request,
+    limit: int = Query(50, ge=1, le=200),
+    user: dict[str, Any] = Depends(require_ops),
+) -> dict[str, Any]:
+    rows = await _state(request).db.fetch(
+        """
+        SELECT id, request_id, session_id, actor, action, detail, created_at
+        FROM audit_log ORDER BY created_at DESC LIMIT $1
+        """,
+        limit,
+    )
+    return {"items": [dict(row) for row in rows]}
+
+
+@router.get("/api/v1/ops/analytics")
+async def ops_analytics(
+    request: Request,
+    user: dict[str, Any] = Depends(require_ops),
+) -> dict[str, Any]:
+    db = _state(request).db
+    events = await db.fetch(
+        """
+        SELECT name, count(*) AS count FROM analytics_events
+        GROUP BY name ORDER BY count DESC LIMIT 20
+        """
+    )
+    totals = {
+        "sessions": int(await db.fetchval("SELECT count(*) FROM sessions") or 0),
+        "reports": int(await db.fetchval("SELECT count(*) FROM reports") or 0),
+        "bookings": int(await db.fetchval("SELECT count(*) FROM bookings") or 0),
+        "users": int(await db.fetchval("SELECT count(*) FROM users") or 0),
+    }
+    return {"events": [dict(row) for row in events], "totals": totals}
+
+
+@router.get("/api/v1/ops/insurance-recon")
+async def ops_insurance_recon(
+    request: Request,
+    user: dict[str, Any] = Depends(require_ops),
+) -> dict[str, Any]:
+    rows = await _state(request).db.fetch(
+        """
+        SELECT s.id, s.member_id, s.appointment_id, s.total AS settlement_total,
+               a.amount AS appointment_amount, s.status, s.settled_at
+        FROM insurance_settlements s
+        LEFT JOIN appointment_projection a ON a.id = s.appointment_id
+        ORDER BY s.settled_at DESC LIMIT 100
+        """
+    )
+    items: list[dict[str, Any]] = []
+    diff_count = 0
+    for row in rows:
+        item = dict(row)
+        total = float(item["settlement_total"] or 0)
+        amount = float(item["appointment_amount"] or 0)
+        item["diff"] = round(total - amount, 2)
+        if abs(item["diff"]) > 0.01:
+            diff_count += 1
+        items.append(item)
+    return {"items": items, "diff_count": diff_count, "checked": len(items)}
+
+
+@router.get("/api/v1/ops/crisis")
+async def ops_crisis(
+    request: Request,
+    user: dict[str, Any] = Depends(require_ops),
+) -> dict[str, Any]:
+    rows = await _state(request).db.fetch(
+        """
+        SELECT id, user_id, member_id, kind, detail, status, handled_by, handled_at, created_at
+        FROM crisis_events ORDER BY created_at DESC LIMIT 50
+        """
+    )
+    return {"items": [dict(row) for row in rows]}
+
+
+@router.post("/api/v1/ops/crisis/{event_id}/resolve")
+async def resolve_crisis(
+    event_id: str,
+    request: Request,
+    user: dict[str, Any] = Depends(require_ops),
+) -> dict[str, Any]:
+    row = await _state(request).db.fetchrow(
+        """
+        UPDATE crisis_events SET status='handled', handled_by=$2, handled_at=now()
+        WHERE id=$1 AND status='open'
+        RETURNING id, status, handled_by, handled_at
+        """,
+        event_id,
+        str(user.get("user") or user.get("sub")),
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="crisis event not found or already handled")
+    return {"event": dict(row)}
+
+
+@router.get("/api/v1/ops/notifications")
+async def ops_notifications(
+    request: Request,
+    user: dict[str, Any] = Depends(require_ops),
+) -> dict[str, Any]:
+    rows = await _state(request).db.fetch(
+        """
+        SELECT id, notification_id, channel, target, status, attempts, error, created_at, updated_at
+        FROM notification_deliveries ORDER BY created_at DESC LIMIT 100
+        """
+    )
+    return {"items": [dict(row) for row in rows]}
+
+
+@router.post("/api/v1/ops/notifications/{delivery_id}/retry")
+async def retry_delivery(
+    delivery_id: str,
+    request: Request,
+    user: dict[str, Any] = Depends(require_ops),
+) -> dict[str, Any]:
+    row = await _state(request).db.fetchrow(
+        """
+        UPDATE notification_deliveries
+        SET status='sent', attempts=attempts+1, error=NULL, updated_at=now()
+        WHERE id=$1 AND status IN ('failed', 'pending')
+        RETURNING id, status, attempts, updated_at
+        """,
+        delivery_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="delivery not found or already sent")
+    return {"delivery": dict(row)}
