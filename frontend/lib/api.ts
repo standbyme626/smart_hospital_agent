@@ -507,6 +507,106 @@ export async function claimOpsHandoff(id: string): Promise<void> {
   await apiFetch(`/api/v1/ops/handoff/${encodeURIComponent(id)}/claim`, { method: "POST" });
 }
 
+export type OpsReview = {
+  id: string;
+  kind: string;
+  ref_id: string;
+  user_id: string;
+  member_id?: string | null;
+  status: string;
+  payload?: Record<string, unknown>;
+  decision_note?: string | null;
+  created_at: string;
+};
+
+export async function getOpsReviews(): Promise<OpsReview[]> {
+  const data = await apiFetch<{ items: OpsReview[] }>("/api/v1/ops/reviews");
+  return data.items;
+}
+
+export async function decideOpsReview(id: string, action: "approve" | "reject", note?: string): Promise<OpsReview> {
+  const data = await apiFetch<{ review: OpsReview }>(`/api/v1/ops/reviews/${encodeURIComponent(id)}/decide`, {
+    method: "POST",
+    body: JSON.stringify({ action, note }),
+  });
+  return data.review;
+}
+
+export type OpsAuditEntry = {
+  id: number;
+  actor?: string | null;
+  action: string;
+  detail?: Record<string, unknown>;
+  created_at: string;
+};
+
+export async function getOpsAudit(): Promise<OpsAuditEntry[]> {
+  const data = await apiFetch<{ items: OpsAuditEntry[] }>("/api/v1/ops/audit?limit=50");
+  return data.items;
+}
+
+export type OpsAnalytics = {
+  events: Array<{ name: string; count: number }>;
+  totals: { sessions: number; reports: number; bookings: number; users: number };
+};
+
+export async function getOpsAnalytics(): Promise<OpsAnalytics> {
+  return apiFetch<OpsAnalytics>("/api/v1/ops/analytics");
+}
+
+export type OpsInsuranceItem = {
+  id: string;
+  member_id: string;
+  appointment_id?: string | null;
+  settlement_total: number | string;
+  appointment_amount: number | string;
+  diff: number;
+  status: string;
+  settled_at: string;
+};
+
+export async function getOpsInsuranceRecon(): Promise<{ items: OpsInsuranceItem[]; diff_count: number; checked: number }> {
+  return apiFetch<{ items: OpsInsuranceItem[]; diff_count: number; checked: number }>("/api/v1/ops/insurance-recon");
+}
+
+export type OpsCrisisEvent = {
+  id: string;
+  kind: string;
+  detail?: string | null;
+  status: string;
+  handled_by?: string | null;
+  handled_at?: string | null;
+  created_at: string;
+};
+
+export async function getOpsCrisis(): Promise<OpsCrisisEvent[]> {
+  const data = await apiFetch<{ items: OpsCrisisEvent[] }>("/api/v1/ops/crisis");
+  return data.items;
+}
+
+export async function resolveOpsCrisis(id: string): Promise<void> {
+  await apiFetch(`/api/v1/ops/crisis/${encodeURIComponent(id)}/resolve`, { method: "POST" });
+}
+
+export type OpsDelivery = {
+  id: string;
+  notification_id?: number | null;
+  channel: string;
+  status: string;
+  attempts: number;
+  error?: string | null;
+  created_at: string;
+};
+
+export async function getOpsNotifications(): Promise<OpsDelivery[]> {
+  const data = await apiFetch<{ items: OpsDelivery[] }>("/api/v1/ops/notifications");
+  return data.items;
+}
+
+export async function retryOpsNotification(id: string): Promise<void> {
+  await apiFetch(`/api/v1/ops/notifications/${encodeURIComponent(id)}/retry`, { method: "POST" });
+}
+
 // --------------------------------------------------------------- platform
 export type PlatformOverview = {
   app: { name: string; version: string; env: string; schema_version: string };

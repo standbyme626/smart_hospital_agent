@@ -84,6 +84,28 @@ test("clinician schedule, ward and todo pages load for admin", async ({ page }) 
   await expect(page.getByText("移动待办")).toBeVisible();
 });
 
+test("ops subpages load for admin", async ({ page }) => {
+  await login(page, ADMIN_USER, ADMIN_PASSWORD);
+
+  await open(page, "/ops/reviews/");
+  await expect(page.getByText("支付与异常逐笔审核")).toBeVisible();
+
+  await open(page, "/ops/audit/");
+  await expect(page.getByText("最近 50 条审计事件")).toBeVisible();
+
+  await open(page, "/ops/analytics/");
+  await expect(page.getByText("规模与事件计数")).toBeVisible();
+
+  await open(page, "/ops/insurance/");
+  await expect(page.getByText("结算快照 vs 挂号金额")).toBeVisible();
+
+  await open(page, "/ops/crisis/");
+  await expect(page.getByText("红旗信号与人工介入记录")).toBeVisible();
+
+  await open(page, "/ops/notifications/");
+  await expect(page.getByText("站内信发送与重试")).toBeVisible();
+});
+
 test("clinician and ops pages load for admin and are denied for patient", async ({ page }) => {
   await login(page, ADMIN_USER, ADMIN_PASSWORD);
 

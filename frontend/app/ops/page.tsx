@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, CheckCircle2, ClipboardList, HandHeart, ShieldCheck } from "lucide-react";
 import { OfflineBanner, SourceBadge, StateBlock } from "@/components/ui";
+import { OpsNav } from "@/components/OpsNav";
 import {
   claimOpsHandoff,
   getOpsFindings,
@@ -107,6 +108,7 @@ export default function OpsPage() {
 
       <main className="mx-auto max-w-5xl space-y-4 px-4 py-5">
         <OfflineBanner />
+        <OpsNav />
 
         {denied ? (
           <div className="card p-3">
