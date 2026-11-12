@@ -129,7 +129,7 @@ export default function MedsPage() {
 
   return (
     <AppShell title="药管家" subtitle="用药清单、相互作用与妊娠禁忌检查" actions={<SourceBadge live />}>
-      <div className="mx-auto max-w-4xl space-y-4">
+      <div className="space-y-4">
         <OfflineBanner />
         <section className="card p-5">
           <div className="flex items-center justify-between">

@@ -77,7 +77,7 @@ export default function PrevisitPage() {
 
   return (
     <AppShell title="就诊准备" subtitle="提前把情况写清楚，医生接诊时直接看到" actions={<SourceBadge live />}>
-      <div className="mx-auto max-w-3xl space-y-4">
+      <div className="readable space-y-4">
         <OfflineBanner />
 
         {submitted ? (

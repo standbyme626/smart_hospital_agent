@@ -108,15 +108,31 @@ async def agent_panel(
 
     table_end = "admin" if public_end == "platform" else public_end
 
-    recent_rows = await db.fetch(
-        """
-        SELECT model, task, latency_ms, created_at
-        FROM model_calls
-        WHERE created_at >= now() - interval '7 days'
-        ORDER BY created_at DESC
-        LIMIT 6
-        """
-    )
+    # 平台端看全租户；其余端按“本账号”过滤，避免把别人的调用显示给患者/医生
+    scope = "tenant" if public_end == "platform" else "self"
+    actor = None if scope == "tenant" else str(user.get("sub"))
+
+    if actor:
+        recent_rows = await db.fetch(
+            """
+            SELECT model, task, latency_ms, created_at
+            FROM model_calls
+            WHERE created_at >= now() - interval '7 days' AND user_id = $1
+            ORDER BY created_at DESC
+            LIMIT 6
+            """,
+            actor,
+        )
+    else:
+        recent_rows = await db.fetch(
+            """
+            SELECT model, task, latency_ms, created_at
+            FROM model_calls
+            WHERE created_at >= now() - interval '7 days'
+            ORDER BY created_at DESC
+            LIMIT 6
+            """
+        )
     recent = [
         {
             "name": row["task"] or row["model"],
@@ -127,19 +143,30 @@ async def agent_panel(
         for row in recent_rows
     ]
 
-    counts = await db.fetchrow(
-        """
-        SELECT count(*) AS calls, coalesce(avg(latency_ms), 0) AS avg_ms
-        FROM model_calls
-        WHERE created_at >= now() - interval '7 days'
-        """
-    )
+    if actor:
+        counts = await db.fetchrow(
+            """
+            SELECT count(*) AS calls, coalesce(avg(latency_ms), 0) AS avg_ms
+            FROM model_calls
+            WHERE created_at >= now() - interval '7 days' AND user_id = $1
+            """,
+            actor,
+        )
+    else:
+        counts = await db.fetchrow(
+            """
+            SELECT count(*) AS calls, coalesce(avg(latency_ms), 0) AS avg_ms
+            FROM model_calls
+            WHERE created_at >= now() - interval '7 days'
+            """
+        )
 
     return {
         "end": public_end,
         "role": role,
         "capabilities": CAPABILITIES[table_end],
         "recent": recent,
+        "scope": scope,
         "summary": {
             "calls_7d": int(counts["calls"] or 0),
             "avg_latency_ms": int(counts["avg_ms"] or 0),

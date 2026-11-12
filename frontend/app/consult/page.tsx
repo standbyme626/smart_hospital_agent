@@ -366,7 +366,7 @@ export default function ConsultPage() {
       subtitle="一屏一问，先分诊再决定下一步"
       actions={<SourceBadge live />}
     >
-      <div className="mx-auto max-w-3xl space-y-4">
+      <div className="readable space-y-4">
         <OfflineBanner />
         {streamError ? (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-800">

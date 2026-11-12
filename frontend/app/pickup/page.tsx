@@ -38,7 +38,7 @@ export default function PickupPage() {
 
   return (
     <AppShell title="取药进度" subtitle="缴费后药房配药状态" actions={<SourceBadge live />}>
-      <div className="mx-auto max-w-3xl space-y-4">
+      <div className="readable space-y-4">
         <OfflineBanner />
         {loading ? <div className="card h-24 animate-pulse" /> : failed ? (
           <div className="card p-3"><StateBlock kind="error" onRetry={load} /></div>

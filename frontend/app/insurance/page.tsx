@@ -38,7 +38,7 @@ export default function InsurancePage() {
 
   return (
     <AppShell title="医保结算" subtitle="挂号费结算明细" actions={<SourceBadge live />}>
-      <div className="mx-auto max-w-3xl space-y-4">
+      <div className="readable space-y-4">
         <OfflineBanner />
         {source ? <p className="rounded-2xl bg-amber-50 px-3 py-2 text-[12px] text-amber-800">{source}</p> : null}
         {loading ? <div className="card h-24 animate-pulse" /> : failed ? (

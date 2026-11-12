@@ -94,7 +94,7 @@ export default function FollowupsPage() {
       subtitle={pendingCount ? pendingCount + " 项待完成 · 复诊与自我监测计划" : "复诊与自我监测计划"}
       actions={<SourceBadge live />}
     >
-      <div className="mx-auto max-w-3xl space-y-4">
+      <div className="readable space-y-4">
         <OfflineBanner />
 
         <div className="flex flex-wrap gap-2">

@@ -560,7 +560,7 @@ export default function ServicesPage() {
       subtitle="HIS 报价 + 医院收费；支付以医院收费窗口为准"
       actions={<SourceBadge live />}
     >
-      <div className="mx-auto max-w-4xl space-y-4">
+      <div className="space-y-4">
         <OfflineBanner />
         <div className="flex flex-wrap items-center gap-2">
           {STEPS.map((label, index) => (

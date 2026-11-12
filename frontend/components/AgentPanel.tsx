@@ -70,7 +70,7 @@ export function AgentPanel({
         <section>
           <p className="agent-panel-title">
             最近调用
-            {data ? <span className="ml-2 font-normal text-muted">7 天 {data.summary.calls_7d} 次 · 均值 {data.summary.avg_latency_ms}ms</span> : null}
+            {data ? <span className="ml-2 font-normal text-muted">{data.scope === "tenant" ? "本院区" : "本账号"} · 7 天 {data.summary.calls_7d} 次 · 均值 {data.summary.avg_latency_ms}ms</span> : null}
           </p>
           {data && data.recent.length === 0 ? (
             <p className="text-[11px] leading-5 text-muted">近 7 天没有模型调用记录。</p>

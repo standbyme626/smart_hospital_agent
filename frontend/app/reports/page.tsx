@@ -182,7 +182,7 @@ export default function ReportsPage() {
       subtitle="上传检查报告或皮肤照片，用普通人能懂的话解释"
       actions={<SourceBadge live />}
     >
-      <div className="mx-auto max-w-4xl space-y-4">
+      <div className="space-y-4">
         <OfflineBanner />
         <div className="flex gap-2">
           <button onClick={() => { setMode("report"); setSelected(null); }} aria-pressed={mode === "report"} className={clsx("chip min-h-11 px-4", mode === "report" ? "chip-active" : "")}>检查报告</button>

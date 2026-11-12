@@ -55,7 +55,7 @@ export default function ConsentPage() {
 
   return (
     <AppShell title="家庭授权" subtitle="谁可以查看资料、谁可以代办" actions={<SourceBadge live />}>
-      <div className="mx-auto max-w-3xl space-y-4">
+      <div className="readable space-y-4">
         <OfflineBanner />
         <p className="rounded-2xl bg-canvas px-3 py-2 text-[12px] leading-5 text-muted">
           查看：能否读取成员的就诊、报告与用药；代办：能否代挂号、代缴费。关闭即撤回，立即生效。

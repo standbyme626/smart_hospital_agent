@@ -1292,6 +1292,7 @@ export type AgentPanelData = {
   summary: { calls_7d: number; avg_latency_ms: number };
   boundaries: string[];
   starter: string;
+  scope: "self" | "tenant";
 };
 
 export async function getAgentPanel(end?: "patient" | "clinician" | "ops" | "platform"): Promise<AgentPanelData> {

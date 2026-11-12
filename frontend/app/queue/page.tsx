@@ -30,7 +30,7 @@ export default function QueuePage() {
 
   return (
     <AppShell title="排队叫号" subtitle="今日候诊进度与到院流程" actions={<SourceBadge live />}>
-      <div className="mx-auto max-w-3xl space-y-4">
+      <div className="readable space-y-4">
         <OfflineBanner />
         {loading ? <div className="card h-28 animate-pulse" /> : failed ? (
           <div className="card p-3"><StateBlock kind="error" onRetry={load} /></div>

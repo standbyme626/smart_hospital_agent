@@ -56,7 +56,7 @@ export default function SupportPage() {
 
   return (
     <AppShell title="客服与反馈" subtitle="常见问题、提交反馈与投诉" actions={<SourceBadge live />}>
-      <div className="mx-auto max-w-3xl space-y-4">
+      <div className="readable space-y-4">
         <OfflineBanner />
 
         <section className="card p-5">
